@@ -8,6 +8,7 @@ mock adapter's `SCRIPTS` so they stay deterministic and testable.
     legal_intake/        attorney intake             --policy legal_intake
     content_publishing/  drafting and publishing     default pack
     filesystem/          live official MCP server    real governed file I/O
+    vscode_agent/        real VS Code agent proof    workspace MCP profile
 
 Run one:
 
@@ -24,3 +25,7 @@ Run the live MCP integration from the repository root:
 It uses the pinned official filesystem reference server, confines it to a fresh
 workspace, holds a real write for approval, retries the exact MCP call, and
 verifies the evidence chain. See `filesystem/README.md`.
+
+For a model-driven run, open the repository in VS Code and follow
+`vscode_agent/README.md`. The committed `.vscode/mcp.json` routes that session
+through the same governed server.

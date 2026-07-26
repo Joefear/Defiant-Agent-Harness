@@ -180,6 +180,18 @@ the resulting evidence chain. The upstream server and Defiant independently
 confine paths to the same workspace. Run with `--yes` for a non-interactive
 smoke test. See `examples/filesystem/README.md`.
 
+### Connect VS Code Agent mode
+
+The committed Windows workspace profile at `.vscode/mcp.json` connects VS Code
+to the same official filesystem server through Defiant and binds evidence to
+the `vscode-copilot` runner identity. It is confined to the disposable
+`examples/vscode_agent/workspace` folder.
+
+Open the repository folder in VS Code and follow
+`examples/vscode_agent/README.md`. For the boundary proof, disable VS Code's
+built-in write/edit and terminal tools in the session tools picker; those native
+tools do not cross an MCP proxy.
+
 ## Architecture
 
 ```
@@ -252,7 +264,7 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-120 offline tests plus one opt-in live integration test. The suite includes a
+124 offline tests plus one opt-in live integration test. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
 block, and evidence-chain verification. Set `DAH_LIVE_MCP=1` to add the pinned

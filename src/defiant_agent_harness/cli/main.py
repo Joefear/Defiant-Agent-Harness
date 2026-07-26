@@ -247,7 +247,11 @@ def cmd_mcp_proxy(args) -> int:
     if command[:1] == ["--"]:
         command = command[1:]
     try:
-        config = load_proxy_config(args.config, command_override=command or None)
+        config = load_proxy_config(
+            args.config,
+            command_override=command or None,
+            runner_override=args.runner or None,
+        )
         return run_stdio_proxy(
             config,
             workdir=args.workdir,
@@ -365,6 +369,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="govern a configured MCP stdio server",
     )
     mcp.add_argument("--config", required=True, help="proxy YAML configuration")
+    mcp.add_argument(
+        "--runner",
+        default="",
+        help="evidence identity for the connected runner (overrides YAML)",
+    )
     mcp.add_argument(
         "--sensitivity",
         default="internal",

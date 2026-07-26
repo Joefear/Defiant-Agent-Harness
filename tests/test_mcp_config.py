@@ -71,3 +71,21 @@ tools:
     )
     config = load_proxy_config(path, ["python", "server.py", "--safe"])
     assert config.command == ("python", "server.py", "--safe")
+
+
+def test_runner_override_is_bound_as_the_effective_runner(tmp_path):
+    path = tmp_path / "proxy.yaml"
+    path.write_text(
+        """
+server: {name: x, command: [python]}
+runner: configured-runner
+tools:
+  echo: {side_effect: none}
+""",
+        encoding="utf-8",
+    )
+    config = load_proxy_config(path, runner_override="vscode-copilot")
+    assert config.runner_name == "vscode-copilot"
+
+    with pytest.raises(McpConfigError, match="runner"):
+        load_proxy_config(path, runner_override=" ")

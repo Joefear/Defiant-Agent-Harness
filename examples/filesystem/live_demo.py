@@ -244,7 +244,7 @@ def run(args: argparse.Namespace) -> Path:
             "tools/call",
             {
                 "name": "list_directory",
-                "arguments": {"path": "."},
+                "arguments": {"path": str(workspace)},
             },
         )
         if _status(root_listing) != "succeeded":
@@ -257,7 +257,7 @@ def run(args: argparse.Namespace) -> Path:
             "tools/call",
             {
                 "name": "read_text_file",
-                "arguments": {"path": "briefing.txt"},
+                "arguments": {"path": str(workspace / "briefing.txt")},
             },
         )
         if _status(read_response) != "succeeded":
@@ -269,7 +269,7 @@ def run(args: argparse.Namespace) -> Path:
             "tools/call",
             {
                 "name": "create_directory",
-                "arguments": {"path": "unapproved"},
+                "arguments": {"path": str(workspace / "unapproved")},
             },
         )
         if _status(blocked) != "blocked":
@@ -281,7 +281,7 @@ def run(args: argparse.Namespace) -> Path:
         write_params = {
             "name": "write_file",
             "arguments": {
-                "path": "approved-note.txt",
+                "path": str(workspace / "approved-note.txt"),
                 "content": (
                     "Operator-approved internal note for demo-merchant-1042.\n"
                     f"Run: {run_root.name}\n"
@@ -313,7 +313,7 @@ def run(args: argparse.Namespace) -> Path:
                 "tools/call",
                 {
                     "name": "read_text_file",
-                    "arguments": {"path": "approved-note.txt"},
+                    "arguments": {"path": str(workspace / "approved-note.txt")},
                 },
             )
             if _status(confirmed) != "succeeded":

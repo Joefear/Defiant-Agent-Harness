@@ -138,6 +138,7 @@ _TOOL_KEYS = {
 def load_proxy_config(
     path: str | Path,
     command_override: list[str] | None = None,
+    runner_override: str | None = None,
 ) -> McpProxyConfig:
     source = Path(path)
     try:
@@ -197,7 +198,11 @@ def load_proxy_config(
         server_name=str(server.get("name", "")).strip(),
         command=tuple(command_raw),
         tools=tools,
-        runner_name=str(root.get("runner", "mcp")).strip() or "mcp",
+        runner_name=(
+            str(runner_override).strip()
+            if runner_override is not None
+            else str(root.get("runner", "mcp")).strip() or "mcp"
+        ),
         model_id=str(root.get("model", "")).strip(),
         cwd=cwd,
         upstream_timeout_seconds=float(timeout),

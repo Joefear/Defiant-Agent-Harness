@@ -20,6 +20,7 @@ from defiant_agent_harness.tools.registry import (
     ToolRegistry,
     ToolResult,
     ToolSpec,
+    canonical_workspace_target,
 )
 
 
@@ -164,6 +165,20 @@ def test_workspace_path_scope_allows_root_but_refuses_escape(tmp_path):
     )
     with pytest.raises(ToolContractError, match="workspace file target"):
         registry.validate_action(escaped)
+
+
+def test_absolute_workspace_target_has_stable_policy_identity(tmp_path):
+    child = tmp_path / "folder" / "note.txt"
+    assert (
+        canonical_workspace_target(str(child), tmp_path) == "workspace/folder/note.txt"
+    )
+    assert (
+        canonical_workspace_target(str(tmp_path), tmp_path, allow_root=True)
+        == "workspace"
+    )
+
+    with pytest.raises(ToolContractError, match="outside"):
+        canonical_workspace_target(str(tmp_path.parent / "outside.txt"), tmp_path)
 
 
 def test_blocked_evidence_cannot_authorize():

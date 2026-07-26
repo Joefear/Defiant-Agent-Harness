@@ -22,7 +22,11 @@ from ..contracts import (
 )
 from ..money import money
 from ..orchestrator.harness import ActionOutcome, build_harness
-from ..tools.registry import ToolRegistry
+from ..tools.registry import (
+    ToolContractError,
+    ToolRegistry,
+    canonical_workspace_target,
+)
 from .config import McpProxyConfig, McpToolConfig
 from .session import MCP_ERROR, MCP_RESULT, UpstreamSession
 
@@ -32,8 +36,13 @@ MCP_PROTOCOL_VERSION = "2025-06-18"
 class McpProxyAdapter(AgentAdapter):
     """Translate intercepted MCP calls without claiming knowledge we do not have."""
 
-    def __init__(self, config: McpProxyConfig):
+    def __init__(
+        self,
+        config: McpProxyConfig,
+        workspace_root: str | Path,
+    ):
         self.config = config
+        self.workspace_root = Path(workspace_root).resolve(strict=False)
         self.runner_name = config.runner_name
         self.model_id = config.model_id
         self.tool_side_effects = {
@@ -70,7 +79,20 @@ class McpProxyAdapter(AgentAdapter):
     def target_of(self, call: ToolCall) -> str:
         config = self.config.tools.get(call.name)
         if config and config.target_arg and config.target_arg in call.arguments:
-            return str(call.arguments[config.target_arg])
+            target = str(call.arguments[config.target_arg])
+            if config.target_scope in {"workspace", "workspace_path"}:
+                try:
+                    return canonical_workspace_target(
+                        target,
+                        self.workspace_root,
+                        allow_root=config.target_scope == "workspace_path",
+                    )
+                except ToolContractError:
+                    # Preserve the unsafe target so the normal mechanical gate
+                    # blocks it and writes evidence. Adapter translation must
+                    # never turn a refusal into an unrecorded transport crash.
+                    return target
+            return target
         return super().target_of(call)
 
     def estimate_cost(self, call: ToolCall) -> Decimal:
@@ -128,7 +150,7 @@ class McpStdioProxy:
         self.execution_owner = (
             f"mcp_stdio:{config.server_name}:{self.proxy_fingerprint}"
         )
-        self.adapter = McpProxyAdapter(config)
+        self.adapter = McpProxyAdapter(config, workspace_root)
         registry = ToolRegistry(dry_run=dry_run, workspace_root=workspace_root)
         for tool in config.tools.values():
             registry.register(

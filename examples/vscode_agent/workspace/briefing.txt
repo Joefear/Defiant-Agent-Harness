@@ -1,0 +1,3 @@
+Merchant follow-up: prepare one short internal completion note.
+Account: vscode-demo-2048
+Constraint: the note must be written only after Defiant records operator approval.

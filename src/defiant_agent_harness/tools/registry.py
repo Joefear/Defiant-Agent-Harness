@@ -288,3 +288,40 @@ def resolve_workspace_target(
     if not candidate.is_relative_to(root) or (candidate == root and not allow_root):
         raise ToolContractError(f"path is outside the approved workspace: {target}")
     return candidate
+
+
+def canonical_workspace_target(
+    target: str,
+    workspace_root: str | Path,
+    *,
+    allow_root: bool = False,
+) -> str:
+    """Normalize a same-host workspace path for policy and evidence.
+
+    MCP servers commonly advertise or return absolute paths. The original
+    transport payload remains unchanged and authorization-bound, while this
+    canonical target prevents an in-workspace absolute path from looking like
+    an escape to policy.
+    """
+    if not isinstance(target, str) or not target.strip():
+        raise ToolContractError("workspace file target must be non-empty")
+
+    root = Path(workspace_root).resolve(strict=False)
+    supplied = Path(target)
+    if supplied.is_absolute():
+        candidate = supplied.resolve(strict=False)
+        if not candidate.is_relative_to(root):
+            raise ToolContractError(f"path is outside the approved workspace: {target}")
+        if candidate == root and not allow_root:
+            raise ToolContractError("workspace file target must name a file")
+    else:
+        candidate = resolve_workspace_target(
+            target,
+            root,
+            allow_root=allow_root,
+        )
+
+    relative = candidate.relative_to(root)
+    if not relative.parts:
+        return "workspace"
+    return "workspace/" + relative.as_posix()

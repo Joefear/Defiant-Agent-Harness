@@ -44,9 +44,11 @@ the official server. Read-only tools have `side_effect: none`; `write_file` and
 allows the workspace root. The upstream server independently receives only the
 same allowed directory.
 
-Tool paths in this demo are relative to that allowed directory
-(`briefing.txt`, not `workspace/briefing.txt`). Both confinement layers resolve
-them against the same workspace root.
+Tool paths may be relative to that allowed directory or absolute paths inside
+it. The live script uses absolute paths to match real IDE-agent behavior;
+Defiant canonicalizes them to `workspace/...` for policy and evidence while
+binding and forwarding the unchanged transport payload. Both confinement layers
+still resolve them against the same workspace root.
 
 `read_multiple_files` and `move_file` are intentionally not mapped because they
 have multiple path targets and do not fit the proxy's current single-target
