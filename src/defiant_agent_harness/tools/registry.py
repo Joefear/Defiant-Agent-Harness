@@ -16,7 +16,7 @@ import hmac
 import secrets
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 
 from ..contracts import (
@@ -234,14 +234,28 @@ def resolve_workspace_target(target: str, workspace_root: str | Path) -> Path:
     """Resolve a user-supplied file target inside one configured workspace."""
     if not isinstance(target, str) or not target.strip():
         raise ToolContractError("workspace file target must be non-empty")
-    raw = Path(target)
-    if raw.is_absolute() or raw.drive or raw.anchor:
+
+    # Reject absolute syntax for both path families regardless of the host OS.
+    # ``Path`` alone is host-dependent: on Linux it treats ``C:\...`` and UNC
+    # paths as ordinary relative filenames.
+    windows_path = PureWindowsPath(target)
+    posix_path = PurePosixPath(target)
+    if (
+        windows_path.is_absolute()
+        or windows_path.drive
+        or windows_path.anchor
+        or posix_path.is_absolute()
+    ):
         raise ToolContractError(f"path is outside the approved workspace: {target}")
 
-    parts = list(raw.parts)
+    # Treat both slash styles as separators so a path cannot change meaning
+    # when a policy decision and execution happen on different platforms.
+    parts = [
+        part for part in target.replace("\\", "/").split("/") if part not in {"", "."}
+    ]
     while parts and parts[0] in {".", "workspace"}:
         parts.pop(0)
-    if not parts:
+    if not parts or ".." in parts:
         raise ToolContractError("workspace file target must name a file")
 
     root = Path(workspace_root).resolve(strict=False)

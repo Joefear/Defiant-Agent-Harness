@@ -194,8 +194,12 @@ def test_adapter_cannot_downgrade_send_email_to_no_side_effect(tmp_path):
     [
         "workspace/../secret.txt",
         "../secret.txt",
+        "workspace\\..\\secret.txt",
+        "/etc/passwd",
         "C:\\Windows\\System32\\drivers\\etc\\hosts",
+        "C:relative\\secret.txt",
         "\\\\server\\share\\secret.txt",
+        "\\\\?\\C:\\Windows\\secret.txt",
     ],
 )
 def test_file_targets_cannot_escape_workspace(tmp_path, target):

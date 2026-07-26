@@ -174,7 +174,7 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-102 tests. The capability, control-loop, evidence, approval, budget, path, and
+106 tests. The capability, control-loop, evidence, approval, budget, path, and
 provenance tests are all load-bearing.
 
 ## Status
