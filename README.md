@@ -164,6 +164,22 @@ experimental task-augmented calls added in `2025-11-25`, which this release
 does not yet govern. The complete core `tools/call` params object, including
 `_meta`, is forwarded and bound into the approval fingerprint.
 
+### Run against a real MCP server
+
+The repository now includes a live integration with the official filesystem
+reference server:
+
+```bash
+python examples/filesystem/live_demo.py
+```
+
+It downloads a pinned server release with `npx`, creates a new disposable
+workspace, permits a real read, blocks an unapproved mutation, holds a real
+write, asks the operator to approve it, repeats the exact MCP call, and verifies
+the resulting evidence chain. The upstream server and Defiant independently
+confine paths to the same workspace. Run with `--yes` for a non-interactive
+smoke test. See `examples/filesystem/README.md`.
+
 ## Architecture
 
 ```
@@ -236,9 +252,11 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-118 tests. The suite includes a real subprocess MCP flow across initialization,
-tool discovery, allow, durable approval, proxy restart, exact-call retry,
-destructive block, unmapped-tool block, and evidence-chain verification.
+120 offline tests plus one opt-in live integration test. The suite includes a
+real subprocess MCP flow across initialization, tool discovery, allow, durable
+approval, proxy restart, exact-call retry, destructive block, unmapped-tool
+block, and evidence-chain verification. Set `DAH_LIVE_MCP=1` to add the pinned
+official filesystem server to a test run.
 
 ## Status
 

@@ -1,0 +1,88 @@
+server:
+  name: official-filesystem
+  command:
+    - npx
+    - -y
+    - "@modelcontextprotocol/server-filesystem@2026.7.10"
+    - workspace
+  timeout_seconds: 60
+
+runner: live-filesystem-demo
+
+# This deliberately classifies a useful subset of the official server. Tools
+# omitted from this map remain visible to clients but are blocked if called.
+tools:
+  read_text_file:
+    side_effect: none
+    description: Read one UTF-8 text file inside the governed workspace.
+    target_arg: path
+    target_scope: workspace
+    argument_trust: derived
+
+  read_media_file:
+    side_effect: none
+    description: Read one media file inside the governed workspace.
+    target_arg: path
+    target_scope: workspace
+    argument_trust: derived
+
+  list_directory:
+    side_effect: none
+    description: List one directory inside the governed workspace.
+    target_arg: path
+    target_scope: workspace_path
+    argument_trust: derived
+
+  list_directory_with_sizes:
+    side_effect: none
+    description: List one workspace directory with file sizes.
+    target_arg: path
+    target_scope: workspace_path
+    argument_trust: derived
+
+  directory_tree:
+    side_effect: none
+    description: Return a recursive tree inside the governed workspace.
+    target_arg: path
+    target_scope: workspace_path
+    argument_trust: derived
+
+  search_files:
+    side_effect: none
+    description: Search recursively inside the governed workspace.
+    target_arg: path
+    target_scope: workspace_path
+    argument_trust: derived
+
+  get_file_info:
+    side_effect: none
+    description: Read metadata for one workspace path.
+    target_arg: path
+    target_scope: workspace_path
+    argument_trust: derived
+
+  list_allowed_directories:
+    side_effect: none
+    description: Show the upstream server's filesystem boundary.
+    argument_trust: derived
+
+  write_file:
+    side_effect: local_write
+    description: Create or overwrite one file inside the governed workspace.
+    target_arg: path
+    target_scope: workspace
+    argument_trust: derived
+
+  create_directory:
+    side_effect: local_write
+    description: Create one directory inside the governed workspace.
+    target_arg: path
+    target_scope: workspace
+    argument_trust: derived
+
+  edit_file:
+    side_effect: destructive
+    description: Mutate an existing workspace file.
+    target_arg: path
+    target_scope: workspace
+    argument_trust: derived

@@ -90,6 +90,12 @@ permission hooks or OS/network containment must cover those paths.
 configuration. If a mutating tool is classified as `none`, the registry has no
 independent way to discover the lie. Tool-map review is a deployment control.
 
+**Upstream binary substitution.** The proxy binds approvals to the configured
+command vector, but does not hash or attest the executable and its dependency
+tree. A package name and version are stronger than `latest`, but a production
+install still needs a reviewed lockfile, immutable image digest, or equivalent
+artifact verification.
+
 **Side channels in real-write adapters.** A tool allowed to write into a folder
 watched by another publisher creates an indirect outward path and needs its own
 policy boundary.

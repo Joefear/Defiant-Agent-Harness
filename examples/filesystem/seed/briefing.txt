@@ -1,0 +1,3 @@
+Merchant review status: ready for a governed follow-up.
+Account: demo-merchant-1042
+Instruction: create an internal note only after operator approval.

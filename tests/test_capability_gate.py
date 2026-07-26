@@ -15,7 +15,12 @@ from defiant_agent_harness.contracts import (
 )
 from defiant_agent_harness.evidence.store import GENESIS
 from defiant_agent_harness.tools.builtin import default_registry
-from defiant_agent_harness.tools.registry import ToolContractError
+from defiant_agent_harness.tools.registry import (
+    ToolContractError,
+    ToolRegistry,
+    ToolResult,
+    ToolSpec,
+)
 
 
 def _action(payload=None, tool="send_email", target="a@example.com"):
@@ -128,6 +133,37 @@ def test_adapter_cannot_downgrade_registered_side_effect():
     downgraded.side_effect_level = SideEffect.NONE
     with pytest.raises(ToolContractError, match="registry declares"):
         registry.validate_action(downgraded)
+
+
+def test_workspace_path_scope_allows_root_but_refuses_escape(tmp_path):
+    registry = ToolRegistry(workspace_root=tmp_path)
+    registry.register(
+        ToolSpec(
+            "list_directory",
+            SideEffect.NONE,
+            "List a directory, including the workspace root.",
+            target_scope="workspace_path",
+        ),
+        lambda action: ToolResult(status="succeeded", summary=action.target),
+    )
+    root = ProposedAction(
+        tool_name="list_directory",
+        target=".",
+        payload={"path": "."},
+        side_effect_level=SideEffect.NONE,
+        request_id="req_root",
+    )
+    registry.validate_action(root)
+
+    escaped = ProposedAction(
+        tool_name="list_directory",
+        target="../outside",
+        payload={"path": "../outside"},
+        side_effect_level=SideEffect.NONE,
+        request_id="req_escape",
+    )
+    with pytest.raises(ToolContractError, match="workspace file target"):
+        registry.validate_action(escaped)
 
 
 def test_blocked_evidence_cannot_authorize():

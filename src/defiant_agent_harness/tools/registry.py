@@ -44,7 +44,7 @@ class ToolSpec:
     description: str
     cost_estimate_usd: Decimal = ZERO
     supports_dry_run: bool = True
-    target_scope: str = "any"  # any | workspace
+    target_scope: str = "any"  # any | workspace | workspace_path
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -58,7 +58,7 @@ class ToolSpec:
             "cost_estimate_usd",
             money(self.cost_estimate_usd, field_name=f"{self.name}.cost_estimate_usd"),
         )
-        if self.target_scope not in {"any", "workspace"}:
+        if self.target_scope not in {"any", "workspace", "workspace_path"}:
             raise ValueError(
                 f"invalid target_scope for {self.name}: {self.target_scope}"
             )
@@ -135,6 +135,12 @@ class ToolRegistry:
             )
         if spec.target_scope == "workspace":
             resolve_workspace_target(action.target, self.workspace_root)
+        elif spec.target_scope == "workspace_path":
+            resolve_workspace_target(
+                action.target,
+                self.workspace_root,
+                allow_root=True,
+            )
 
     # -- signed authority --------------------------------------------
 
@@ -240,7 +246,12 @@ class ToolRegistry:
         return result
 
 
-def resolve_workspace_target(target: str, workspace_root: str | Path) -> Path:
+def resolve_workspace_target(
+    target: str,
+    workspace_root: str | Path,
+    *,
+    allow_root: bool = False,
+) -> Path:
     """Resolve a user-supplied file target inside one configured workspace."""
     if not isinstance(target, str) or not target.strip():
         raise ToolContractError("workspace file target must be non-empty")
@@ -265,11 +276,15 @@ def resolve_workspace_target(target: str, workspace_root: str | Path) -> Path:
     ]
     while parts and parts[0] in {".", "workspace"}:
         parts.pop(0)
-    if not parts or ".." in parts:
+    if ".." in parts:
         raise ToolContractError("workspace file target must name a file")
 
     root = Path(workspace_root).resolve(strict=False)
+    if not parts:
+        if allow_root:
+            return root
+        raise ToolContractError("workspace file target must name a file")
     candidate = root.joinpath(*parts).resolve(strict=False)
-    if candidate == root or not candidate.is_relative_to(root):
+    if not candidate.is_relative_to(root) or (candidate == root and not allow_root):
         raise ToolContractError(f"path is outside the approved workspace: {target}")
     return candidate

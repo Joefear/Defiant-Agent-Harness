@@ -92,7 +92,8 @@ therefore operator-authored and fail-closed. Every callable tool declares:
 - `cost_arg` and/or `cost_estimate_usd` — conservative budget inputs;
 - `argument_trust` and `argument_origin` — what the adapter can honestly claim
   about the payload's source;
-- `target_scope` — `any` or workspace-confined;
+- `target_scope` — `any`, a named child under `workspace`, or
+  `workspace_path` when the workspace root itself is also a valid target;
 - `supports_dry_run`.
 
 Default argument trust is `derived`, never `trusted`. That still cannot recover

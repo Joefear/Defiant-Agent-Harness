@@ -127,6 +127,13 @@ approval instead of silently changing what it means. This is safe only because
 the same operator-authored mapping supplies the authoritative metadata. An
 advertised but unmapped tool fails both request scope and registry checks.
 
+`examples/filesystem` proves the boundary against the official MCP filesystem
+reference server. In that integration, Defiant validates each mapped path
+against its configured workspace and the upstream server independently applies
+its own allowed-directory boundary. The example intentionally leaves the
+multi-target `read_multiple_files` and `move_file` tools unmapped until the
+registry can validate every member of a target collection.
+
 The boundary is transport control, not containment. It says nothing about
 native tools, direct HTTP, subprocesses, filesystem access outside an MCP
 server, or a runner that connects directly to the upstream server.
@@ -163,6 +170,12 @@ server, or a runner that connects directly to the upstream server.
   client or agent must repeat the same tool params before expiry.
 - **MCP task augmentation is not yet supported.** Initialization is negotiated
   down to `2025-06-18`; task-aware governance belongs in a later release.
+- **A command fingerprint is not binary attestation.** It binds approvals to the
+  configured argument vector, not to the bytes loaded from disk. The live
+  filesystem example pins the direct npm package version, but `npx` may still
+  resolve transitive dependency ranges. Production deployments should use a
+  reviewed lockfile, immutable container digest, or equivalent artifact
+  attestation.
 - **In-process code is trusted.** Signed grants constrain adapters and normal
   control flow; they do not sandbox malicious Python already executing inside
   the harness process.

@@ -62,9 +62,10 @@ class McpToolConfig:
                 raise McpConfigError(f"{self.name}.{field_name} must be a string")
         if not isinstance(self.supports_dry_run, bool):
             raise McpConfigError(f"{self.name}.supports_dry_run must be boolean")
-        if self.target_scope not in {"any", "workspace"}:
+        if self.target_scope not in {"any", "workspace", "workspace_path"}:
             raise McpConfigError(
-                f"{self.name}.target_scope must be 'any' or 'workspace'"
+                f"{self.name}.target_scope must be 'any', 'workspace', "
+                "or 'workspace_path'"
             )
 
     def tool_spec(self) -> ToolSpec:
