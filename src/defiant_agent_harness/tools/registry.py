@@ -63,6 +63,16 @@ class ToolSpec:
                 f"invalid target_scope for {self.name}: {self.target_scope}"
             )
 
+    def authority_dict(self) -> dict[str, Any]:
+        """Security-relevant contract fields included in the ruleset hash."""
+        return {
+            "name": self.name,
+            "side_effect_level": self.side_effect_level.value,
+            "cost_estimate_usd": str(self.cost_estimate_usd),
+            "supports_dry_run": self.supports_dry_run,
+            "target_scope": self.target_scope,
+        }
+
 
 @dataclass
 class ToolResult:

@@ -1,0 +1,27 @@
+server:
+  name: defiant-demo
+  command: ["python", "examples/demo_mcp_server.py"]
+  timeout_seconds: 30
+
+runner: generic-mcp-client
+
+# This map is the operator-authored authority boundary. Every callable upstream
+# tool must be classified here. Unmapped tools are refused at tools/call.
+tools:
+  echo:
+    side_effect: none
+    description: Echo text without side effects.
+    target_arg: text
+    argument_trust: derived
+
+  send_email:
+    side_effect: external_send
+    description: Send an email through the demo server.
+    target_arg: to
+    argument_trust: derived
+
+  delete_record:
+    side_effect: destructive
+    description: Delete one record.
+    target_arg: id
+    argument_trust: derived

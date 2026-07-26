@@ -50,6 +50,10 @@ Blocked, rejected, and expired actions produce evidence too. "Nothing happened" 
 Pending approvals persist the complete action, request, and decision snapshot.
 They resume after a new process starts, but only if the loaded ruleset hash is
 identical. A policy change voids the stale approval and requires re-proposal.
+For MCP stdio, the first call returns a pending handle. Approval records the
+human decision without executing in the CLI process; an exact-call retry through
+the proxy owns execution. This prevents the approval CLI from impersonating an
+upstream connection it does not control.
 
 ## Trust and provenance
 
@@ -101,14 +105,43 @@ You cannot reliably predict what an agent turn will cost before it runs, so the 
 
 An in-flight overrun cannot be prevented. It is always visible, and it reduces the next action's headroom immediately. Say this to a technical buyer before they ask.
 
-## What is deliberately absent from v0.1
+## MCP stdio boundary in v0.2
+
+The proxy launches one upstream command without a shell. Its stdout is reserved
+for newline-delimited MCP messages. Initialization, discovery, notifications,
+and non-tool requests pass through. `tools/call` is translated to a harness
+action; allowed calls use a private upstream request id and the original
+upstream result or JSON-RPC error is restored under the client's request id with
+`_defiant` evidence metadata.
+
+Protocol negotiation is capped at `2025-06-18`. The `2025-11-25` task
+augmentation is intentionally not advertised until task creation, durable
+status, cancellation, and result retrieval can all share the same authority and
+evidence model.
+
+Configured tool specs extend `known_tools` for that registry instance, and the
+extension participates in the ruleset hash. Side effect, conservative cost,
+dry-run support, target scope, workspace root, and the hashed upstream command
+identity participate too. A changed authority contract therefore voids a stale
+approval instead of silently changing what it means. This is safe only because
+the same operator-authored mapping supplies the authoritative metadata. An
+advertised but unmapped tool fails both request scope and registry checks.
+
+The boundary is transport control, not containment. It says nothing about
+native tools, direct HTTP, subprocesses, filesystem access outside an MCP
+server, or a runner that connects directly to the upstream server.
+
+## What is deliberately absent from v0.2
 
 - **A dashboard.** That is Defiant Command. Building a control panel before the records exist produces an empty control panel.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
 - **Spartan Swarm.** Multi-agent missions need a working single-agent gate first.
-- **Real MCP proxy adapters.** The contract is defined and the mock adapter proves the loop; the stdio and HTTP proxies are the next build.
-- **Real side effects.** Only workspace-confined reads perform I/O. Writes,
-  sends, publishes, exports, deletes, and spends are simulated.
+- **MCP HTTP proxy.** Streamable HTTP is the next transport build.
+- **Runner escape-path containment.** Native permission hooks and OS/network
+  isolation are required for actions that do not cross the proxied MCP surface.
+- **Real reference-tool side effects.** The built-ins still simulate writes,
+  sends, publishes, exports, deletes, and spends. Proxied upstream tools are
+  real and must be classified accordingly.
 - **Signed evidence.** The chain detects tampering by anyone without write access to the whole file. It does not yet prove authorship to a third party, which needs a signing key and a key-management story.
 - **Multi-user identity.** `approved_by` is a string. Real identity binding is a later arc.
 
@@ -120,6 +153,16 @@ An in-flight overrun cannot be prevented. It is always visible, and it reduces t
 - **Evidence is append-only by convention at the filesystem layer.** Anyone with write access to the file can truncate it; the chain makes alteration and deletion *detectable*, not impossible. Off-box replication is the answer, and it belongs to Command.
 - **Deterministic phrase matching is bypassable by paraphrase.** See above.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
+- **MCP has no standard actual-cost field.** The proxy settles successful paid
+  calls at the conservative configured estimate unless a later adapter can
+  prove an actual amount.
+- **Generic provenance is coarse.** The proxy defaults arguments to `DERIVED`.
+  It cannot reconstruct a runner's cross-call data flow; native hooks are
+  needed for source-specific taint.
+- **Exact-call retry requires client cooperation.** After approval, the MCP
+  client or agent must repeat the same tool params before expiry.
+- **MCP task augmentation is not yet supported.** Initialization is negotiated
+  down to `2025-06-18`; task-aware governance belongs in a later release.
 - **In-process code is trusted.** Signed grants constrain adapters and normal
   control flow; they do not sandbox malicious Python already executing inside
   the harness process.

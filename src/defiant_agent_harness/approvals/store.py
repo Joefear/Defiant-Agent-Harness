@@ -63,6 +63,8 @@ class PendingApproval:
     decision_snapshot: dict[str, Any] | None = None
     execution_record_id: str = ""
     consumed_at: str | None = None
+    execution_owner: str = ""
+    execution_key: str = ""
 
     def __post_init__(self) -> None:
         if self.status not in APPROVAL_STATUSES:
@@ -71,6 +73,10 @@ class PendingApproval:
             value = getattr(self, name)
             if not isinstance(value, str) or not value:
                 raise ApprovalError(f"{name} must be non-empty")
+        if bool(self.execution_owner) != bool(self.execution_key):
+            raise ApprovalError(
+                "execution_owner and execution_key must be supplied together"
+            )
         self.reserved_usd = money_text(
             money(self.reserved_usd, field_name="reserved_usd")
         )
@@ -151,6 +157,8 @@ class ApprovalStore:
         request: HarnessRequest | None = None,
         decision: GuardrailDecision | None = None,
         reserved_usd: MoneyLike = ZERO,
+        execution_owner: str = "",
+        execution_key: str = "",
     ) -> PendingApproval:
         ttl = ttl_minutes if ttl_minutes is not None else self.default_ttl_minutes
         if ttl <= 0:
@@ -172,6 +180,8 @@ class ApprovalStore:
             action_snapshot=action.to_dict(),
             request_snapshot=request.to_dict() if request else None,
             decision_snapshot=decision.to_dict() if decision else None,
+            execution_owner=execution_owner,
+            execution_key=execution_key,
         )
         with exclusive_file_lock(self.path):
             data = self._read_all()
@@ -212,6 +222,34 @@ class ApprovalStore:
             ),
             key=lambda approval: approval.created_at,
         )
+
+    def find_execution(
+        self,
+        execution_owner: str,
+        execution_key: str,
+    ) -> PendingApproval | None:
+        """Find an unconsumed exact-call approval owned by an external executor.
+
+        An MCP proxy uses this to recognize a retried ``tools/call`` after the
+        operator has approved it. Rejected calls remain terminal until their
+        original approval window expires, preventing approval-spam retries.
+        """
+        if not execution_owner or not execution_key:
+            return None
+        self.expire_due()
+        matches = [
+            PendingApproval(**raw)
+            for raw in self._read_all().values()
+            if raw.get("execution_owner") == execution_owner
+            and raw.get("execution_key") == execution_key
+            and raw.get("status") in {"pending", "approved", "rejected", "executing"}
+        ]
+        active = [
+            approval
+            for approval in matches
+            if approval.status == "executing" or not approval.is_expired()
+        ]
+        return max(active, key=lambda approval: approval.created_at, default=None)
 
     def expire_due(self, now: datetime | None = None) -> list[PendingApproval]:
         expired: list[PendingApproval] = []

@@ -2,10 +2,10 @@
 
 Control, approvals, budgets, memory discipline, and audit evidence for business-grade AI agents.
 
-Defiant Agent Harness wraps Hermes-compatible and other agentic AI systems with
+Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.1.
+logs. A full trusted-memory/DKE system is not part of v0.2.
 
 ## The invariant
 
@@ -35,17 +35,21 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.1 is
+## What v0.2 is
 
-A headless local control loop. No dashboard, no SaaS, no multi-agent
-orchestration, no knowledge engine. It validates an intercepted action against
-the authoritative tool registry, evaluates deterministic policy, checks budget,
-holds durably for human approval, executes through the gated path, and writes a
-hash-chained evidence trail—including for actions that never ran.
+A headless local control loop plus a generic MCP stdio proxy. The proxy launches
+one configured upstream MCP server, transparently forwards ordinary protocol
+traffic, and intercepts `tools/call`. It validates an intercepted action against
+the authoritative operator-authored tool map, evaluates deterministic policy,
+checks budget, holds durably for human approval, executes through the gated
+path, and writes a hash-chained evidence trail—including for actions that never
+ran.
 
-Only `read_file` performs real I/O in v0.1, and it is structurally confined to
-one configured workspace root. Sending, publishing, exporting, writing,
-deleting, and spending are simulated.
+The v0.1 reference tools remain safe fixtures: only `read_file` performs real
+I/O, confined to one workspace, while their side effects are simulated. The
+v0.2 proxy is a real execution boundary: a permitted or approved call is
+forwarded to the configured upstream server and can therefore have real side
+effects.
 
 The dashboard is Defiant Command, and it comes after the records are real and stable. This repository produces the records Command will consume.
 
@@ -103,6 +107,63 @@ dah export <request_id> # a Command-ready evidence pack
 
 `dah verify` is the one to try tampering with. Edit any line of `.dah/evidence.jsonl` and it will tell you which record broke and how.
 
+## Run the MCP stdio proxy
+
+The repository includes a dependency-free demo server and a fully classified
+proxy configuration:
+
+```bash
+dah --workdir .dah-demo mcp-proxy --config examples/mcp-proxy.yaml
+```
+
+That command speaks MCP on stdin/stdout, so it is normally placed in an MCP
+client's server configuration rather than run interactively:
+
+```json
+{
+  "command": "dah",
+  "args": [
+    "--workdir",
+    ".dah",
+    "mcp-proxy",
+    "--config",
+    "/absolute/path/to/mcp-proxy.yaml"
+  ]
+}
+```
+
+The YAML `tools` map is the authority boundary. Each upstream tool declares its
+side effect, target argument, conservative cost, dry-run support, target scope,
+and argument provenance. Unknown fields fail configuration loading. Tools the
+upstream advertises but the operator did not map remain visible in `tools/list`
+but are blocked if called.
+
+Approval does not hold a fragile process open:
+
+1. The first `tools/call` returns `isError: true` with a durable approval id.
+2. The operator runs `dah --workdir .dah approve <approval_id>`.
+3. The client retries the exact same tool params.
+4. The proxy recognizes the payload fingerprint, re-checks current policy,
+   consumes the single-use approval, and forwards the call.
+
+The proxy may restart between steps 1 and 3. Any changed parameter creates a
+different authorization hash and cannot use the approval. Rejections remain
+terminal for the approval window, preventing an agent from spamming identical
+re-proposals.
+
+The fingerprint also binds the runner, user, workspace, authoritative tool
+contract, and upstream command identity. Changing the server command, side
+effect, cost, target scope, or workspace root cannot inherit a stale approval.
+
+The upstream command is always an argument vector and is launched without a
+shell. Stdout remains protocol-only; server diagnostics inherit stderr.
+
+v0.2 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
+downgraded during `initialize` so an upstream server cannot advertise the
+experimental task-augmented calls added in `2025-11-25`, which this release
+does not yet govern. The complete core `tools/call` params object, including
+`_meta`, is forwarded and bound into the approval fingerprint.
+
 ## Architecture
 
 ```
@@ -131,8 +192,9 @@ src/defiant_agent_harness/
   evidence/             append-only hash-chained JSONL store
   tools/                capability-gated registry + reference tools
   adapters/             adapter contract (MCP-shaped) + mock adapter
+  mcp/                  strict config + stdio transport + tools/call proxy
   orchestrator/         the control loop
-  cli/                  the entire v0.1 product surface
+  cli/                  local controls + MCP proxy entry point
 docs/                   architecture, contracts, threat model, policy examples
 tests/                  policy, evidence, grants, approvals, budget, red team
 ```
@@ -174,9 +236,13 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-106 tests. The capability, control-loop, evidence, approval, budget, path, and
-provenance tests are all load-bearing.
+118 tests. The suite includes a real subprocess MCP flow across initialization,
+tool discovery, allow, durable approval, proxy restart, exact-call retry,
+destructive block, unmapped-tool block, and evidence-chain verification.
 
 ## Status
 
-v0.1 — headless local control loop. Not a platform. See `docs/architecture.md` for what is deliberately absent and why.
+v0.2 — headless local control loop and generic MCP stdio proxy. Not a platform.
+The proxy controls only calls actually routed through it; native tools, direct
+network access, subprocesses, and other runner escape paths require native
+permission hooks or OS isolation. See `docs/architecture.md`.

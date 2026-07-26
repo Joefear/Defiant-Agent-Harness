@@ -16,6 +16,7 @@ from ..contracts import (
     HarnessRequest,
     ProposedAction,
     ResultStatus,
+    sha256_of,
     utc_now,
 )
 from ..evidence.store import EvidenceStore
@@ -41,6 +42,7 @@ class ActionOutcome:
             ResultStatus.EXPIRED,
             ResultStatus.FAILED,
         }
+        incomplete = self.status is ResultStatus.PENDING_APPROVAL
         if self.status is ResultStatus.PENDING_APPROVAL:
             content = (
                 f"Action held for human approval ({self.approval_id}). "
@@ -51,7 +53,7 @@ class ActionOutcome:
         else:
             content = self.result.output if self.result else "ok"
         return ToolCallOutcome(
-            is_error=blocked,
+            is_error=blocked or incomplete,
             content=content,
             harness_status=self.status.value,
             evidence_record_id=self.evidence_record_id,
@@ -86,9 +88,21 @@ class Harness:
             for call in self.adapter.propose(request.task)
         ]
 
-    def handle_call(self, call: ToolCall, request: HarnessRequest) -> ActionOutcome:
+    def handle_call(
+        self,
+        call: ToolCall,
+        request: HarnessRequest,
+        *,
+        execution_owner: str = "",
+        execution_key: str = "",
+    ) -> ActionOutcome:
         action = self.adapter.to_action(call, request.request_id)
-        return self._handle(action, request)
+        return self._handle(
+            action,
+            request,
+            execution_owner=execution_owner,
+            execution_key=execution_key,
+        )
 
     # -- initial control loop ----------------------------------------
 
@@ -96,6 +110,9 @@ class Harness:
         self,
         action: ProposedAction,
         request: HarnessRequest,
+        *,
+        execution_owner: str = "",
+        execution_key: str = "",
     ) -> ActionOutcome:
         if self.evidence.by_action(action.action_id):
             decision = self._control_decision(
@@ -158,6 +175,8 @@ class Harness:
                     request=request,
                     decision=decision,
                     reserved_usd=estimate,
+                    execution_owner=execution_owner,
+                    execution_key=execution_key,
                 )
             except Exception:
                 if estimate > ZERO:
@@ -402,6 +421,7 @@ class Harness:
             "tool_name": action.tool_name,
             "target": action.target,
             "authorization_hash": action.authorization_hash,
+            "authority_inputs": self.policy.authority_inputs,
         }
         inputs.update(extra_inputs or {})
         return GuardrailDecision(
@@ -497,6 +517,7 @@ def build_harness(
     dry_run: bool = False,
     tools: ToolRegistry | None = None,
     workspace_root: str | Path | None = None,
+    authority_context: dict | None = None,
 ) -> Harness:
     from ..tools.builtin import default_registry
 
@@ -505,13 +526,25 @@ def build_harness(
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
     )
+    registry = tools or default_registry(
+        dry_run=dry_run,
+        workspace_root=allowed_workspace,
+    )
     harness = Harness(
-        policy=PolicyEngine.default(policy_packs),
-        tools=tools
-        or default_registry(
-            dry_run=dry_run,
-            workspace_root=allowed_workspace,
+        policy=PolicyEngine.default(
+            policy_packs,
+            additional_known_tools=registry.names() if tools is not None else None,
+            authority_inputs={
+                "tool_registry": [
+                    spec.authority_dict()
+                    for spec in sorted(registry.specs(), key=lambda item: item.name)
+                ],
+                "workspace_root_hash": sha256_of(str(registry.workspace_root)),
+                "dry_run": dry_run,
+                "adapter": authority_context or {},
+            },
         ),
+        tools=registry,
         evidence=EvidenceStore(state_root / "evidence.jsonl"),
         approvals=ApprovalStore(state_root / "approvals.json"),
         budget=BudgetLedger(

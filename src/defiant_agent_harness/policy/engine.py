@@ -119,11 +119,17 @@ def _payload_text(payload: Any) -> str:
 
 
 class PolicyEngine:
-    def __init__(self, packs: list[dict], name: str = "custom"):
+    def __init__(
+        self,
+        packs: list[dict],
+        name: str = "custom",
+        authority_inputs: dict[str, Any] | None = None,
+    ):
         self.name = name
         self.version = "0"
         self.rules: list[Rule] = []
         self.known_tools: list[str] = []
+        self.authority_inputs = authority_inputs or {}
         versions: list[str] = []
         seen_rule_ids: set[str] = set()
         for pack in packs:
@@ -151,6 +157,7 @@ class PolicyEngine:
         self.ruleset_hash = sha256_of(
             {
                 "known_tools": sorted(self.known_tools),
+                "authority_inputs": self.authority_inputs,
                 "rules": [
                     {k: v for k, v in vars(r).items()}
                     for r in sorted(self.rules, key=lambda r: r.id)
@@ -172,7 +179,12 @@ class PolicyEngine:
     # -- loading ---------------------------------------------------------
 
     @classmethod
-    def from_files(cls, paths: list[str | Path]) -> "PolicyEngine":
+    def from_files(
+        cls,
+        paths: list[str | Path],
+        additional_known_tools: list[str] | None = None,
+        authority_inputs: dict[str, Any] | None = None,
+    ) -> "PolicyEngine":
         packs = []
         names = []
         for p in paths:
@@ -180,16 +192,37 @@ class PolicyEngine:
             with open(p, "r", encoding="utf-8") as fh:
                 packs.append(yaml.safe_load(fh) or {})
             names.append(p.stem)
-        return cls(packs, name="+".join(names))
+        if additional_known_tools:
+            packs.append(
+                {
+                    "version": "registry-v1",
+                    "known_tools": sorted(set(additional_known_tools)),
+                    "rules": [],
+                }
+            )
+        return cls(
+            packs,
+            name="+".join(names),
+            authority_inputs=authority_inputs,
+        )
 
     @classmethod
-    def default(cls, extra_packs: list[str] | None = None) -> "PolicyEngine":
+    def default(
+        cls,
+        extra_packs: list[str] | None = None,
+        additional_known_tools: list[str] | None = None,
+        authority_inputs: dict[str, Any] | None = None,
+    ) -> "PolicyEngine":
         base = Path(__file__).parent / "rules"
         paths: list[str | Path] = [base / "default.yaml"]
         for name in extra_packs or []:
             candidate = base / f"{name}.yaml"
             paths.append(candidate if candidate.exists() else Path(name))
-        return cls.from_files(paths)
+        return cls.from_files(
+            paths,
+            additional_known_tools=additional_known_tools,
+            authority_inputs=authority_inputs,
+        )
 
     # -- evaluation ------------------------------------------------------
 
@@ -213,6 +246,7 @@ class PolicyEngine:
                     "tool_name": action.tool_name,
                     "known_tools": sorted(self.known_tools),
                     "policy_name": self.name,
+                    "authority_inputs": self.authority_inputs,
                 },
             )
 
@@ -266,5 +300,6 @@ class PolicyEngine:
                 "context": {k: str(v) for k, v in context.items()},
                 "matched_rules": [r.id for r in matched],
                 "policy_name": self.name,
+                "authority_inputs": self.authority_inputs,
             },
         )

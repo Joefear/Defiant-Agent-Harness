@@ -35,11 +35,11 @@ jobs:
 
       - name: Run lint
         if: matrix.python-version == '3.12'
-        run: ruff check src tests
+        run: ruff check src tests examples
 
       - name: Check formatting
         if: matrix.python-version == '3.12'
-        run: ruff format --check src tests
+        run: ruff format --check src tests examples
 
       - name: Build wheel
         if: matrix.python-version == '3.12'

@@ -40,6 +40,7 @@ def test_email_is_held_for_approval(tmp_path):
     assert o.decision.decision is Decision.APPROVAL_REQUIRED
     assert o.status is ResultStatus.PENDING_APPROVAL
     assert o.approval_id
+    assert o.as_tool_outcome().is_error is True
 
 
 def test_publish_is_held_for_approval(tmp_path):
@@ -294,3 +295,16 @@ def test_dry_run_executes_nothing(tmp_path):
     assert resumed.result.dry_run
     assert "DRY RUN" in resumed.result.summary
     assert h.evidence.get(resumed.evidence_record_id)["dry_run"] is True
+
+
+def test_dry_run_approval_cannot_be_reused_for_live_execution(tmp_path):
+    adapter = MockAgentAdapter(script=SCRIPTS["send_email"])
+    dry = build_harness(tmp_path, adapter, dry_run=True)
+    request = HarnessRequest(task="dry", user_id="t", workspace_id="ws")
+    [pending] = dry.run(request)
+
+    live = build_harness(tmp_path, MockAgentAdapter(), dry_run=False)
+    resumed = live.resume(pending.approval_id, True, "sam")
+
+    assert resumed.status is ResultStatus.BLOCKED
+    assert resumed.decision.policy_ids == ["policy_changed"]

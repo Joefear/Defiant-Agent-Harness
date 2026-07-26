@@ -81,15 +81,24 @@ real adapter requires adversarial provenance tests.
 
 **The agent being wrong.** The harness controls what an agent may *do*. It does not make the agent's output correct. Human review at the approval gate is the only control on quality, which is why approval scope is recorded per rule and shown to the reviewer verbatim.
 
-**Side channels in future real-write adapters.** v0.1 simulates writes. A future
-adapter allowed to write into a folder watched by another publisher would
-create an uncontrolled path outward and needs its own policy boundary.
+**Actions outside the proxy.** v0.2 governs MCP calls routed through its stdio
+process. A runner's native tools, direct network access, subprocesses, or a
+direct connection to the upstream server bypass this boundary. Native
+permission hooks or OS/network containment must cover those paths.
+
+**Misclassified upstream tools.** The operator-authored MCP map is trusted
+configuration. If a mutating tool is classified as `none`, the registry has no
+independent way to discover the lie. Tool-map review is a deployment control.
+
+**Side channels in real-write adapters.** A tool allowed to write into a folder
+watched by another publisher creates an indirect outward path and needs its own
+policy boundary.
 
 **Model-level exfiltration through allowed channels.** If a rule permits summaries to be emailed, a sufficiently motivated injection can encode data into a summary. Narrower approval scopes and human review reduce this; nothing eliminates it.
 
 ## Assumptions
 
-- The operator running the harness is trusted; there is no privilege separation between operator and harness in v0.1.
+- The operator running the harness is trusted; there is no privilege separation between operator and harness in v0.2.
 - Python code already executing inside the harness process is trusted. Grants
   are not an OS sandbox.
 - Policy files are under operator control and not writable by the agent.

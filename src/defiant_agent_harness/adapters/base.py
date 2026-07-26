@@ -49,6 +49,7 @@ class ToolCall:
     arguments: dict[str, Any] = field(default_factory=dict)
     call_id: str = ""
     server: str = ""  # originating MCP server, when proxying
+    transport_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

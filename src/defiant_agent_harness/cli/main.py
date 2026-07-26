@@ -1,18 +1,16 @@
-"""CLI: the whole product surface for v0.1.
+"""CLI for the local control loop and generic MCP stdio proxy.
 
-    dah demo <scenario>       run a scripted scenario end to end
-    dah pending               list actions waiting on a human
-    dah approve <id>          approve one held action
-    dah reject <id>           reject one held action
-    dah history               show the evidence trail
-    dah show <record_id>      show one evidence record in full
-    dah verify                verify the evidence hash chain
-    dah budget                show the spend ledger
-    dah policy                show the loaded rules and ruleset hash
-    dah export <request_id>   emit a Command-ready evidence pack
-
-No dashboard. The dashboard is Defiant Command, and it comes after the records
-are real and stable.
+dah demo <scenario>       run a scripted scenario end to end
+dah pending               list actions waiting on a human
+dah approve <id>          approve one held action
+dah reject <id>           reject one held action
+dah history               show the evidence trail
+dah show <record_id>      show one evidence record in full
+dah verify                verify the evidence hash chain
+dah budget                show the spend ledger
+dah policy                show the loaded rules and ruleset hash
+dah export <request_id>   emit a Command-ready evidence pack
+dah mcp-proxy             govern one configured MCP stdio server
 """
 
 from __future__ import annotations
@@ -26,6 +24,8 @@ from ..adapters.mock import SCRIPTS, MockAgentAdapter
 from ..approvals.store import ApprovalStore
 from ..contracts import HarnessRequest, Sensitivity
 from ..evidence.store import EvidenceStore
+from ..mcp.config import McpConfigError, load_proxy_config
+from ..mcp.proxy import run_stdio_proxy
 from ..orchestrator.harness import build_harness
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -134,6 +134,30 @@ def cmd_pending(args) -> int:
 
 
 def cmd_decide(args, approved: bool) -> int:
+    store = ApprovalStore(Path(args.workdir) / "approvals.json")
+    pending = store.get(args.approval_id)
+    if (
+        approved
+        and pending is not None
+        and pending.execution_owner.startswith("mcp_stdio:")
+    ):
+        try:
+            decided = store.decide(
+                args.approval_id,
+                True,
+                args.user,
+                args.note,
+            )
+        except Exception as exc:
+            print(f"{RED}{exc}{RESET}", file=sys.stderr)
+            return 1
+        print(f"{args.approval_id} -> {_c('approved')} by {args.user}")
+        print(
+            "execution remains held; the MCP client must retry the exact "
+            f"tools/call before {decided.expires_at}"
+        )
+        return 0
+
     harness = _harness(args)
     try:
         outcome = harness.resume(
@@ -216,6 +240,27 @@ def cmd_export(args) -> int:
     store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
     print(json.dumps(store.export_request(args.request_id), indent=2, sort_keys=True))
     return 0
+
+
+def cmd_mcp_proxy(args) -> int:
+    command = list(args.command)
+    if command[:1] == ["--"]:
+        command = command[1:]
+    try:
+        config = load_proxy_config(args.config, command_override=command or None)
+        return run_stdio_proxy(
+            config,
+            workdir=args.workdir,
+            user_id=args.user,
+            workspace_id=args.workspace,
+            workspace_root=args.workspace_root,
+            policy_packs=args.policy or [],
+            sensitivity=Sensitivity(args.sensitivity),
+            dry_run=args.dry_run,
+        )
+    except (McpConfigError, OSError) as exc:
+        print(f"MCP proxy failed: {exc}", file=sys.stderr)
+        return 2
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +359,24 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("export")
     e.add_argument("request_id")
     e.set_defaults(fn=cmd_export)
+
+    mcp = sub.add_parser(
+        "mcp-proxy",
+        help="govern a configured MCP stdio server",
+    )
+    mcp.add_argument("--config", required=True, help="proxy YAML configuration")
+    mcp.add_argument(
+        "--sensitivity",
+        default="internal",
+        choices=[value.value for value in Sensitivity],
+    )
+    mcp.add_argument("--dry-run", action="store_true")
+    mcp.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        help="optional upstream command override after --",
+    )
+    mcp.set_defaults(fn=cmd_mcp_proxy)
 
     return p
 

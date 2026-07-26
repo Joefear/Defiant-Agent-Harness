@@ -39,6 +39,23 @@ def test_approval_is_single_use(tmp_path):
         s.decide(pending.approval_id, True, "sam")
 
 
+def test_external_executor_finds_only_the_exact_unconsumed_call(tmp_path):
+    s = ApprovalStore(tmp_path / "a.json")
+    pending = s.create(
+        action(),
+        "needs review",
+        "scope",
+        ["r1"],
+        execution_owner="mcp_stdio:test",
+        execution_key="sha256:exact",
+    )
+    assert (
+        s.find_execution("mcp_stdio:test", "sha256:exact").approval_id
+        == pending.approval_id
+    )
+    assert s.find_execution("mcp_stdio:test", "sha256:changed") is None
+
+
 def test_approval_is_bound_to_the_payload(tmp_path):
     s = ApprovalStore(tmp_path / "a.json")
     a = action({"body": "Statement summary attached."})

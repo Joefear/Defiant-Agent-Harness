@@ -23,7 +23,11 @@ and non-MCP action paths remain outside coverage until intercepted separately.
 
 **A block is a tool error, not a kill.** The agent receives a normal `isError` result saying permission was denied, reasons about it, and continues. Killing the agent produces a worse user experience and no additional safety.
 
-**An approval hold is a pending handle.** The agent can wait on it or abandon the call and be informed later. Either way the authority sits with the harness, not the agent.
+**An approval hold is a pending handle.** The stdio proxy returns the handle as
+an errored tool result. After the operator approves it, the client repeats the
+exact call. The fingerprint is independent of the JSON-RPC request id, so the
+proxy can restart between proposal and execution. Any argument change produces
+a new action and cannot consume the approval.
 
 ## Implementing one
 
@@ -70,7 +74,34 @@ Getting this wrong is the most likely way to ship a harness that does nothing wh
 ## Build order
 
 1. **Mock adapter** — done. Scripted, deterministic, carries the red-team fixtures.
-2. **MCP stdio proxy** — sits between a runner and its MCP servers. This is the next build and unlocks most of the target list at once.
+2. **MCP stdio proxy** — done in v0.2. It sits between a runner and one
+   configured MCP server, preserves ordinary traffic and upstream tool results,
+   and gates `tools/call`.
 3. **MCP HTTP proxy** — same contract, remote servers.
 4. **Runner config shims** — `hermes`, `claude-code`, `codex`, `nanoclaw`: side-effect maps and provenance rules, no new integration logic.
 5. **Native permission hooks** — for runners that expose a permission callback, which gives better provenance than the proxy can infer.
+
+## v0.2 stdio configuration contract
+
+The proxy cannot safely infer whether a tool called `update`, `run`, or `sync`
+is a read, a send, a spend, or a destructive mutation. Its YAML map is
+therefore operator-authored and fail-closed. Every callable tool declares:
+
+- `side_effect` — authoritative registry classification;
+- `target_arg` — which argument names the affected recipient or resource;
+- `cost_arg` and/or `cost_estimate_usd` — conservative budget inputs;
+- `argument_trust` and `argument_origin` — what the adapter can honestly claim
+  about the payload's source;
+- `target_scope` — `any` or workspace-confined;
+- `supports_dry_run`.
+
+Default argument trust is `derived`, never `trusted`. That still cannot recover
+fine-grained data flow from a generic MCP client. Runner-specific shims or
+native hooks are required to prove that a later outbound payload came from a
+particular web result, email body, or retrieved document.
+
+v0.2 caps initialization at protocol revision `2025-06-18`. This avoids
+negotiating the experimental task-augmented `tools/call` shape introduced in
+`2025-11-25` before the harness has a durable task contract. Within the
+supported revision, the full params object—not only `arguments`—is hashed and
+forwarded.

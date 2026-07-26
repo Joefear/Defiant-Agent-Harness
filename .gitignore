@@ -6,6 +6,7 @@ dist/
 .venv/
 venv/
 .pytest_cache/
+.pytest-tmp/
 .dah/
 *.tmp
 .DS_Store

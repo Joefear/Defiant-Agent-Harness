@@ -221,6 +221,34 @@ def test_ruleset_hash_changes_when_rules_change(engine):
     assert other.ruleset_hash != engine.ruleset_hash
 
 
+def test_ruleset_hash_includes_authoritative_tool_contract():
+    first = PolicyEngine.default(
+        additional_known_tools=["paid_lookup"],
+        authority_inputs={
+            "tool_registry": [
+                {
+                    "name": "paid_lookup",
+                    "side_effect_level": "spend",
+                    "cost_estimate_usd": "1",
+                }
+            ]
+        },
+    )
+    changed = PolicyEngine.default(
+        additional_known_tools=["paid_lookup"],
+        authority_inputs={
+            "tool_registry": [
+                {
+                    "name": "paid_lookup",
+                    "side_effect_level": "spend",
+                    "cost_estimate_usd": "2",
+                }
+            ]
+        },
+    )
+    assert first.ruleset_hash != changed.ruleset_hash
+
+
 def test_duplicate_rule_ids_are_rejected():
     pack = {
         "version": "test",
