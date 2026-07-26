@@ -1,0 +1,94 @@
+version: "0.1.0"
+name: default
+description: >
+  Baseline policy pack for the Defiant Agent Harness. Safe to ship as the
+  starting configuration for any workspace. Rules are additive and
+  strictest-wins, so a vertical pack can tighten this but never loosen it
+  below the default-deny floor enforced by the engine itself.
+
+# Tools this workspace has classified. Anything not matching one of these
+# patterns is refused outright, before any rule is consulted -- a tool nobody
+# classified must never inherit a permissive rule written for a different one.
+known_tools:
+  - read_file
+  - write_file
+  - send_email
+  - send_message
+  - publish_post
+  - export_file
+  - delete_file
+  - spend
+  - summarize
+  - classify
+  - "draft_*"
+  - "search_*"
+
+rules:
+  # -- read/draft: the useful, harmless majority ------------------------
+  - id: allow_read_and_draft
+    description: Reading and drafting produce no external effect.
+    tools: ["read_file", "summarize", "classify", "draft_*", "search_*"]
+    effect: allow
+    reason: Read and draft actions have no external side effect.
+
+  # -- local writes inside the workspace --------------------------------
+  - id: allow_workspace_write
+    description: Writes confined to the workspace directory.
+    tools: ["write_file"]
+    targets: ["workspace/*", "./workspace/*"]
+    effect: allow
+    reason: Write is confined to the approved workspace.
+
+  - id: block_write_outside_workspace
+    description: Any write outside the workspace is refused.
+    tools: ["write_file", "read_file"]
+    targets: ["/*", "~*", "../*", "C:*"]
+    effect: block
+    reason: Path is outside the approved workspace.
+
+  # -- outbound communication -------------------------------------------
+  - id: approve_outbound_send
+    description: Anything leaving the building needs a human.
+    side_effect_at_least: external_send
+    effect: approval_required
+    reason: Action sends or publishes outside the workspace.
+    approval_scope: Approve this exact payload for this exact recipient or target.
+    redactions: ["client_email", "account_number"]
+
+  # -- destructive and spend --------------------------------------------
+  - id: block_destructive
+    description: Deletion, deployment, and record mutation are off by default.
+    side_effect_at_least: destructive
+    effect: block
+    reason: Destructive actions are disabled unless explicitly enabled by policy.
+
+  - id: approve_spend
+    description: Money moves only with a human in the loop.
+    side_effect_at_least: spend
+    effect: approval_required
+    reason: Action spends money or consumes a paid resource.
+    approval_scope: Approve this specific charge amount and payee.
+
+  # -- the injection floor ----------------------------------------------
+  # This is the rule that answers "it was stupid insecure". Content the agent
+  # read from the outside world can inform a draft, but it can never be the
+  # thing that causes an external effect without a human looking at it.
+  - id: block_untrusted_side_effect
+    description: >
+      Untrusted content (web pages, inbound email, third-party tool output)
+      cannot drive an action that leaves the workspace.
+    side_effect_at_least: external_send
+    max_payload_trust: derived
+    effect: block
+    reason: >
+      Payload derives from untrusted external content. Knowledge can inform
+      execution; knowledge cannot authorize execution.
+
+  - id: approve_derived_local_write
+    description: Agent-derived content written locally still gets a look.
+    tools: ["write_file"]
+    max_payload_trust: trusted
+    side_effect_at_least: local_write
+    effect: approval_required
+    reason: Written content derives from material the operator did not author.
+    approval_scope: Approve writing this exact content to this exact path.

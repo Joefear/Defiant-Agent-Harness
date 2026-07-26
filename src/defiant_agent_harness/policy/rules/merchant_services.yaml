@@ -1,0 +1,41 @@
+version: "0.1.0"
+name: merchant_services
+description: >
+  Vertical pack for payment-processing statement review. Layers on top of the
+  default pack. The point of this pack is that the prohibited-claim rules are
+  deterministic string checks, not a model judgement -- a compliance reviewer
+  can read the YAML and know exactly what is caught.
+
+rules:
+  - id: ms_block_guaranteed_savings
+    description: Guaranteed-savings language is a compliance problem.
+    payload_contains:
+      - "guaranteed savings"
+      - "guarantee you will save"
+      - "guaranteed to save"
+      - "we guarantee"
+      - "risk free"
+      - "no risk"
+    effect: block
+    reason: >
+      Payload contains guaranteed-savings language, which is prohibited in
+      merchant-services communications.
+
+  - id: ms_block_rate_promises
+    description: Forward-looking rate promises.
+    payload_contains:
+      - "rate will never"
+      - "locked in forever"
+      - "lowest rate in the industry"
+      - "beat any rate"
+    effect: block
+    reason: Payload contains an unsupportable rate promise.
+
+  - id: ms_approve_statement_summary_send
+    description: Statement summaries always get human review before going out.
+    tools: ["send_email", "send_message"]
+    side_effect_at_least: external_send
+    effect: approval_required
+    reason: Merchant statement communications require human review before sending.
+    approval_scope: Approve this exact statement summary for this exact merchant.
+    redactions: ["mid", "account_number", "routing_number"]

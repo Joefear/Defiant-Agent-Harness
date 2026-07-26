@@ -1,0 +1,48 @@
+version: "0.1.0"
+name: legal_intake
+description: >
+  Vertical pack for attorney intake. The controlling constraint is that intake
+  captures facts and never gives advice. Advice-shaped language is blocked
+  deterministically and every outbound communication requires attorney review.
+
+rules:
+  - id: li_block_legal_advice
+    description: Intake captures facts; it does not advise.
+    payload_contains:
+      - "you should sue"
+      - "you have a case"
+      - "you do not have a case"
+      - "my legal advice"
+      - "i advise you to"
+      - "you will win"
+      - "you are entitled to"
+      - "statute of limitations has expired"
+    effect: block
+    reason: >
+      Payload contains advice-shaped language. Intake may capture facts only;
+      legal advice requires a licensed attorney.
+
+  - id: li_block_fee_commitment
+    description: No fee or outcome commitments during intake.
+    payload_contains:
+      - "we will take your case"
+      - "no fee unless"
+      - "your settlement will be"
+      - "guaranteed outcome"
+    effect: block
+    reason: Payload commits to representation, fees, or outcome during intake.
+
+  - id: li_approve_all_client_contact
+    description: Every outbound touch on a legal matter is attorney-reviewed.
+    side_effect_at_least: external_send
+    effect: approval_required
+    reason: Attorney review is required before any client-facing communication.
+    approval_scope: Attorney approves this exact communication for this exact matter.
+    redactions: ["client_name", "matter_number", "opposing_party"]
+
+  - id: li_block_untrusted_matter_write
+    description: Case material assembled from unverified sources is not filed.
+    tools: ["write_file", "export_file"]
+    max_payload_trust: derived
+    effect: block
+    reason: Matter content derives from untrusted sources and cannot be filed.
