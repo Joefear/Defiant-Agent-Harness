@@ -667,9 +667,7 @@ def _patch_path_candidates(command: str) -> list[str]:
 
 
 def _is_protected_target(target: str) -> bool:
-    return target in _PROTECTED_TARGETS or target.startswith(
-        _PROTECTED_TARGET_PREFIXES
-    )
+    return target in _PROTECTED_TARGETS or target.startswith(_PROTECTED_TARGET_PREFIXES)
 
 
 def _pre_output(outcome: ActionOutcome) -> dict[str, Any]:

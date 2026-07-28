@@ -69,7 +69,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         event = json.load(sys.stdin, parse_constant=_reject_constant)
         event_cwd = event.get("cwd") if isinstance(event, dict) else ""
-        start = Path(event_cwd) if isinstance(event_cwd, str) and event_cwd else Path.cwd()
+        start = (
+            Path(event_cwd) if isinstance(event_cwd, str) and event_cwd else Path.cwd()
+        )
         workspace_root = _repository_root(start)
         configured_state = Path(
             os.environ.get(

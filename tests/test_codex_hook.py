@@ -120,9 +120,10 @@ def test_codex_control_tool_is_allowed_and_sealed(tmp_path):
     post["tool_response"] = {"ok": True}
     gate.post_tool_use(post)
 
-    assert [record["tool_name"] for record in EvidenceStore(
-        state / "evidence.jsonl"
-    ).records()] == ["agent_control", "agent_control"]
+    assert [
+        record["tool_name"]
+        for record in EvidenceStore(state / "evidence.jsonl").records()
+    ] == ["agent_control", "agent_control"]
 
 
 def test_codex_write_requires_approval_and_exact_retry(tmp_path, capsys):
@@ -161,9 +162,10 @@ def test_codex_write_requires_approval_and_exact_retry(tmp_path, capsys):
     post["hook_event_name"] = "PostToolUse"
     post["tool_response"] = {"message": "created"}
     retry_gate.post_tool_use(post)
-    assert ApprovalStore(state / "approvals.json").get(
-        approval.approval_id
-    ).status == "consumed"
+    assert (
+        ApprovalStore(state / "approvals.json").get(approval.approval_id).status
+        == "consumed"
+    )
 
 
 def test_codex_approval_does_not_cross_model_identity(tmp_path):
@@ -250,9 +252,7 @@ def test_codex_project_config_and_hooks_are_well_formed():
     assert server["args"][0:3] == ["/d", "/s", "/c"]
     assert "scripts\\defiant_mcp.cmd" in server["args"]
 
-    profile = json.loads(
-        (ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8")
-    )
+    profile = json.loads((ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
     for phase, argument in (("PreToolUse", "pre"), ("PostToolUse", "post")):
         entry = profile["hooks"][phase][0]
         assert entry["matcher"] == "*"
