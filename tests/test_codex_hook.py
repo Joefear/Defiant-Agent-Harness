@@ -250,7 +250,9 @@ def test_codex_project_config_and_hooks_are_well_formed():
         (ROOT / ".codex" / "config.toml").read_text(encoding="utf-8")
     )
     server = config["mcp_servers"]["defiant_filesystem"]
-    assert server["cwd"] == ".."
+    # Project-scoped MCP configuration is resolved from the active Codex
+    # project directory, so the launcher must start at the repository root.
+    assert server["cwd"] == "."
     assert server["default_tools_approval_mode"] == "auto"
     assert server["required"] is True
     assert server["args"][0:3] == ["/d", "/s", "/c"]

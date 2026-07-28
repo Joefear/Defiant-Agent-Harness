@@ -28,7 +28,7 @@ args = [
   "@modelcontextprotocol/server-filesystem@2026.7.10",
   "examples/vscode_agent/workspace",
 ]
-cwd = ".."
+cwd = "."
 env = { PYTHONPATH = "src", PYTHONUTF8 = "1", NPM_CONFIG_CACHE = ".npm-cache" }
 required = true
 startup_timeout_sec = 30

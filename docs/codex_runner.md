@@ -21,6 +21,11 @@ Open the repository root in Codex and trust the project. Codex loads
 project-scoped `.codex/config.toml`, hooks, and rules only for trusted projects.
 Restart the Codex session after changing those files.
 
+The MCP server's `cwd = "."` is intentionally relative to that active project
+root. Changing it to the `.codex/` parent relationship (`".."`) starts the
+launcher outside the repository in Codex Desktop and causes session
+initialization to fail.
+
 In Codex:
 
 1. Run `/hooks`, inspect the two Defiant command hooks, and trust their exact
