@@ -81,10 +81,11 @@ real adapter requires adversarial provenance tests.
 
 **The agent being wrong.** The harness controls what an agent may *do*. It does not make the agent's output correct. Human review at the approval gate is the only control on quality, which is why approval scope is recorded per rule and shown to the reviewer verbatim.
 
-**Actions outside the proxy.** v0.2 governs MCP calls routed through its stdio
-process. The preview `PreToolUse` adapter additionally governs supported native
-VS Code and Copilot CLI tool events. Direct process or network activity that
-emits no event, a direct connection to the upstream server, and the platform's
+**Actions outside the proxy.** v0.3 governs MCP calls routed through its local
+stdio proxy, whether the configured upstream uses stdio or Streamable HTTP.
+The preview `PreToolUse` adapter additionally governs supported native VS Code
+and Copilot CLI tool events. Direct process or network activity that emits no
+event, a direct connection to the upstream server, and the platform's
 documented fail-open hook-timeout path still require OS/network containment.
 
 **Misclassified upstream tools.** The operator-authored MCP map is trusted
@@ -105,7 +106,8 @@ policy boundary.
 
 ## Assumptions
 
-- The operator running the harness is trusted; there is no privilege separation between operator and harness in v0.2.
+- The operator running the harness is trusted; there is no privilege
+  separation between operator and harness in v0.3.
 - Python code already executing inside the harness process is trusted. Grants
   are not an OS sandbox.
 - Policy files are under operator control and not writable by the agent.

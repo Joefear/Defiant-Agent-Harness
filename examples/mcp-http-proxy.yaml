@@ -1,0 +1,31 @@
+server:
+  name: remote-example
+  url: https://mcp.example.com/v1
+  timeout_seconds: 30
+
+  # Values are read from the environment when the proxy starts. Never put
+  # bearer tokens or API keys in this file.
+  header_env:
+    Authorization: REMOTE_MCP_AUTH
+
+runner: generic-mcp-client
+
+# This is the operator-authored authority boundary. Replace these examples
+# with the exact tools and conservative classifications of the remote server.
+tools:
+  lookup:
+    side_effect: none
+    description: Read data without changing remote state.
+    argument_trust: derived
+
+  send_email:
+    side_effect: external_send
+    description: Send an email through the remote service.
+    target_arg: to
+    argument_trust: derived
+
+  update_record:
+    side_effect: local_write
+    description: Change one remote record.
+    target_arg: id
+    argument_trust: derived

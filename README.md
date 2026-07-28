@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.2.
+logs. A full trusted-memory/DKE system is not part of v0.3.
 
 ## The invariant
 
@@ -35,19 +35,19 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.2 is
+## What v0.3 is
 
-A headless local control loop plus a generic MCP stdio proxy. The proxy launches
-one configured upstream MCP server, transparently forwards ordinary protocol
-traffic, and intercepts `tools/call`. It validates an intercepted action against
-the authoritative operator-authored tool map, evaluates deterministic policy,
-checks budget, holds durably for human approval, executes through the gated
-path, and writes a hash-chained evidence trail—including for actions that never
-ran.
+A headless local control loop plus generic MCP stdio and Streamable HTTP
+upstream transports. Each local proxy speaks stdio to the agent, transparently
+forwards ordinary protocol traffic, and intercepts `tools/call`. It validates
+an intercepted action against the authoritative operator-authored tool map,
+evaluates deterministic policy, checks budget, holds durably for human
+approval, executes through the gated path, and writes a hash-chained evidence
+trail—including for actions that never ran.
 
 The v0.1 reference tools remain safe fixtures: only `read_file` performs real
 I/O, confined to one workspace, while their side effects are simulated. The
-v0.2 proxy is a real execution boundary: a permitted or approved call is
+v0.3 proxies are real execution boundaries: a permitted or approved call is
 forwarded to the configured upstream server and can therefore have real side
 effects.
 
@@ -159,17 +159,38 @@ terminal for the approval window, preventing an agent from spamming identical
 re-proposals.
 
 The fingerprint also binds the runner, user, workspace, authoritative tool
-contract, and upstream command identity. Changing the server command, side
-effect, cost, target scope, or workspace root cannot inherit a stale approval.
+contract, and upstream transport identity. Changing the server command or URL,
+side effect, cost, target scope, or workspace root cannot inherit a stale
+approval.
 
 The upstream command is always an argument vector and is launched without a
 shell. Stdout remains protocol-only; server diagnostics inherit stderr.
 
-v0.2 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
+v0.3 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
 downgraded during `initialize` so an upstream server cannot advertise the
 experimental task-augmented calls added in `2025-11-25`, which this release
-does not yet govern. The complete core `tools/call` params object, including
-`_meta`, is forwarded and bound into the approval fingerprint.
+does not yet govern. The complete core `tools/call` params object is bound into
+the approval fingerprint. Only the ephemeral `_meta.progressToken` is excluded
+so a client may legitimately replace its correlation token on an exact retry.
+
+## Run the Streamable HTTP upstream proxy
+
+Remote MCP servers use the same local stdio-facing shape:
+
+```powershell
+$env:REMOTE_MCP_AUTH = "Bearer <token>"
+dah --workdir .dah mcp-http-proxy --config examples/mcp-http-proxy.yaml
+```
+
+The proxy sends MCP POST requests to the configured HTTPS endpoint, accepts
+JSON or SSE responses, maintains the optional MCP session id, and attempts a
+session DELETE on shutdown. Auth values come from environment variables rather
+than YAML. Remote redirects are refused, response sizes are bounded, and plain
+HTTP is allowed only for loopback test servers.
+
+The policy, approval, budget, exact-retry, and evidence behavior is identical
+to the stdio upstream. See `docs/streamable_http.md` for configuration,
+transport behavior, and current bidirectional-streaming limits.
 
 ### Run against a real MCP server
 
@@ -232,7 +253,7 @@ src/defiant_agent_harness/
   evidence/             append-only hash-chained JSONL store
   tools/                capability-gated registry + reference tools
   adapters/             adapter contract (MCP-shaped) + mock adapter
-  mcp/                  strict config + stdio transport + tools/call proxy
+  mcp/                  strict config + stdio/HTTP transports + tools/call proxy
   hooks/                native PreToolUse/PostToolUse adapter + durable correlation
   orchestrator/         the control loop
   cli/                  local controls + MCP proxy entry point
@@ -277,7 +298,7 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-137 offline tests plus one opt-in live integration test cover both the MCP and
+164 offline tests plus one opt-in live integration test cover both the MCP and
 native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
@@ -289,8 +310,9 @@ server to a test run.
 
 ## Status
 
-v0.2 — headless local control loop, generic MCP stdio proxy, and preview native
-VS Code/Copilot hook adapter. Not a platform. The hook controls tool calls that
-emit supported lifecycle events. Direct process activity outside those events,
-and the documented fail-open hook-timeout behavior, still require OS/network
-isolation. See `docs/architecture.md` and `docs/native_hooks.md`.
+v0.3 — headless local control loop, generic MCP stdio and Streamable HTTP
+upstreams, plus the preview native VS Code/Copilot hook adapter. Not a platform.
+The hook controls tool calls that emit supported lifecycle events. Direct
+process activity outside those events, and the documented fail-open
+hook-timeout behavior, still require OS/network isolation. See
+`docs/architecture.md`, `docs/streamable_http.md`, and `docs/native_hooks.md`.

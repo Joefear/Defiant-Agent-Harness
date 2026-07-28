@@ -79,11 +79,13 @@ Getting this wrong is the most likely way to ship a harness that does nothing wh
 2. **MCP stdio proxy** — done in v0.2. It sits between a runner and one
    configured MCP server, preserves ordinary traffic and upstream tool results,
    and gates `tools/call`.
-3. **MCP HTTP proxy** — same contract, remote servers.
+3. **MCP Streamable HTTP upstream** — done in v0.3. The runner still sees a
+   local stdio server while Defiant carries governed traffic to a remote HTTPS
+   endpoint, including session ids and JSON/SSE responses.
 4. **Runner config shims** — `hermes`, `claude-code`, `codex`, `nanoclaw`: side-effect maps and provenance rules, no new integration logic.
 5. **Native permission hooks** — for runners that expose a permission callback, which gives better provenance than the proxy can infer.
 
-## v0.2 stdio configuration contract
+## v0.3 MCP configuration contract
 
 The proxy cannot safely infer whether a tool called `update`, `run`, or `sync`
 is a read, a send, a spend, or a destructive mutation. Its YAML map is
@@ -103,8 +105,8 @@ fine-grained data flow from a generic MCP client. Runner-specific shims or
 native hooks are required to prove that a later outbound payload came from a
 particular web result, email body, or retrieved document.
 
-v0.2 caps initialization at protocol revision `2025-06-18`. This avoids
+v0.3 caps initialization at protocol revision `2025-06-18`. This avoids
 negotiating the experimental task-augmented `tools/call` shape introduced in
 `2025-11-25` before the harness has a durable task contract. Within the
-supported revision, the full params object—not only `arguments`—is hashed and
-forwarded.
+supported revision, the full params object—not only `arguments`—is bound and
+forwarded except for the ephemeral `_meta.progressToken`.

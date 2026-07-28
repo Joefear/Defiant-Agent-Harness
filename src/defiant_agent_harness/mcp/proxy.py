@@ -1,4 +1,4 @@
-"""Generic MCP stdio proxy at the ``tools/call`` authority boundary."""
+"""Generic MCP proxy at the ``tools/call`` authority boundary."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
-from typing import Any, Iterable, TextIO
+from typing import Any, Iterable, Protocol, TextIO
 
 from ..adapters.base import AgentAdapter, ToolCall
 from ..approvals.store import ApprovalError, PendingApproval
@@ -24,13 +24,33 @@ from ..money import money
 from ..orchestrator.harness import ActionOutcome, build_harness
 from ..tools.registry import (
     ToolContractError,
+    ToolResult,
     ToolRegistry,
     canonical_workspace_target,
 )
-from .config import McpProxyConfig, McpToolConfig
+from .config import McpConfigError, McpProxyConfig, McpToolConfig
+from .http_session import HttpUpstreamSession
 from .session import MCP_ERROR, MCP_RESULT, UpstreamSession
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
+
+
+class McpUpstream(Protocol):
+    """Transport-neutral operations required by the governing proxy."""
+
+    def forward_raw(self, line: str) -> None: ...
+
+    def emit_message(self, message: dict[str, Any]) -> None: ...
+
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        transport_params: dict[str, Any] | None = None,
+    ) -> ToolResult: ...
+
+    def close(self) -> None: ...
 
 
 class McpProxyAdapter(AgentAdapter):
@@ -110,7 +130,7 @@ class McpStdioProxy:
     def __init__(
         self,
         config: McpProxyConfig,
-        session: UpstreamSession,
+        session: McpUpstream,
         *,
         workdir: str | Path,
         user_id: str,
@@ -128,7 +148,10 @@ class McpStdioProxy:
         self.server_fingerprint = sha256_of(
             {
                 "name": config.server_name,
+                "transport": "streamable_http" if config.url else "stdio",
                 "command": config.command,
+                "url": config.url,
+                "header_env": config.header_env,
                 "cwd": str(config.cwd) if config.cwd else "",
             }
         )
@@ -148,8 +171,9 @@ class McpStdioProxy:
                 "dry_run": dry_run,
             }
         )
+        owner_kind = "mcp_http" if config.url else "mcp_stdio"
         self.execution_owner = (
-            f"mcp_stdio:{config.server_name}:{self.proxy_fingerprint}"
+            f"{owner_kind}:{config.server_name}:{self.proxy_fingerprint}"
         )
         self.adapter = McpProxyAdapter(config, workspace_root)
         registry = ToolRegistry(dry_run=dry_run, workspace_root=workspace_root)
@@ -373,6 +397,8 @@ def run_stdio_proxy(
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
+    if not config.command:
+        raise McpConfigError("mcp-proxy requires server.command")
     input_stream = client_input or sys.stdin
     output_stream = client_output or sys.stdout
     session = UpstreamSession(
@@ -401,8 +427,53 @@ def run_stdio_proxy(
     return 0
 
 
+def run_http_upstream_proxy(
+    config: McpProxyConfig,
+    *,
+    workdir: str | Path,
+    user_id: str,
+    workspace_id: str,
+    workspace_root: str | Path,
+    policy_packs: list[str] | None = None,
+    sensitivity: Sensitivity = Sensitivity.INTERNAL,
+    dry_run: bool = False,
+    client_input: TextIO | None = None,
+    client_output: TextIO | None = None,
+) -> int:
+    """Expose a local stdio MCP server backed by remote Streamable HTTP."""
+    if not config.url:
+        raise McpConfigError("mcp-http-proxy requires server.url")
+    input_stream = client_input or sys.stdin
+    output_stream = client_output or sys.stdout
+    session = HttpUpstreamSession(
+        config.url,
+        output_stream,
+        header_env=config.header_env,
+        timeout_seconds=config.upstream_timeout_seconds,
+        protocol_version=MCP_PROTOCOL_VERSION,
+    )
+    try:
+        proxy = McpStdioProxy(
+            config,
+            session,
+            workdir=workdir,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            workspace_root=workspace_root,
+            policy_packs=policy_packs,
+            sensitivity=sensitivity,
+            dry_run=dry_run,
+        )
+        for line in input_stream:
+            if line.strip():
+                proxy.accept_line(line)
+    finally:
+        session.close()
+    return 0
+
+
 def _call_upstream(
-    session: UpstreamSession,
+    session: McpUpstream,
     config: McpToolConfig,
     action,
 ):

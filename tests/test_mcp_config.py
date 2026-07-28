@@ -89,3 +89,72 @@ tools:
 
     with pytest.raises(McpConfigError, match="runner"):
         load_proxy_config(path, runner_override=" ")
+
+
+def test_streamable_http_config_uses_environment_header_references(tmp_path):
+    path = tmp_path / "proxy.yaml"
+    path.write_text(
+        """
+server:
+  name: remote
+  url: https://mcp.example.com/v1
+  header_env:
+    Authorization: REMOTE_MCP_AUTH
+  timeout_seconds: 15
+tools:
+  lookup: {side_effect: none}
+""",
+        encoding="utf-8",
+    )
+    config = load_proxy_config(path)
+    assert config.command == ()
+    assert config.url == "https://mcp.example.com/v1"
+    assert config.header_env == (("Authorization", "REMOTE_MCP_AUTH"),)
+    assert config.upstream_timeout_seconds == 15
+
+
+@pytest.mark.parametrize(
+    "server, message",
+    [
+        (
+            "{name: remote, command: [python], url: https://mcp.example.com}",
+            "exactly one",
+        ),
+        ("{name: remote, url: http://mcp.example.com}", "https"),
+        ("{name: remote, url: file:///tmp/mcp}", "http or https"),
+        (
+            "{name: remote, url: https://user:secret@mcp.example.com}",
+            "userinfo",
+        ),
+        (
+            "{name: remote, url: https://mcp.example.com, cwd: elsewhere}",
+            "only valid",
+        ),
+        (
+            "{name: remote, url: https://mcp.example.com, "
+            "header_env: {Mcp-Session-Id: SESSION}}",
+            "transport header",
+        ),
+    ],
+)
+def test_streamable_http_config_fails_closed(tmp_path, server, message):
+    path = tmp_path / "bad-http.yaml"
+    path.write_text(
+        f"server: {server}\ntools:\n  lookup: {{side_effect: none}}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(McpConfigError, match=message):
+        load_proxy_config(path)
+
+
+def test_plain_http_is_allowed_only_for_loopback(tmp_path):
+    path = tmp_path / "local-http.yaml"
+    path.write_text(
+        """
+server: {name: local, url: "http://127.0.0.1:8765/mcp"}
+tools:
+  lookup: {side_effect: none}
+""",
+        encoding="utf-8",
+    )
+    assert load_proxy_config(path).url == "http://127.0.0.1:8765/mcp"

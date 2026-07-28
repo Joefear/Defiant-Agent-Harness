@@ -105,7 +105,7 @@ You cannot reliably predict what an agent turn will cost before it runs, so the 
 
 An in-flight overrun cannot be prevented. It is always visible, and it reduces the next action's headroom immediately. Say this to a technical buyer before they ask.
 
-## MCP stdio boundary in v0.2
+## MCP transport boundary in v0.3
 
 The proxy launches one upstream command without a shell. Its stdout is reserved
 for newline-delimited MCP messages. Initialization, discovery, notifications,
@@ -118,6 +118,12 @@ Protocol negotiation is capped at `2025-06-18`. The `2025-11-25` task
 augmentation is intentionally not advertised until task creation, durable
 status, cancellation, and result retrieval can all share the same authority and
 evidence model.
+
+The Streamable HTTP upstream preserves that same stdio-facing boundary for the
+runner while sending one JSON-RPC message per HTTP POST to a configured remote
+endpoint. It supports JSON and finite SSE responses, optional MCP session ids,
+and session DELETE on shutdown. Remote authentication values are loaded from
+environment variables. See `streamable_http.md`.
 
 Configured tool specs extend `known_tools` for that registry instance, and the
 extension participates in the ruleset hash. Side effect, conservative cost,
@@ -151,12 +157,11 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.2
+## What is deliberately absent from v0.3
 
 - **A dashboard.** That is Defiant Command. Building a control panel before the records exist produces an empty control panel.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
 - **Spartan Swarm.** Multi-agent missions need a working single-agent gate first.
-- **MCP HTTP proxy.** Streamable HTTP is the next transport build.
 - **Complete runner containment.** The preview native hook covers supported
   lifecycle tool events. Direct activity with no event, plus documented
   fail-open hook timeouts, still requires OS/network isolation.

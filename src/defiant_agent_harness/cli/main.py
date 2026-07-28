@@ -1,4 +1,4 @@
-"""CLI for the local control loop and generic MCP stdio proxy.
+"""CLI for the local control loop and generic MCP proxies.
 
 dah demo <scenario>       run a scripted scenario end to end
 dah pending               list actions waiting on a human
@@ -11,6 +11,7 @@ dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
 dah mcp-proxy             govern one configured MCP stdio server
+dah mcp-http-proxy        govern one remote Streamable HTTP MCP server
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from ..approvals.store import ApprovalStore
 from ..contracts import HarnessRequest, Sensitivity
 from ..evidence.store import EvidenceStore
 from ..mcp.config import McpConfigError, load_proxy_config
-from ..mcp.proxy import run_stdio_proxy
+from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
+from ..mcp.session import McpTransportError
 from ..orchestrator.harness import build_harness
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -139,7 +141,9 @@ def cmd_decide(args, approved: bool) -> int:
     if (
         approved
         and pending is not None
-        and pending.execution_owner.startswith(("mcp_stdio:", "agent_hook:"))
+        and pending.execution_owner.startswith(
+            ("mcp_stdio:", "mcp_http:", "agent_hook:")
+        )
     ):
         try:
             decided = store.decide(
@@ -262,8 +266,29 @@ def cmd_mcp_proxy(args) -> int:
             sensitivity=Sensitivity(args.sensitivity),
             dry_run=args.dry_run,
         )
-    except (McpConfigError, OSError) as exc:
+    except (McpConfigError, McpTransportError, OSError) as exc:
         print(f"MCP proxy failed: {exc}", file=sys.stderr)
+        return 2
+
+
+def cmd_mcp_http_proxy(args) -> int:
+    try:
+        config = load_proxy_config(
+            args.config,
+            runner_override=args.runner or None,
+        )
+        return run_http_upstream_proxy(
+            config,
+            workdir=args.workdir,
+            user_id=args.user,
+            workspace_id=args.workspace,
+            workspace_root=args.workspace_root,
+            policy_packs=args.policy or [],
+            sensitivity=Sensitivity(args.sensitivity),
+            dry_run=args.dry_run,
+        )
+    except (McpConfigError, McpTransportError, OSError) as exc:
+        print(f"MCP HTTP proxy failed: {exc}", file=sys.stderr)
         return 2
 
 
@@ -386,6 +411,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional upstream command override after --",
     )
     mcp.set_defaults(fn=cmd_mcp_proxy)
+
+    http = sub.add_parser(
+        "mcp-http-proxy",
+        help="govern a remote Streamable HTTP MCP server",
+    )
+    http.add_argument("--config", required=True, help="proxy YAML configuration")
+    http.add_argument(
+        "--runner",
+        default="",
+        help="evidence identity for the connected runner (overrides YAML)",
+    )
+    http.add_argument(
+        "--sensitivity",
+        default="internal",
+        choices=[value.value for value in Sensitivity],
+    )
+    http.add_argument("--dry-run", action="store_true")
+    http.set_defaults(fn=cmd_mcp_http_proxy)
 
     return p
 

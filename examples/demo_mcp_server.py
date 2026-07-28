@@ -67,7 +67,7 @@ def handle(message: dict[str, Any]) -> None:
                     "protocolVersion", "2025-06-18"
                 ),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "defiant-demo", "version": "0.2.0"},
+                "serverInfo": {"name": "defiant-demo", "version": "0.3.0"},
             },
         )
         return

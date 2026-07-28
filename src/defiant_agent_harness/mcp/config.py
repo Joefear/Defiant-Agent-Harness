@@ -1,10 +1,12 @@
-"""Strict configuration for the generic MCP stdio proxy."""
+"""Strict configuration for local and remote MCP upstream transports."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -15,6 +17,15 @@ from ..tools.registry import ToolSpec
 
 class McpConfigError(ValueError):
     """The proxy configuration is unsafe or malformed."""
+
+
+_RESERVED_HTTP_HEADERS = {
+    "accept",
+    "content-length",
+    "content-type",
+    "mcp-protocol-version",
+    "mcp-session-id",
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +103,8 @@ class McpProxyConfig:
     server_name: str
     command: tuple[str, ...]
     tools: dict[str, McpToolConfig]
+    url: str = ""
+    header_env: tuple[tuple[str, str], ...] = ()
     runner_name: str = "mcp"
     model_id: str = ""
     cwd: Path | None = None
@@ -100,10 +113,36 @@ class McpProxyConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.server_name, str) or not self.server_name.strip():
             raise McpConfigError("server.name must be non-empty")
-        if not self.command or any(
+        has_command = bool(self.command)
+        has_url = bool(self.url)
+        if has_command == has_url:
+            raise McpConfigError("server must configure exactly one of command or url")
+        if has_command and any(
             not isinstance(arg, str) or not arg for arg in self.command
         ):
-            raise McpConfigError("server.command must contain at least one string")
+            raise McpConfigError("server.command must contain non-empty strings")
+        if has_url:
+            _validate_http_url(self.url)
+            if self.cwd is not None:
+                raise McpConfigError("server.cwd is only valid with server.command")
+        seen_headers: set[str] = set()
+        for header, env_name in self.header_env:
+            if not _valid_header_name(header):
+                raise McpConfigError(f"invalid HTTP header name: {header!r}")
+            normalized = header.lower()
+            if normalized in _RESERVED_HTTP_HEADERS:
+                raise McpConfigError(
+                    f"server.header_env cannot override transport header {header!r}"
+                )
+            if normalized in seen_headers:
+                raise McpConfigError(f"duplicate HTTP header name: {header!r}")
+            seen_headers.add(normalized)
+            if not isinstance(env_name, str) or not env_name.strip():
+                raise McpConfigError(
+                    f"environment variable for header {header!r} must be non-empty"
+                )
+        if self.header_env and not has_url:
+            raise McpConfigError("server.header_env requires server.url")
         if not isinstance(self.tools, dict) or not self.tools:
             raise McpConfigError("tools must classify at least one upstream tool")
         if any(name != tool.name for name, tool in self.tools.items()):
@@ -121,7 +160,14 @@ class McpProxyConfig:
 
 
 _ROOT_KEYS = {"server", "runner", "model", "tools"}
-_SERVER_KEYS = {"name", "command", "cwd", "timeout_seconds"}
+_SERVER_KEYS = {
+    "name",
+    "command",
+    "url",
+    "header_env",
+    "cwd",
+    "timeout_seconds",
+}
 _TOOL_KEYS = {
     "side_effect",
     "description",
@@ -150,11 +196,29 @@ def load_proxy_config(
 
     server = _mapping(root.get("server"), "server")
     _reject_unknown(server, _SERVER_KEYS, "server")
-    command_raw = command_override or server.get("command")
+    command_raw = (
+        command_override if command_override is not None else server.get("command")
+    )
+    url_raw = server.get("url", "")
+    if command_override is not None and url_raw:
+        raise McpConfigError("command override cannot be used with server.url")
+    if command_raw is None:
+        command_raw = ()
     if not isinstance(command_raw, (list, tuple)) or any(
         not isinstance(arg, str) or not arg for arg in command_raw
     ):
         raise McpConfigError("server.command must be a list of non-empty strings")
+    if not isinstance(url_raw, str):
+        raise McpConfigError("server.url must be a string")
+
+    header_env_raw = server.get("header_env", {})
+    if not isinstance(header_env_raw, dict):
+        raise McpConfigError("server.header_env must be a mapping")
+    header_env: list[tuple[str, str]] = []
+    for header, env_name in header_env_raw.items():
+        if not isinstance(header, str) or not isinstance(env_name, str):
+            raise McpConfigError("server.header_env keys and values must be strings")
+        header_env.append((header, env_name))
 
     tools_raw = _mapping(root.get("tools"), "tools")
     tools: dict[str, McpToolConfig] = {}
@@ -198,6 +262,8 @@ def load_proxy_config(
         server_name=str(server.get("name", "")).strip(),
         command=tuple(command_raw),
         tools=tools,
+        url=url_raw.strip(),
+        header_env=tuple(sorted(header_env)),
         runner_name=(
             str(runner_override).strip()
             if runner_override is not None
@@ -219,3 +285,35 @@ def _reject_unknown(raw: dict[str, Any], allowed: set[str], label: str) -> None:
     unknown = sorted(set(raw) - allowed)
     if unknown:
         raise McpConfigError(f"{label} has unknown fields: {', '.join(unknown)}")
+
+
+def _validate_http_url(value: str) -> None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise McpConfigError(f"invalid server.url: {exc}") from exc
+    if parsed.scheme not in {"http", "https"}:
+        raise McpConfigError("server.url must use http or https")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise McpConfigError("server.url needs a host and must not contain userinfo")
+    if parsed.fragment:
+        raise McpConfigError("server.url must not contain a fragment")
+    if port is not None and not 1 <= port <= 65535:
+        raise McpConfigError("server.url port is out of range")
+    if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+        raise McpConfigError("server.url must use https unless the host is loopback")
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _valid_header_name(value: str) -> bool:
+    token = "!#$%&'*+-.^_`|~"
+    return bool(value) and all(char.isalnum() or char in token for char in value)

@@ -17,7 +17,7 @@ MCP_ERROR = "_defiant_mcp_error"
 
 
 class McpTransportError(RuntimeError):
-    """The upstream MCP process failed or violated the stdio transport."""
+    """The upstream MCP server failed or violated its transport contract."""
 
 
 class UpstreamSession:
