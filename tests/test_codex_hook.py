@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
+    import tomli as tomllib
 
 from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.cli.main import main
