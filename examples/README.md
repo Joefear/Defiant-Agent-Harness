@@ -27,5 +27,6 @@ workspace, holds a real write for approval, retries the exact MCP call, and
 verifies the evidence chain. See `filesystem/README.md`.
 
 For a model-driven run, open the repository in VS Code and follow
-`vscode_agent/README.md`. The committed `.vscode/mcp.json` governs MCP calls;
+`vscode_agent/README.md`. The committed `.vscode/mcp.json` governs MCP calls
+from VS Code, `.mcp.json` governs MCP calls from Copilot CLI, and
 `.github/hooks/defiant.json` governs supported native agent tool calls.

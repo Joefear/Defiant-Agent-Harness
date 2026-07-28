@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import queue
@@ -248,7 +249,9 @@ def test_proxy_preserves_protocol_and_governs_real_subprocess(tmp_path, capsys):
     restarted = ProxyProcess(config, state)
     try:
         initialize(restarted)
-        completed = restarted.request(5, "tools/call", email_params)
+        retry_params = copy.deepcopy(email_params)
+        retry_params["_meta"]["progressToken"] = "email-progress-retry"
+        completed = restarted.request(5, "tools/call", retry_params)
         assert completed["result"]["_defiant"]["status"] == "succeeded"
         assert completed["result"]["_defiant"]["approval_id"] == approval_id
         assert completed["result"]["structuredContent"]["upstream_preserved"] is True
@@ -286,11 +289,14 @@ def test_repeated_pending_call_reuses_one_exact_action(tmp_path):
     params = {
         "name": "send_email",
         "arguments": {"to": "same@example.com", "body": "same"},
+        "_meta": {"progressToken": "first"},
     }
     try:
         initialize(proxy)
         first = proxy.request(2, "tools/call", params)
-        second = proxy.request(3, "tools/call", params)
+        retry_params = copy.deepcopy(params)
+        retry_params["_meta"]["progressToken"] = "second"
+        second = proxy.request(3, "tools/call", retry_params)
     finally:
         proxy.stop()
     assert (
@@ -299,6 +305,32 @@ def test_repeated_pending_call_reuses_one_exact_action(tmp_path):
     )
     assert len(ApprovalStore(state / "approvals.json").list_pending()) == 1
     assert calls(marker) == []
+
+
+def test_policy_bearing_mcp_metadata_remains_approval_bound(tmp_path):
+    state = tmp_path / "state"
+    marker = tmp_path / "calls.jsonl"
+    config = write_config(tmp_path, marker)
+    proxy = ProxyProcess(config, state)
+    first_params = {
+        "name": "send_email",
+        "arguments": {"to": "same@example.com", "body": "same"},
+        "_meta": {"progressToken": "first", "tenant": "one"},
+    }
+    changed_params = copy.deepcopy(first_params)
+    changed_params["_meta"] = {"progressToken": "second", "tenant": "two"}
+    try:
+        initialize(proxy)
+        first = proxy.request(2, "tools/call", first_params)
+        changed = proxy.request(3, "tools/call", changed_params)
+    finally:
+        proxy.stop()
+
+    assert (
+        first["result"]["_defiant"]["approval_id"]
+        != changed["result"]["_defiant"]["approval_id"]
+    )
+    assert len(ApprovalStore(state / "approvals.json").list_pending()) == 2
 
 
 def test_rejected_proxy_call_cannot_be_spammed_into_a_new_approval(

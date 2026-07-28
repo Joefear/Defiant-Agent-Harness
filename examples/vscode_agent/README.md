@@ -17,8 +17,9 @@ Open this exact folder in VS Code:
 C:\Users\samcf\Desktop\Dev\Defiant Agent Harness
 ```
 
-The Explorer should show `.github`, `.vscode`, `docs`, `examples`, `src`, and
-`tests`. If it shows `_to_delete`, that is the archived Claude build.
+The Explorer should show `.github`, `.vscode`, `.mcp.json`, `docs`, `examples`,
+`src`, and `tests`. If it shows `_to_delete`, that is the archived Claude
+build.
 
 ## Proof A: govern Copilot CLI native tools
 
@@ -82,6 +83,16 @@ The default hook policy blocks:
 
 ## Proof B: govern the official filesystem MCP server
 
+The repository carries both supported client formats:
+
+- `.vscode/mcp.json` for VS Code; and
+- `.mcp.json` for Copilot CLI.
+
+The Copilot CLI profile uses `scripts/defiant_mcp.cmd` to find Python through
+the standard Windows launcher because Copilot's MCP process does not resolve
+PowerShell App Paths. Set `DAH_PYTHON` to an absolute Python executable path
+only when Python is installed in a nonstandard location.
+
 Press `Ctrl+Shift+P`, run **MCP: List Servers**, select
 **defiant-filesystem**, and start it. The first start can take a moment while
 `npx` downloads the pinned official server. The MCP server is independently
@@ -113,6 +124,19 @@ python -m defiant_agent_harness.cli.main --workdir .dah-vscode --user vscode-ope
 
 Then ask the agent to retry the exact same `write_file` call and read the file
 back. Verify `.dah-vscode` with the same `verify` and `history` commands.
+
+For Copilot CLI, start a new session after `.mcp.json` is present, enter
+`/mcp list`, and confirm that `defiant-filesystem` is connected. Its independent
+ledger is `.dah-copilot-mcp`, its runner identity is `copilot-cli-mcp`, and it
+uses the same disposable filesystem workspace. Use the same proof prompt, then
+approve and verify with:
+
+```powershell
+$env:PYTHONPATH="$PWD\src"
+python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp pending
+python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp --user copilot-cli-operator approve <approval_id>
+python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp verify
+```
 
 ## Boundary statement
 

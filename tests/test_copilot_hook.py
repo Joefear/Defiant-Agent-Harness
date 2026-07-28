@@ -129,6 +129,66 @@ def test_cli_terminal_denial_reports_policy_reason(tmp_path):
     assert "Destructive actions are disabled" in response["permissionDecisionReason"]
 
 
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "defiant-filesystem-list_allowed_directories",
+        "defiant-filesystem-read_text_file",
+        "defiant-filesystem-write_file",
+    ],
+)
+def test_known_defiant_mcp_tools_are_delegated_to_inner_proxy(tmp_path, tool_name):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state = tmp_path / "state"
+    gate = CopilotHookGate(workspace, state)
+
+    response = gate.pre_tool_use(cli_hook_event(tool_name, {}))
+
+    assert permission(response) == "allow"
+    [record] = EvidenceStore(state / "evidence.jsonl").records()
+    assert record["tool_name"] == "proxied_mcp"
+    assert record["side_effect_level"] == "none"
+
+
+def test_retried_defiant_mcp_call_does_not_require_outer_post_event(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state = tmp_path / "state"
+    gate = CopilotHookGate(workspace, state)
+    event = cli_hook_event(
+        "defiant-filesystem-write_file",
+        {"path": "generated/note.txt", "content": "governed"},
+    )
+
+    assert permission(gate.pre_tool_use(event)) == "allow"
+    assert permission(gate.pre_tool_use(event)) == "allow"
+    assert (
+        json.loads((state / "hook_executions.json").read_text(encoding="utf-8")) == {}
+    )
+
+    post = dict(event)
+    post["toolResult"] = {"resultType": "success"}
+    completed = gate.post_tool_use(post)
+    assert "inner MCP proxy" in completed["additionalContext"]
+
+    records = EvidenceStore(state / "evidence.jsonl").records()
+    assert [record["result_status"] for record in records] == ["skipped", "skipped"]
+
+
+def test_unknown_defiant_mcp_tool_still_fails_closed(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    gate = CopilotHookGate(workspace, tmp_path / "state")
+
+    response = gate.pre_tool_use(
+        cli_hook_event("defiant-filesystem-unclassified_tool", {})
+    )
+
+    assert permission(response) == "deny"
+    assert "Destructive actions are disabled" in response["permissionDecisionReason"]
+
+
 def test_repeated_identical_cli_reads_can_complete_serially(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -266,6 +326,24 @@ def test_changed_write_does_not_inherit_approval(tmp_path):
             {
                 "file_path": "src/defiant_agent_harness/orchestrator/harness.py",
                 "content": "# bypass",
+            },
+            "operator-controlled and immutable",
+        ),
+        (
+            "Write",
+            {"file_path": ".mcp.json", "content": "{}"},
+            "operator-controlled and immutable",
+        ),
+        (
+            "Write",
+            {"file_path": ".vscode/mcp.json", "content": "{}"},
+            "operator-controlled and immutable",
+        ),
+        (
+            "Write",
+            {
+                "file_path": "examples/filesystem/mcp-proxy.yaml",
+                "content": "tools: {}",
             },
             "operator-controlled and immutable",
         ),

@@ -20,5 +20,6 @@ htmlcov/
 examples/filesystem/runs/
 .dah-vscode/
 .dah-hooks/
+.dah-copilot-mcp/
 examples/vscode_agent/workspace/generated/*
 !examples/vscode_agent/workspace/generated/.gitkeep

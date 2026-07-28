@@ -10,8 +10,11 @@ rules:
     description: The governed agent cannot rewrite its own enforcement layer.
     tools: ["write_file"]
     targets:
+      - "workspace/.mcp.json"
+      - "workspace/.vscode/mcp.json"
       - "workspace/.github/hooks/*"
       - "workspace/.dah-hooks/*"
+      - "workspace/examples/filesystem/mcp-proxy.yaml"
       - "workspace/scripts/*"
       - "workspace/src/defiant_agent_harness/*"
     effect: block

@@ -26,8 +26,10 @@ and non-MCP action paths remain outside coverage until intercepted separately.
 **An approval hold is a pending handle.** The stdio proxy returns the handle as
 an errored tool result. After the operator approves it, the client repeats the
 exact call. The fingerprint is independent of the JSON-RPC request id, so the
-proxy can restart between proposal and execution. Any argument change produces
-a new action and cannot consume the approval.
+proxy can restart between proposal and execution. It also excludes only MCP's
+ephemeral `_meta.progressToken`, which clients legitimately change on a retry.
+Any argument or other metadata change produces a new action and cannot consume
+the approval.
 
 ## Implementing one
 

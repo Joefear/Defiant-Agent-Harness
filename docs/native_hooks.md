@@ -44,12 +44,25 @@ and common VS Code runtime names.
 | Grep/glob/workspace search | `search_native` | `none` |
 | Web fetch/search | `search_web` | `none` |
 | Ask-user/todo control | `agent_control` | `none` |
+| Known `defiant-filesystem-*` MCP tools | `proxied_mcp` | `none` (delegated) |
 | Shell/terminal | `native_terminal` | `destructive` |
 | Subagent/task spawn | `native_agent` | `destructive` |
 | Anything else | `native_unknown` | `destructive` |
 
 Unknown tools are deliberately registered with the most dangerous
 classification so the default destructive rule blocks them and records why.
+Copilot prefixes MCP tools with their configured server name. The hook permits
+only the exact tool inventory under the operator-controlled
+`defiant-filesystem` namespace, then the inner MCP proxy performs the real
+per-tool policy, approval, and evidence decision. An unknown tool in that
+namespace remains destructive and fails closed.
+
+Delegated MCP calls do not use the outer hook's `PostToolUse` correlation
+store. Copilot does not emit `PostToolUse` after every MCP error, including an
+approval-required result, so duplicating the inner proxy's lifecycle state
+would strand an otherwise valid exact retry. The outer hook records its
+delegation decision; the inner proxy exclusively owns approval, retry,
+completion, and terminal evidence for the MCP call.
 
 ## Exact approval binding
 
@@ -83,6 +96,8 @@ The `copilot_hook` strictest-wins policy blocks native writes to:
 
 - `.github/hooks`;
 - `.dah-hooks`;
+- `.mcp.json` and `.vscode/mcp.json`;
+- `examples/filesystem/mcp-proxy.yaml`;
 - `scripts`; and
 - `src/defiant_agent_harness`.
 

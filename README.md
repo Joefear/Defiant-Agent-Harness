@@ -191,8 +191,9 @@ smoke test. See `examples/filesystem/README.md`.
 
 The committed Windows workspace profile at `.vscode/mcp.json` connects VS Code
 to the same official filesystem server through Defiant and binds evidence to
-the `vscode-copilot` runner identity. It is confined to the disposable
-`examples/vscode_agent/workspace` folder.
+the `vscode-copilot` runner identity. The root `.mcp.json` provides the current
+Copilot CLI format and binds its evidence to `copilot-cli-mcp`. Both profiles
+are confined to the disposable `examples/vscode_agent/workspace` folder.
 
 The workspace hook at `.github/hooks/defiant.json` covers the separate native
 tool path used by local agents and Copilot CLI. It blocks terminal, subagent,

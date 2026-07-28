@@ -27,6 +27,26 @@ def test_vscode_profile_routes_the_runner_through_defiant():
     assert not any("TOKEN" in key or "KEY" in key for key in server["env"])
 
 
+def test_copilot_cli_profile_routes_the_runner_through_defiant():
+    profile = json.loads((ROOT / ".mcp.json").read_text(encoding="utf-8"))
+    server = profile["mcpServers"]["defiant-filesystem"]
+    args = server["args"]
+
+    assert server["type"] == "stdio"
+    assert server["command"] == r"C:\Windows\System32\cmd.exe"
+    assert server["cwd"] == "."
+    assert server["tools"] == ["*"]
+    assert server["env"]["PYTHONPATH"] == "src"
+    assert args[:4] == ["/d", "/s", "/c", r"scripts\defiant_mcp.cmd"]
+    assert args[args.index("--workdir") + 1] == ".dah-copilot-mcp"
+    assert args[args.index("--runner") + 1] == "copilot-cli-mcp"
+    assert args[args.index("--workspace") + 1] == "copilot-cli-mcp-proof"
+    assert "mcp-proxy" in args
+    assert "@modelcontextprotocol/server-filesystem@2026.7.10" in args
+    assert not any("TOKEN" in key or "KEY" in key for key in server["env"])
+    assert (ROOT / "scripts" / "defiant_mcp.cmd").is_file()
+
+
 def test_vscode_absolute_path_is_canonicalized_inside_workspace(tmp_path):
     config = load_proxy_config(
         ROOT / "examples" / "filesystem" / "mcp-proxy.yaml",

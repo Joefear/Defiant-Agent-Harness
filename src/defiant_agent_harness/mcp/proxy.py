@@ -70,8 +70,9 @@ class McpProxyAdapter(AgentAdapter):
         ]
 
     def payload_for(self, call: ToolCall) -> dict[str, Any]:
-        # Bind every MCP parameter, including _meta, to policy, approval, and
-        # evidence. Arguments alone are not the full transport authority.
+        # Bind every policy-bearing MCP parameter to policy, approval, and
+        # evidence. The progress token is transport correlation chosen by the
+        # client and can change on an otherwise exact retry.
         return copy.deepcopy(
             call.transport_params or {"name": call.name, "arguments": call.arguments}
         )
@@ -212,6 +213,7 @@ class McpStdioProxy:
                 "tools/call arguments must be an object",
             )
 
+        authority_params = _authority_params(params)
         execution_key = sha256_of(
             {
                 "server": self.config.server_name,
@@ -219,7 +221,7 @@ class McpStdioProxy:
                 "user_id": self.user_id,
                 "workspace_id": self.workspace_id,
                 "proxy_fingerprint": self.proxy_fingerprint,
-                "params": params,
+                "params": authority_params,
             }
         )
         self.harness.reconcile_expired_approvals()
@@ -227,8 +229,15 @@ class McpStdioProxy:
             self.execution_owner,
             execution_key,
         )
+        if existing is None:
+            existing = self._find_legacy_progress_execution(authority_params)
         if existing:
-            return self._handle_existing(request_id, existing, execution_key)
+            return self._handle_existing(
+                request_id,
+                existing,
+                execution_key,
+                authority_params,
+            )
 
         request = HarnessRequest(
             task=f"MCP tools/call {self.config.server_name}:{name}",
@@ -243,7 +252,7 @@ class McpStdioProxy:
                 arguments=arguments,
                 call_id=str(request_id),
                 server=self.config.server_name,
-                transport_params=params,
+                transport_params=authority_params,
             ),
             request,
             execution_owner=self.execution_owner,
@@ -256,6 +265,7 @@ class McpStdioProxy:
         request_id: Any,
         approval: PendingApproval,
         execution_key: str,
+        authority_params: dict[str, Any],
     ) -> dict[str, Any]:
         evidence_id = _latest_evidence_id(self.harness, approval.action_id)
         if approval.status == "pending":
@@ -301,7 +311,53 @@ class McpStdioProxy:
                 execution_key,
                 detail=str(exc),
             )
+        self._reject_duplicate_pending(authority_params, approval.approval_id)
         return _outcome_response(request_id, outcome, execution_key)
+
+    def _find_legacy_progress_execution(
+        self,
+        authority_params: dict[str, Any],
+    ) -> PendingApproval | None:
+        """Recognize approvals created before progress tokens were normalized."""
+        compatible = []
+        for approval in self.harness.approvals.list_actionable():
+            if approval.execution_owner != self.execution_owner:
+                continue
+            try:
+                held_params = approval.held_action().payload
+            except ApprovalError:
+                continue
+            if _authority_params(held_params) == authority_params:
+                compatible.append(approval)
+        priority = {"executing": 3, "approved": 2, "pending": 1}
+        return max(
+            compatible,
+            key=lambda item: (priority[item.status], item.created_at),
+            default=None,
+        )
+
+    def _reject_duplicate_pending(
+        self,
+        authority_params: dict[str, Any],
+        consumed_approval_id: str,
+    ) -> None:
+        for approval in self.harness.approvals.list_pending():
+            if (
+                approval.approval_id == consumed_approval_id
+                or approval.execution_owner != self.execution_owner
+            ):
+                continue
+            try:
+                held_params = approval.held_action().payload
+            except ApprovalError:
+                continue
+            if _authority_params(held_params) == authority_params:
+                self.harness.approvals.decide(
+                    approval.approval_id,
+                    False,
+                    "defiant-dedup",
+                    "Superseded by an approved retry differing only by progressToken.",
+                )
 
 
 def run_stdio_proxy(
@@ -368,6 +424,17 @@ def _call_upstream(
 
 def _is_tool_request(message: Any) -> bool:
     return isinstance(message, dict) and message.get("method") == "tools/call"
+
+
+def _authority_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Remove only non-authority MCP retry correlation metadata."""
+    normalized = copy.deepcopy(params)
+    metadata = normalized.get("_meta")
+    if isinstance(metadata, dict):
+        metadata.pop("progressToken", None)
+        if not metadata:
+            normalized.pop("_meta", None)
+    return normalized
 
 
 def _bounded_initialize(message: dict[str, Any]) -> str:

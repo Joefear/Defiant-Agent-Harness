@@ -32,7 +32,7 @@ from ..tools.registry import (
 )
 from .state import HookExecution, HookExecutionStore, HookStateError
 
-HOOK_MAPPING_VERSION = "copilot-hook-v1"
+HOOK_MAPPING_VERSION = "copilot-hook-v3"
 
 _READ_TOOLS = {
     "read",
@@ -87,6 +87,25 @@ _TERMINAL_TOOLS = {
 }
 _AGENT_TOOLS = {"agent", "task", "subagent", "runsubagent", "run_subagent"}
 
+# Copilot prefixes MCP tool names with the configured server name. These exact
+# tools belong to the operator-controlled defiant-filesystem profile and are
+# already governed at the inner MCP proxy boundary. The outer native hook only
+# delegates them; unknown or differently-prefixed tools still fail closed.
+_DEFIANT_MCP_PREFIX = "defiant_filesystem_"
+_DEFIANT_MCP_TOOLS = {
+    "read_text_file",
+    "read_media_file",
+    "list_directory",
+    "list_directory_with_sizes",
+    "directory_tree",
+    "search_files",
+    "get_file_info",
+    "list_allowed_directories",
+    "write_file",
+    "create_directory",
+    "edit_file",
+}
+
 _PATH_KEYS = {
     "file",
     "file_path",
@@ -107,6 +126,10 @@ def _normalized_tool_name(name: str) -> str:
 def classify_native_tool(name: str) -> tuple[str, SideEffect, str]:
     """Return canonical policy name, side effect, and target scope."""
     normalized = _normalized_tool_name(name)
+    if normalized.startswith(_DEFIANT_MCP_PREFIX):
+        proxied_name = normalized.removeprefix(_DEFIANT_MCP_PREFIX)
+        if proxied_name in _DEFIANT_MCP_TOOLS:
+            return "proxied_mcp", SideEffect.NONE, "any"
     if normalized in _READ_TOOLS:
         return "read_file", SideEffect.NONE, "workspace"
     if normalized in _WRITE_TOOLS:
@@ -145,6 +168,7 @@ class CopilotHookAdapter(AgentAdapter):
                 )
             }
         }
+        self.tool_side_effects["proxied_mcp"] = SideEffect.NONE
 
     def propose(self, task: str) -> Iterable[ToolCall]:
         return ()
@@ -266,7 +290,10 @@ class CopilotHookGate:
             execution_owner=self.execution_owner,
             execution_key=execution_key,
         )
-        if outcome.status is ResultStatus.SKIPPED:
+        if (
+            outcome.status is ResultStatus.SKIPPED
+            and outcome.action.tool_name != "proxied_mcp"
+        ):
             self._remember_authorization(
                 tool_use_id,
                 execution_key,
@@ -278,6 +305,9 @@ class CopilotHookGate:
 
     def post_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
         native_name, tool_input, tool_use_id = _tool_fields(event)
+        canonical_name, _, _ = classify_native_tool(native_name)
+        if canonical_name == "proxied_mcp":
+            return _delegated_mcp_post_output()
         execution = self.executions.get(tool_use_id)
         if execution is None:
             raise HookStateError(
@@ -401,6 +431,11 @@ def _hook_registry(workspace_root: Path) -> ToolRegistry:
             "agent_control",
             SideEffect.NONE,
             "Update non-executing agent control state.",
+        ),
+        ToolSpec(
+            "proxied_mcp",
+            SideEffect.NONE,
+            "Delegate an operator-configured Defiant MCP tool to its inner proxy.",
         ),
         ToolSpec(
             "native_terminal",
@@ -621,6 +656,20 @@ def _decision_output(
 def _post_output(evidence_record_id: str) -> dict[str, Any]:
     context = (
         f"Defiant sealed the external result in evidence record {evidence_record_id}."
+    )
+    return {
+        "additionalContext": context,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": context,
+        },
+    }
+
+
+def _delegated_mcp_post_output() -> dict[str, Any]:
+    context = (
+        "Defiant delegated lifecycle evidence to the inner MCP proxy, which "
+        "governs and seals this tool result."
     )
     return {
         "additionalContext": context,
