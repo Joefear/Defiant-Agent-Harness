@@ -21,5 +21,7 @@ examples/filesystem/runs/
 .dah-vscode/
 .dah-hooks/
 .dah-copilot-mcp/
+.dah-codex-hooks/
+.dah-codex-mcp/
 examples/vscode_agent/workspace/generated/*
 !examples/vscode_agent/workspace/generated/.gitkeep

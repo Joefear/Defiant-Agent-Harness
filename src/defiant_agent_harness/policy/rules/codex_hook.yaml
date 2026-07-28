@@ -1,0 +1,24 @@
+version: "0.1.0"
+name: codex_hook
+description: >
+  Additional strictest-wins rules for native Codex lifecycle hooks. The hook,
+  project configuration, policy, and durable state must not be mutable by the
+  Codex session they govern.
+
+rules:
+  - id: codex_hook_block_guardrail_mutation
+    description: The governed Codex session cannot rewrite its enforcement layer.
+    tools: ["write_file"]
+    targets:
+      - "workspace/.codex/*"
+      - "workspace/.dah-codex-hooks/*"
+      - "workspace/.dah-codex-mcp/*"
+      - "workspace/.git/*"
+      - "workspace/.mcp.json"
+      - "workspace/.vscode/mcp.json"
+      - "workspace/.github/hooks/*"
+      - "workspace/examples/filesystem/mcp-proxy.yaml"
+      - "workspace/scripts/*"
+      - "workspace/src/defiant_agent_harness/*"
+    effect: block
+    reason: Defiant Codex enforcement files are operator-controlled and immutable.

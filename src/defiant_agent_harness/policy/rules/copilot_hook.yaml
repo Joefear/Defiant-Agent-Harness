@@ -12,8 +12,12 @@ rules:
     targets:
       - "workspace/.mcp.json"
       - "workspace/.vscode/mcp.json"
+      - "workspace/.codex/*"
       - "workspace/.github/hooks/*"
       - "workspace/.dah-hooks/*"
+      - "workspace/.dah-codex-hooks/*"
+      - "workspace/.dah-codex-mcp/*"
+      - "workspace/.git/*"
       - "workspace/examples/filesystem/mcp-proxy.yaml"
       - "workspace/scripts/*"
       - "workspace/src/defiant_agent_harness/*"

@@ -1,0 +1,33 @@
+{
+  "description": "Route Codex local tool calls through Defiant policy and evidence.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/defiant_codex_hook.py\" pre",
+            "commandWindows": "powershell.exe -NoProfile -Command \"$root = git rev-parse --show-toplevel; $input | & python (Join-Path $root 'scripts\\defiant_codex_hook.py') pre\"",
+            "timeout": 10,
+            "statusMessage": "Checking Defiant policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/defiant_codex_hook.py\" post",
+            "commandWindows": "powershell.exe -NoProfile -Command \"$root = git rev-parse --show-toplevel; $input | & python (Join-Path $root 'scripts\\defiant_codex_hook.py') post\"",
+            "timeout": 10,
+            "statusMessage": "Sealing Defiant evidence"
+          }
+        ]
+      }
+    ]
+  }
+}

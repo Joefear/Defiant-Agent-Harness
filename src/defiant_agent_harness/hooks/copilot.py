@@ -32,7 +32,7 @@ from ..tools.registry import (
 )
 from .state import HookExecution, HookExecutionStore, HookStateError
 
-HOOK_MAPPING_VERSION = "copilot-hook-v3"
+HOOK_MAPPING_VERSION = "copilot-hook-v4"
 
 _READ_TOOLS = {
     "read",
@@ -71,8 +71,10 @@ _WEB_TOOLS = {"webfetch", "web_fetch", "websearch", "web_search", "fetch"}
 _CONTROL_TOOLS = {
     "askuserquestion",
     "ask_user",
+    "request_user_input",
     "todowrite",
     "update_todo",
+    "update_plan",
     "thinking",
 }
 _TERMINAL_TOOLS = {
@@ -85,13 +87,23 @@ _TERMINAL_TOOLS = {
     "runcommand",
     "runcommands",
 }
-_AGENT_TOOLS = {"agent", "task", "subagent", "runsubagent", "run_subagent"}
+_AGENT_TOOLS = {
+    "agent",
+    "task",
+    "subagent",
+    "spawn_agent",
+    "runsubagent",
+    "run_subagent",
+}
 
 # Copilot prefixes MCP tool names with the configured server name. These exact
 # tools belong to the operator-controlled defiant-filesystem profile and are
 # already governed at the inner MCP proxy boundary. The outer native hook only
 # delegates them; unknown or differently-prefixed tools still fail closed.
-_DEFIANT_MCP_PREFIX = "defiant_filesystem_"
+_DEFIANT_MCP_PREFIXES = (
+    "defiant_filesystem_",
+    "mcp__defiant_filesystem__",
+)
 _DEFIANT_MCP_TOOLS = {
     "read_text_file",
     "read_media_file",
@@ -117,6 +129,26 @@ _PATH_KEYS = {
     "target",
 }
 _PATH_CONTAINER_KEYS = {"edits", "files", "items", "replacements"}
+_PATCH_PATH_PREFIXES = (
+    "*** Add File: ",
+    "*** Delete File: ",
+    "*** Update File: ",
+    "*** Move to: ",
+)
+_PROTECTED_TARGETS = {
+    "workspace/.mcp.json",
+    "workspace/.vscode/mcp.json",
+}
+_PROTECTED_TARGET_PREFIXES = (
+    "workspace/.codex/",
+    "workspace/.dah-codex-hooks/",
+    "workspace/.dah-codex-mcp/",
+    "workspace/.dah-hooks/",
+    "workspace/.git/",
+    "workspace/.github/hooks/",
+    "workspace/scripts/",
+    "workspace/src/defiant_agent_harness/",
+)
 
 
 def _normalized_tool_name(name: str) -> str:
@@ -126,10 +158,11 @@ def _normalized_tool_name(name: str) -> str:
 def classify_native_tool(name: str) -> tuple[str, SideEffect, str]:
     """Return canonical policy name, side effect, and target scope."""
     normalized = _normalized_tool_name(name)
-    if normalized.startswith(_DEFIANT_MCP_PREFIX):
-        proxied_name = normalized.removeprefix(_DEFIANT_MCP_PREFIX)
-        if proxied_name in _DEFIANT_MCP_TOOLS:
-            return "proxied_mcp", SideEffect.NONE, "any"
+    for prefix in _DEFIANT_MCP_PREFIXES:
+        if normalized.startswith(prefix):
+            proxied_name = normalized.removeprefix(prefix)
+            if proxied_name in _DEFIANT_MCP_TOOLS:
+                return "proxied_mcp", SideEffect.NONE, "any"
     if normalized in _READ_TOOLS:
         return "read_file", SideEffect.NONE, "workspace"
     if normalized in _WRITE_TOOLS:
@@ -150,8 +183,16 @@ def classify_native_tool(name: str) -> tuple[str, SideEffect, str]:
 class CopilotHookAdapter(AgentAdapter):
     runner_name = "copilot-cli-hook"
 
-    def __init__(self, workspace_root: str | Path):
+    def __init__(
+        self,
+        workspace_root: str | Path,
+        *,
+        runner_name: str = "copilot-cli-hook",
+        server_name: str = "vscode-agent-hook",
+    ):
         self.workspace_root = Path(workspace_root).resolve(strict=False)
+        self.runner_name = runner_name
+        self.server_name = server_name
         self.tool_side_effects = {
             name: side_effect
             for name, side_effect, _ in {
@@ -190,7 +231,7 @@ class CopilotHookAdapter(AgentAdapter):
                 "tool_input": copy.deepcopy(tool_input),
             },
             call_id=tool_use_id,
-            server="vscode-agent-hook",
+            server=self.server_name,
         )
 
     def target_of(self, call: ToolCall) -> str:
@@ -230,18 +271,28 @@ class CopilotHookGate:
         *,
         user_id: str = "vscode-operator",
         workspace_id: str = "defiant-agent-harness",
+        runner_name: str = "copilot-cli-hook",
+        integration_id: str = "copilot",
+        mapping_version: str = HOOK_MAPPING_VERSION,
+        policy_pack: str = "copilot_hook",
+        server_name: str = "vscode-agent-hook",
     ):
         self.workspace_root = Path(workspace_root).resolve(strict=False)
         self.state_root = Path(state_root)
         self.user_id = user_id
         self.workspace_id = workspace_id
-        self.adapter = CopilotHookAdapter(self.workspace_root)
+        self.mapping_version = mapping_version
+        self.adapter = CopilotHookAdapter(
+            self.workspace_root,
+            runner_name=runner_name,
+            server_name=server_name,
+        )
         self.registry = _hook_registry(self.workspace_root)
         self.execution_owner = (
-            "agent_hook:copilot:"
+            f"agent_hook:{integration_id}:"
             + sha256_of(
                 {
-                    "mapping_version": HOOK_MAPPING_VERSION,
+                    "mapping_version": self.mapping_version,
                     "workspace_root": str(self.workspace_root),
                     "tools": [
                         spec.authority_dict()
@@ -256,11 +307,11 @@ class CopilotHookGate:
         self.harness = build_harness(
             self.state_root,
             self.adapter,
-            policy_packs=["copilot_hook"],
+            policy_packs=[policy_pack],
             tools=self.registry,
             workspace_root=self.workspace_root,
             authority_context={
-                "hook_mapping_version": HOOK_MAPPING_VERSION,
+                "hook_mapping_version": self.mapping_version,
                 "hook_execution_owner": self.execution_owner,
             },
         )
@@ -268,6 +319,7 @@ class CopilotHookGate:
 
     def pre_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
         native_name, tool_input, tool_use_id = _tool_fields(event)
+        self.adapter.model_id = _string_field(event, "model")
         execution_key = self._execution_key(event, native_name, tool_input)
         existing = self.harness.approvals.find_execution(
             self.execution_owner,
@@ -305,6 +357,7 @@ class CopilotHookGate:
 
     def post_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
         native_name, tool_input, tool_use_id = _tool_fields(event)
+        self.adapter.model_id = _string_field(event, "model")
         canonical_name, _, _ = classify_native_tool(native_name)
         if canonical_name == "proxied_mcp":
             return _delegated_mcp_post_output()
@@ -391,9 +444,10 @@ class CopilotHookGate:
     ) -> str:
         return sha256_of(
             {
-                "mapping_version": HOOK_MAPPING_VERSION,
+                "mapping_version": self.mapping_version,
                 "execution_owner": self.execution_owner,
                 "session_id": _string_field(event, "session_id", "sessionId"),
+                "model": _string_field(event, "model"),
                 "cwd": str(self.workspace_root),
                 "tool_name": native_name,
                 "tool_input": tool_input,
@@ -549,6 +603,10 @@ def _target_for(
         return canonical_name
 
     candidates = _path_candidates(tool_input)
+    if _normalized_tool_name(native_name) == "apply_patch":
+        command = tool_input.get("command")
+        if isinstance(command, str):
+            candidates = [*_patch_path_candidates(command), *candidates]
     if not candidates:
         return "workspace" if allow_root else native_name
     canonical: list[str] = []
@@ -564,7 +622,12 @@ def _target_for(
             )
         except ToolContractError:
             unsafe.append(candidate)
-    return unsafe[0] if unsafe else canonical[0]
+    if unsafe:
+        return unsafe[0]
+    for target in canonical:
+        if _is_protected_target(target):
+            return target
+    return canonical[0]
 
 
 def _path_candidates(value: Any, parent_key: str = "") -> list[str]:
@@ -588,6 +651,25 @@ def _path_candidates(value: Any, parent_key: str = "") -> list[str]:
             else:
                 found.extend(_path_candidates(child, parent_key))
     return found
+
+
+def _patch_path_candidates(command: str) -> list[str]:
+    found: list[str] = []
+    for raw_line in command.splitlines():
+        line = raw_line.strip()
+        for prefix in _PATCH_PATH_PREFIXES:
+            if line.startswith(prefix):
+                candidate = line.removeprefix(prefix).strip()
+                if candidate:
+                    found.append(candidate)
+                break
+    return found
+
+
+def _is_protected_target(target: str) -> bool:
+    return target in _PROTECTED_TARGETS or target.startswith(
+        _PROTECTED_TARGET_PREFIXES
+    )
 
 
 def _pre_output(outcome: ActionOutcome) -> dict[str, Any]:

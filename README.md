@@ -51,12 +51,12 @@ v0.3 proxies are real execution boundaries: a permitted or approved call is
 forwarded to the configured upstream server and can therefore have real side
 effects.
 
-The repository also includes a preview native-agent hook adapter for current
-VS Code and Copilot CLI sessions. `PreToolUse` sends native read, write, search,
-terminal, subagent, and unknown-tool attempts through the same policy and
-approval path. `PostToolUse` seals successful external execution into evidence.
-This closes the principal bypass exposed by runners whose built-in tools cannot
-be removed from their UI.
+The repository also includes preview native-agent hook adapters for current
+VS Code, Copilot CLI, and Codex sessions. `PreToolUse` sends native read, write,
+search, terminal, subagent, and unknown-tool attempts through the same policy
+and approval path. `PostToolUse` seals successful external execution into
+evidence. This closes the principal bypass exposed by runners whose built-in
+tools cannot be removed from their UI.
 
 The dashboard is Defiant Command, and it comes after the records are real and stable. This repository produces the records Command will consume.
 
@@ -225,6 +225,18 @@ Open the repository folder in VS Code and follow
 `examples/vscode_agent/README.md`. It documents both proofs: the MCP transport
 boundary and the stronger native hook path.
 
+### Connect Codex
+
+The project-scoped `.codex/config.toml` connects Codex to the Defiant filesystem
+proxy, while `.codex/hooks.json` governs supported native Codex tools. The
+integration uses separate `codex-hook` and `codex-mcp` runner identities,
+model-bound exact approvals, repository-root discovery from nested working
+directories, and Codex's official hook output dialect.
+
+Trust the project, restart Codex, review the exact definitions with `/hooks`,
+and confirm the server with `/mcp`. Follow `docs/codex_runner.md` for the read,
+approval, exact-retry, evidence, and native-bypass proofs.
+
 ## Architecture
 
 ```
@@ -298,7 +310,7 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-164 offline tests plus one opt-in live integration test cover both the MCP and
+174 offline tests plus one opt-in live integration test cover both the MCP and
 native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
@@ -311,8 +323,10 @@ server to a test run.
 ## Status
 
 v0.3 — headless local control loop, generic MCP stdio and Streamable HTTP
-upstreams, plus the preview native VS Code/Copilot hook adapter. Not a platform.
+upstreams, plus preview native VS Code/Copilot and Codex hook adapters. Not a
+platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
-`docs/architecture.md`, `docs/streamable_http.md`, and `docs/native_hooks.md`.
+`docs/architecture.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
+`docs/codex_runner.md`.
