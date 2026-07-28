@@ -6,7 +6,7 @@ dist/
 .venv/
 venv/
 .pytest_cache/
-.pytest-tmp/
+.pytest-tmp*/
 .dah/
 *.tmp
 .DS_Store
@@ -19,5 +19,6 @@ htmlcov/
 .npm-cache/
 examples/filesystem/runs/
 .dah-vscode/
+.dah-hooks/
 examples/vscode_agent/workspace/generated/*
 !examples/vscode_agent/workspace/generated/.gitkeep

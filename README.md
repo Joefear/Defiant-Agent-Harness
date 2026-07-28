@@ -51,6 +51,13 @@ v0.2 proxy is a real execution boundary: a permitted or approved call is
 forwarded to the configured upstream server and can therefore have real side
 effects.
 
+The repository also includes a preview native-agent hook adapter for current
+VS Code and Copilot CLI sessions. `PreToolUse` sends native read, write, search,
+terminal, subagent, and unknown-tool attempts through the same policy and
+approval path. `PostToolUse` seals successful external execution into evidence.
+This closes the principal bypass exposed by runners whose built-in tools cannot
+be removed from their UI.
+
 The dashboard is Defiant Command, and it comes after the records are real and stable. This repository produces the records Command will consume.
 
 ## Install
@@ -180,22 +187,26 @@ the resulting evidence chain. The upstream server and Defiant independently
 confine paths to the same workspace. Run with `--yes` for a non-interactive
 smoke test. See `examples/filesystem/README.md`.
 
-### Connect VS Code Agent mode
+### Connect VS Code and Copilot agents
 
 The committed Windows workspace profile at `.vscode/mcp.json` connects VS Code
 to the same official filesystem server through Defiant and binds evidence to
 the `vscode-copilot` runner identity. It is confined to the disposable
 `examples/vscode_agent/workspace` folder.
 
+The workspace hook at `.github/hooks/defiant.json` covers the separate native
+tool path used by local agents and Copilot CLI. It blocks terminal, subagent,
+unknown, out-of-workspace, and enforcement-mutation attempts; local writes are
+held for exact human approval and completed by a matching `PostToolUse`.
+
 Open the repository folder in VS Code and follow
-`examples/vscode_agent/README.md`. For the boundary proof, disable VS Code's
-built-in write/edit and terminal tools in the session tools picker; those native
-tools do not cross an MCP proxy.
+`examples/vscode_agent/README.md`. It documents both proofs: the MCP transport
+boundary and the stronger native hook path.
 
 ## Architecture
 
 ```
-adapter (MCP-shaped)  ->  orchestrator  ->  policy engine
+adapter (MCP or hook) ->  orchestrator  ->  policy engine
                               |                  |
                               |            budget ledger
                               |                  |
@@ -221,6 +232,7 @@ src/defiant_agent_harness/
   tools/                capability-gated registry + reference tools
   adapters/             adapter contract (MCP-shaped) + mock adapter
   mcp/                  strict config + stdio transport + tools/call proxy
+  hooks/                native PreToolUse/PostToolUse adapter + durable correlation
   orchestrator/         the control loop
   cli/                  local controls + MCP proxy entry point
 docs/                   architecture, contracts, threat model, policy examples
@@ -264,15 +276,20 @@ See `docs/evidence_contract.md` for the field-by-field contract that Defiant Com
 pytest
 ```
 
-124 offline tests plus one opt-in live integration test. The suite includes a
+137 offline tests plus one opt-in live integration test cover both the MCP and
+native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
-block, and evidence-chain verification. Set `DAH_LIVE_MCP=1` to add the pinned
-official filesystem server to a test run.
+block, and evidence-chain verification. Native-hook tests cover exact approval
+retry, payload changes, terminal and subagent bypass, unknown tools,
+out-of-workspace paths, guardrail self-modification, result correlation, and
+evidence sealing. Set `DAH_LIVE_MCP=1` to add the pinned official filesystem
+server to a test run.
 
 ## Status
 
-v0.2 — headless local control loop and generic MCP stdio proxy. Not a platform.
-The proxy controls only calls actually routed through it; native tools, direct
-network access, subprocesses, and other runner escape paths require native
-permission hooks or OS isolation. See `docs/architecture.md`.
+v0.2 — headless local control loop, generic MCP stdio proxy, and preview native
+VS Code/Copilot hook adapter. Not a platform. The hook controls tool calls that
+emit supported lifecycle events. Direct process activity outside those events,
+and the documented fail-open hook-timeout behavior, still require OS/network
+isolation. See `docs/architecture.md` and `docs/native_hooks.md`.

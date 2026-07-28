@@ -82,9 +82,10 @@ real adapter requires adversarial provenance tests.
 **The agent being wrong.** The harness controls what an agent may *do*. It does not make the agent's output correct. Human review at the approval gate is the only control on quality, which is why approval scope is recorded per rule and shown to the reviewer verbatim.
 
 **Actions outside the proxy.** v0.2 governs MCP calls routed through its stdio
-process. A runner's native tools, direct network access, subprocesses, or a
-direct connection to the upstream server bypass this boundary. Native
-permission hooks or OS/network containment must cover those paths.
+process. The preview `PreToolUse` adapter additionally governs supported native
+VS Code and Copilot CLI tool events. Direct process or network activity that
+emits no event, a direct connection to the upstream server, and the platform's
+documented fail-open hook-timeout path still require OS/network containment.
 
 **Misclassified upstream tools.** The operator-authored MCP map is trusted
 configuration. If a mutating tool is classified as `none`, the registry has no

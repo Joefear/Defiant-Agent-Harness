@@ -1,0 +1,18 @@
+version: "0.1.0"
+name: copilot_hook
+description: >
+  Additional strictest-wins rules for native VS Code and Copilot CLI tool
+  hooks. The hook, its policy, and its durable state must not be mutable by the
+  agent they govern.
+
+rules:
+  - id: hook_block_guardrail_mutation
+    description: The governed agent cannot rewrite its own enforcement layer.
+    tools: ["write_file"]
+    targets:
+      - "workspace/.github/hooks/*"
+      - "workspace/.dah-hooks/*"
+      - "workspace/scripts/*"
+      - "workspace/src/defiant_agent_harness/*"
+    effect: block
+    reason: Defiant hook enforcement files are operator-controlled and immutable.

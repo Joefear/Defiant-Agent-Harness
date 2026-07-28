@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "command": "python scripts/defiant_hook.py pre",
+        "powershell": "python scripts\\defiant_hook.py pre",
+        "cwd": ".",
+        "timeoutSec": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "command": "python scripts/defiant_hook.py post",
+        "powershell": "python scripts\\defiant_hook.py post",
+        "cwd": ".",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

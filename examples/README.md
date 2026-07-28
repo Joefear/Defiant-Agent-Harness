@@ -1,6 +1,6 @@
 # Examples
 
-Three workspaces mirroring the demo workflows in the build document. Each is a
+Workspaces mirroring the demo workflows in the build document. Each is a
 folder plus the policy pack it runs under; the scenarios themselves live in the
 mock adapter's `SCRIPTS` so they stay deterministic and testable.
 
@@ -8,7 +8,7 @@ mock adapter's `SCRIPTS` so they stay deterministic and testable.
     legal_intake/        attorney intake             --policy legal_intake
     content_publishing/  drafting and publishing     default pack
     filesystem/          live official MCP server    real governed file I/O
-    vscode_agent/        real VS Code agent proof    workspace MCP profile
+    vscode_agent/        real VS Code/Copilot proof  MCP profile + native hooks
 
 Run one:
 
@@ -27,5 +27,5 @@ workspace, holds a real write for approval, retries the exact MCP call, and
 verifies the evidence chain. See `filesystem/README.md`.
 
 For a model-driven run, open the repository in VS Code and follow
-`vscode_agent/README.md`. The committed `.vscode/mcp.json` routes that session
-through the same governed server.
+`vscode_agent/README.md`. The committed `.vscode/mcp.json` governs MCP calls;
+`.github/hooks/defiant.json` governs supported native agent tool calls.

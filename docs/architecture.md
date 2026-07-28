@@ -138,14 +138,28 @@ The boundary is transport control, not containment. It says nothing about
 native tools, direct HTTP, subprocesses, filesystem access outside an MCP
 server, or a runner that connects directly to the upstream server.
 
+## Native agent hook boundary (Preview)
+
+The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
+tools that do not cross MCP. It translates the complete native tool input into
+a bound action, returns a deterministic allow or deny decision, and uses the
+same durable exact-call approval model. Allowed pre-events create only an
+execution-pending authorization record. A correlated `PostToolUse` event seals
+the successful external result and consumes any approval.
+
+The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
+enforcement-file mutation attempts. Missing post-events never become guessed
+successes. See `native_hooks.md`.
+
 ## What is deliberately absent from v0.2
 
 - **A dashboard.** That is Defiant Command. Building a control panel before the records exist produces an empty control panel.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
 - **Spartan Swarm.** Multi-agent missions need a working single-agent gate first.
 - **MCP HTTP proxy.** Streamable HTTP is the next transport build.
-- **Runner escape-path containment.** Native permission hooks and OS/network
-  isolation are required for actions that do not cross the proxied MCP surface.
+- **Complete runner containment.** The preview native hook covers supported
+  lifecycle tool events. Direct activity with no event, plus documented
+  fail-open hook timeouts, still requires OS/network isolation.
 - **Real reference-tool side effects.** The built-ins still simulate writes,
   sends, publishes, exports, deletes, and spends. Proxied upstream tools are
   real and must be classified accordingly.
@@ -179,6 +193,10 @@ server, or a runner that connects directly to the upstream server.
 - **In-process code is trusted.** Signed grants constrain adapters and normal
   control flow; they do not sandbox malicious Python already executing inside
   the harness process.
+- **Hook timeouts fail open.** Current VS Code and Copilot CLI behavior falls
+  back to normal runner permissions when a hook times out. Hook errors are
+  converted to explicit deny responses, but the platform timeout rule requires
+  an outer OS sandbox for production.
 - **An `executing` approval requires reconciliation after a crash.** The store
   marks execution intent before calling a tool. If the process dies in that
   window, automatic replay is refused because the prior side effect may have

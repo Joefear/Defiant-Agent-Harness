@@ -139,7 +139,7 @@ def cmd_decide(args, approved: bool) -> int:
     if (
         approved
         and pending is not None
-        and pending.execution_owner.startswith("mcp_stdio:")
+        and pending.execution_owner.startswith(("mcp_stdio:", "agent_hook:"))
     ):
         try:
             decided = store.decide(
@@ -153,8 +153,8 @@ def cmd_decide(args, approved: bool) -> int:
             return 1
         print(f"{args.approval_id} -> {_c('approved')} by {args.user}")
         print(
-            "execution remains held; the MCP client must retry the exact "
-            f"tools/call before {decided.expires_at}"
+            "execution remains held; the external agent must retry the exact "
+            f"tool call before {decided.expires_at}"
         )
         return 0
 

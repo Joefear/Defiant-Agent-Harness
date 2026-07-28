@@ -104,6 +104,32 @@ class Harness:
             execution_key=execution_key,
         )
 
+    def preflight_external_call(
+        self,
+        call: ToolCall,
+        request: HarnessRequest,
+        *,
+        execution_owner: str,
+        execution_key: str,
+    ) -> ActionOutcome:
+        """Authorize an externally executed tool without claiming it already ran.
+
+        Native agent hooks sit before a tool owned by another runtime. The
+        harness can decide whether that call may proceed, but it must not invoke
+        a simulated handler and record a false success. A successful preflight
+        therefore ends at a sealed ``SKIPPED`` authorization record. The
+        matching post-tool hook calls :meth:`complete_external_call` after the
+        external runtime reports success.
+        """
+        action = self.adapter.to_action(call, request.request_id)
+        return self._handle(
+            action,
+            request,
+            execution_owner=execution_owner,
+            execution_key=execution_key,
+            external_execution=True,
+        )
+
     # -- initial control loop ----------------------------------------
 
     def _handle(
@@ -113,6 +139,7 @@ class Harness:
         *,
         execution_owner: str = "",
         execution_key: str = "",
+        external_execution: bool = False,
     ) -> ActionOutcome:
         if self.evidence.by_action(action.action_id):
             decision = self._control_decision(
@@ -198,9 +225,163 @@ class Harness:
                 detail=decision.reason,
             )
 
+        if external_execution:
+            return self._authorize_external(
+                action,
+                request,
+                decision,
+            )
+
         return self._execute(action, request, decision, estimate, approved_by=None)
 
     # -- durable approval resume ------------------------------------
+
+    def resume_external(self, approval_id: str) -> ActionOutcome:
+        """Authorize an approved exact retry for execution by another runtime."""
+        pending = self.approvals.get(approval_id)
+        if pending is None:
+            raise ApprovalError(f"unknown approval {approval_id}")
+        if pending.status == "executing":
+            raise ApprovalError(
+                f"approval {approval_id} is already executing; prior external "
+                "outcome is uncertain"
+            )
+        if pending.status != "approved":
+            raise ApprovalError(
+                f"approval {approval_id} is {pending.status}, not approved"
+            )
+
+        action = pending.held_action()
+        request = pending.held_request()
+        original_decision = pending.held_decision()
+        if original_decision.ruleset_hash != self.policy.ruleset_hash:
+            current_decision = self._control_decision(
+                action,
+                Decision.BLOCK,
+                (
+                    "loaded policy ruleset differs from the ruleset that created "
+                    "this approval; explicit re-proposal is required"
+                ),
+                "policy_changed",
+                {
+                    "approved_ruleset_hash": original_decision.ruleset_hash,
+                    "current_ruleset_hash": self.policy.ruleset_hash,
+                },
+            )
+        else:
+            current_decision = self._resume_decision(action, request)
+
+        self.approvals.begin_execution(approval_id, action)
+        if current_decision.decision is Decision.BLOCK:
+            self._release_reservation(pending)
+            record = self._record(
+                action,
+                request,
+                current_decision,
+                ResultStatus.BLOCKED,
+                approved_by=pending.decided_by,
+                detail=current_decision.reason,
+            )
+            self.approvals.mark_consumed(approval_id, record.record_id)
+            return ActionOutcome(
+                action,
+                current_decision,
+                ResultStatus.BLOCKED,
+                record.record_id,
+                approval_id=approval_id,
+                detail=current_decision.reason,
+            )
+
+        return self._authorize_external(
+            action,
+            request,
+            current_decision,
+            approved_by=pending.decided_by,
+            approval_id=approval_id,
+        )
+
+    def complete_external_call(
+        self,
+        action: ProposedAction,
+        request: HarnessRequest,
+        decision: GuardrailDecision,
+        *,
+        tool_response: object,
+        approval_id: str = "",
+    ) -> ActionOutcome:
+        """Seal a successful result reported by a matching post-tool hook."""
+        records = self.evidence.by_action(action.action_id)
+        authorization = next(
+            (
+                record
+                for record in reversed(records)
+                if record.get("result_status") == ResultStatus.SKIPPED.value
+                and record.get("authorization_hash") == action.authorization_hash
+            ),
+            None,
+        )
+        if authorization is None:
+            raise ToolContractError(
+                "external completion has no matching sealed authorization"
+            )
+        if authorization.get("request_id") != request.request_id:
+            raise ToolContractError("external completion request does not match")
+        if authorization.get("decision") != decision.decision.value:
+            raise ToolContractError("external completion decision does not match")
+        if authorization.get("ruleset_hash") != decision.ruleset_hash:
+            raise ToolContractError("external completion ruleset does not match")
+        terminal = {
+            ResultStatus.SUCCEEDED.value,
+            ResultStatus.FAILED.value,
+            ResultStatus.BLOCKED.value,
+            ResultStatus.REJECTED.value,
+            ResultStatus.EXPIRED.value,
+        }
+        if any(record.get("result_status") in terminal for record in records):
+            raise ToolContractError("external action already has a terminal outcome")
+
+        result = ToolResult(
+            status="succeeded",
+            summary=f"external tool {action.tool_name} completed",
+            output=tool_response,
+        )
+        approved_by = None
+        if approval_id:
+            approval = self.approvals.get(approval_id)
+            if approval is None:
+                raise ApprovalError(f"unknown approval {approval_id}")
+            if approval.status != "executing":
+                raise ApprovalError(
+                    f"approval {approval_id} is {approval.status}, not executing"
+                )
+            if approval.action_id != action.action_id:
+                raise ApprovalError("approval does not belong to external action")
+            if approval.authorization_hash != action.authorization_hash:
+                raise ApprovalError("external action changed after approval")
+            approved_by = approval.decided_by
+        estimate = self.budget.reservation_for(action.action_id)
+        if estimate > ZERO:
+            self.budget.settle(ZERO, request.request_id, action.action_id)
+        record = self._record(
+            action,
+            request,
+            decision,
+            ResultStatus.SUCCEEDED,
+            approved_by=approved_by,
+            result=result,
+            detail=result.summary,
+        )
+        if approval_id:
+            self.approvals.mark_consumed(approval_id, record.record_id)
+        return ActionOutcome(
+            action,
+            decision,
+            ResultStatus.SUCCEEDED,
+            record.record_id,
+            approval_id=approval_id,
+            result=result,
+            detail=result.summary,
+        )
 
     def resume(
         self,
@@ -332,6 +513,32 @@ class Harness:
         return outcomes
 
     # -- execution ----------------------------------------------------
+
+    def _authorize_external(
+        self,
+        action: ProposedAction,
+        request: HarnessRequest,
+        decision: GuardrailDecision,
+        *,
+        approved_by: str | None = None,
+        approval_id: str = "",
+    ) -> ActionOutcome:
+        record = self._record(
+            action,
+            request,
+            decision,
+            ResultStatus.SKIPPED,
+            approved_by=approved_by,
+            detail="authorized; external execution pending",
+        )
+        return ActionOutcome(
+            action,
+            decision,
+            ResultStatus.SKIPPED,
+            record.record_id,
+            approval_id=approval_id,
+            detail="authorized; external execution pending",
+        )
 
     def _execute(
         self,
