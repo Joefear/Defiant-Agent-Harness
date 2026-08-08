@@ -1,0 +1,261 @@
+"""Read-only Command Core projection over local Defiant state.
+
+Command Core is deliberately not another authority path. It never approves,
+executes, or mutates harness state. It validates the evidence chain first and
+then produces a small, JSON-safe operational snapshot for a future Command UI.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+from ..approvals.store import APPROVAL_STATUSES, ApprovalError, PendingApproval
+from ..budgets.ledger import BudgetError, BudgetLedger
+from ..contracts import Decision, ResultStatus, utc_now
+from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
+from ..money import ZERO, money, money_text
+from ..persistence import PersistenceError, read_json
+
+SNAPSHOT_SCHEMA = "defiant.command.snapshot"
+SNAPSHOT_VERSION = "0.1.0"
+
+
+class CommandError(RuntimeError):
+    """Command Core could not produce a trustworthy snapshot."""
+
+
+class CommandCore:
+    """Build a read-only operational snapshot from one harness work directory."""
+
+    def __init__(self, workdir: str | Path):
+        self.workdir = Path(workdir)
+
+    def snapshot(self, *, limit: int = 10, request_id: str = "") -> dict[str, Any]:
+        if limit < 0:
+            raise CommandError("limit must not be negative")
+
+        try:
+            integrity, evidence, recent = self._evidence(limit, request_id)
+            return {
+                "schema_name": SNAPSHOT_SCHEMA,
+                "schema_version": SNAPSHOT_VERSION,
+                "generated_at": utc_now(),
+                "authoritative": integrity.ok,
+                "evidence_integrity": {
+                    "ok": integrity.ok,
+                    "count": integrity.count,
+                    "broken_at": integrity.broken_at,
+                    "detail": integrity.detail,
+                },
+                "evidence": evidence,
+                "approvals": self._approvals(),
+                "budget": self._budget(),
+                "recent_activity": recent,
+            }
+        except (
+            ApprovalError,
+            BudgetError,
+            EvidenceError,
+            PersistenceError,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise CommandError(f"cannot build Command snapshot: {exc}") from exc
+
+    def _evidence(
+        self,
+        limit: int,
+        request_id: str,
+    ) -> tuple[ChainStatus, dict[str, Any] | None, list[dict[str, Any]]]:
+        path = self.workdir / "evidence.jsonl"
+        if not path.exists():
+            status = ChainStatus(True, 0, detail="chain intact (no evidence store)")
+            return status, _empty_evidence(request_id), []
+
+        store = EvidenceStore(path)
+        status = store.verify()
+        if not status.ok:
+            # A broken chain is itself operationally important, but aggregates
+            # derived from altered records must not be presented as truth.
+            return status, None, []
+
+        records = store.records()
+        if request_id:
+            records = [r for r in records if r.get("request_id") == request_id]
+
+        decisions = Counter({value.value: 0 for value in Decision})
+        results = Counter({value.value: 0 for value in ResultStatus})
+        request_ids: set[str] = set()
+        action_ids: set[str] = set()
+        ruleset_hashes: set[str] = set()
+        total_cost = ZERO
+
+        for index, record in enumerate(records):
+            decision = _enum_value(record, "decision", Decision, index)
+            result = _enum_value(record, "result_status", ResultStatus, index)
+            req = _required_text(record, "request_id", index)
+            action = _required_text(record, "action_id", index)
+            _required_text(record, "record_id", index)
+            _required_text(record, "timestamp", index)
+
+            decisions[decision] += 1
+            results[result] += 1
+            request_ids.add(req)
+            action_ids.add(action)
+            total_cost += money(
+                record.get("cost_usd", "0"),
+                field_name=f"record {index} cost_usd",
+            )
+            ruleset_hash = record.get("ruleset_hash", "")
+            if ruleset_hash:
+                if not isinstance(ruleset_hash, str):
+                    raise CommandError(f"record {index} ruleset_hash must be text")
+                ruleset_hashes.add(ruleset_hash)
+
+        recent_source = records[-limit:] if limit else []
+        recent = [_recent_record(record) for record in reversed(recent_source)]
+        return (
+            status,
+            {
+                "filtered_request_id": request_id or None,
+                "record_count": len(records),
+                "request_count": len(request_ids),
+                "action_count": len(action_ids),
+                "decisions": dict(decisions),
+                "results": dict(results),
+                "total_cost_usd": money_text(total_cost),
+                "ruleset_hashes": sorted(ruleset_hashes),
+                "latest_event_at": records[-1]["timestamp"] if records else None,
+            },
+            recent,
+        )
+
+    def _approvals(self) -> dict[str, Any]:
+        path = self.workdir / "approvals.json"
+        status_counts = Counter({status: 0 for status in sorted(APPROVAL_STATUSES)})
+        if not path.exists():
+            return {
+                "state": "not_initialized",
+                "total_count": 0,
+                "actionable_count": 0,
+                "overdue_pending_count": 0,
+                "statuses": dict(status_counts),
+                "actionable": [],
+            }
+
+        raw_approvals = read_json(path)
+        actionable: list[dict[str, Any]] = []
+        overdue = 0
+        for approval_id, raw in raw_approvals.items():
+            if not isinstance(raw, dict):
+                raise CommandError(f"approval {approval_id} is not an object")
+            approval = PendingApproval(**raw)
+            if approval.approval_id != approval_id:
+                raise CommandError(
+                    f"approval key {approval_id} does not match its stored id"
+                )
+            status_counts[approval.status] += 1
+            expired_pending = approval.status == "pending" and approval.is_expired()
+            if expired_pending:
+                overdue += 1
+            if (
+                approval.status in {"pending", "approved", "executing"}
+                and not expired_pending
+            ):
+                actionable.append(
+                    {
+                        "approval_id": approval.approval_id,
+                        "request_id": approval.request_id,
+                        "action_id": approval.action_id,
+                        "tool_name": approval.tool_name,
+                        "status": approval.status,
+                        "created_at": approval.created_at,
+                        "expires_at": approval.expires_at or None,
+                    }
+                )
+
+        actionable.sort(key=lambda item: (item["created_at"], item["approval_id"]))
+        return {
+            "state": "ready",
+            "total_count": len(raw_approvals),
+            "actionable_count": len(actionable),
+            "overdue_pending_count": overdue,
+            "statuses": dict(status_counts),
+            "actionable": actionable,
+        }
+
+    def _budget(self) -> dict[str, Any]:
+        path = self.workdir / "budget.json"
+        if not path.exists():
+            return {
+                "state": "not_initialized",
+                "summary": {
+                    "balance_usd": "0",
+                    "reserved_usd": "0",
+                    "available_usd": "0",
+                    "total_spent_usd": "0",
+                    "entry_count": 0,
+                },
+                "drift": {
+                    "total_estimated_usd": "0",
+                    "total_spent_usd": "0",
+                    "drift_usd": "0",
+                    "drift_pct": "0",
+                },
+            }
+
+        ledger = BudgetLedger(path)
+        return {
+            "state": "ready",
+            "summary": ledger.summary(),
+            "drift": ledger.drift(),
+        }
+
+
+def _empty_evidence(request_id: str) -> dict[str, Any]:
+    return {
+        "filtered_request_id": request_id or None,
+        "record_count": 0,
+        "request_count": 0,
+        "action_count": 0,
+        "decisions": {value.value: 0 for value in Decision},
+        "results": {value.value: 0 for value in ResultStatus},
+        "total_cost_usd": "0",
+        "ruleset_hashes": [],
+        "latest_event_at": None,
+    }
+
+
+def _required_text(record: dict[str, Any], field: str, index: int) -> str:
+    value = record.get(field)
+    if not isinstance(value, str) or not value:
+        raise CommandError(f"record {index} {field} must be non-empty text")
+    return value
+
+
+def _enum_value(record: dict[str, Any], field: str, enum_type, index: int) -> str:
+    value = _required_text(record, field, index)
+    try:
+        return enum_type(value).value
+    except ValueError as exc:
+        raise CommandError(f"record {index} has invalid {field}: {value}") from exc
+
+
+def _recent_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Return only operational metadata; never expose target or payload material."""
+
+    return {
+        "record_id": record["record_id"],
+        "timestamp": record["timestamp"],
+        "request_id": record["request_id"],
+        "action_id": record["action_id"],
+        "agent_runner": record.get("agent_runner", ""),
+        "workspace_id": record.get("workspace_id", ""),
+        "tool_name": record.get("tool_name", ""),
+        "decision": record["decision"],
+        "result_status": record["result_status"],
+        "cost_usd": money_text(record.get("cost_usd", "0")),
+    }

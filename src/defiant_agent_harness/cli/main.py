@@ -10,6 +10,7 @@ dah verify                verify the evidence hash chain
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
+dah command               emit a read-only Command Core snapshot
 dah mcp-proxy             govern one configured MCP stdio server
 dah mcp-http-proxy        govern one remote Streamable HTTP MCP server
 """
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from ..adapters.mock import SCRIPTS, MockAgentAdapter
 from ..approvals.store import ApprovalStore
+from ..command.core import CommandCore, CommandError
 from ..contracts import HarnessRequest, Sensitivity
 from ..evidence.store import EvidenceStore
 from ..mcp.config import McpConfigError, load_proxy_config
@@ -246,6 +248,19 @@ def cmd_export(args) -> int:
     return 0
 
 
+def cmd_command(args) -> int:
+    try:
+        snapshot = CommandCore(args.workdir).snapshot(
+            limit=args.limit,
+            request_id=args.request,
+        )
+    except CommandError as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(json.dumps(snapshot, indent=2, sort_keys=True))
+    return 0 if snapshot["authoritative"] else 1
+
+
 def cmd_mcp_proxy(args) -> int:
     command = list(args.command)
     if command[:1] == ["--"]:
@@ -388,6 +403,14 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("export")
     e.add_argument("request_id")
     e.set_defaults(fn=cmd_export)
+
+    command = sub.add_parser(
+        "command",
+        help="emit a read-only Defiant Command operational snapshot",
+    )
+    command.add_argument("--limit", type=int, default=10)
+    command.add_argument("--request", default="")
+    command.set_defaults(fn=cmd_command)
 
     mcp = sub.add_parser(
         "mcp-proxy",

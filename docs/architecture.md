@@ -125,6 +125,19 @@ endpoint. It supports JSON and finite SSE responses, optional MCP session ids,
 and session DELETE on shutdown. Remote authentication values are loaded from
 environment variables. See `streamable_http.md`.
 
+## Command Core read boundary in v0.4
+
+Command Core is a one-way, read-only projection over evidence, approvals, and
+budget state. It verifies the complete evidence chain before calculating any
+evidence-derived aggregate. A broken chain produces a visible integrity alert
+but no evidence totals or recent activity, preventing altered records from
+silently becoming dashboard truth.
+
+The snapshot excludes targets, payload previews, decision inputs, and raw tool
+results. It has no execution, approval, policy, or mutation API. A future
+Command Center may consume this projection, but it must not turn the read model
+into a second authority path. See `command_core.md`.
+
 Configured tool specs extend `known_tools` for that registry instance, and the
 extension participates in the ruleset hash. Side effect, conservative cost,
 dry-run support, target scope, workspace root, and the hashed upstream command
@@ -157,9 +170,9 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.3
+## What is deliberately absent from v0.4
 
-- **A dashboard.** That is Defiant Command. Building a control panel before the records exist produces an empty control panel.
+- **A dashboard.** v0.4 supplies Command Core's read-only snapshot, not a web UI.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
 - **Spartan Swarm.** Multi-agent missions need a working single-agent gate first.
 - **Complete runner containment.** The preview native hook covers supported
