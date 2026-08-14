@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from decimal import Decimal
+from http.client import HTTPConnection
+import json
+from threading import Thread
+
+import pytest
+
+from defiant_agent_harness.cli.main import build_parser
+from defiant_agent_harness.command.server import (
+    LOOPBACK_HOST,
+    MAX_LIMIT,
+    CommandCenterError,
+    CommandCenterServer,
+    command_center_url,
+)
+from defiant_agent_harness.contracts import (
+    Decision,
+    EvidenceRecord,
+    ResultStatus,
+)
+from defiant_agent_harness.evidence.store import EvidenceStore
+
+
+@contextmanager
+def _running_server(workdir, *, default_limit=25):
+    server = CommandCenterServer(workdir, port=0, default_limit=default_limit)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def _request(server, method: str, path: str):
+    host, port = server.server_address[:2]
+    connection = HTTPConnection(host, port, timeout=5)
+    try:
+        connection.request(method, path, body=b"{}" if method != "GET" else None)
+        response = connection.getresponse()
+        body = response.read()
+        return response.status, dict(response.getheaders()), body
+    finally:
+        connection.close()
+
+
+def _record(
+    request_id: str,
+    action_id: str,
+    decision: Decision,
+    result: ResultStatus,
+) -> EvidenceRecord:
+    return EvidenceRecord(
+        request_id=request_id,
+        action_id=action_id,
+        decision=decision,
+        result_status=result,
+        tool_name="read_file" if decision is Decision.ALLOW else "delete_file",
+        workspace_id="command-center-test",
+        ruleset_hash="sha256:rules",
+        cost_usd=Decimal("0.25"),
+    )
+
+
+def test_server_is_loopback_only_and_snapshot_read_does_not_create_state(tmp_path):
+    workdir = tmp_path / "not-created"
+
+    with _running_server(workdir) as server:
+        assert server.server_address[0] == LOOPBACK_HOST
+        assert command_center_url(server).startswith(f"http://{LOOPBACK_HOST}:")
+
+        status, headers, body = _request(server, "GET", "/api/snapshot")
+
+    assert status == 200
+    snapshot = json.loads(body)
+    assert snapshot["schema_name"] == "defiant.command.snapshot"
+    assert snapshot["authoritative"] is True
+    assert headers["Cache-Control"] == "no-store"
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    assert not workdir.exists()
+
+
+def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
+    with _running_server(tmp_path / "state") as server:
+        status, _, body = _request(server, "GET", "/")
+        head_status, head_headers, head_body = _request(server, "HEAD", "/")
+        css_status, _, css = _request(server, "GET", "/assets/styles.css")
+        js_status, _, javascript = _request(server, "GET", "/assets/app.js")
+
+    assert status == head_status == css_status == js_status == 200
+    assert b"Operational truth" in body
+    assert b"Actionable approvals" in body
+    assert int(head_headers["Content-Length"]) == len(body)
+    assert head_body == b""
+    assert b".dashboard-grid" in css
+    assert b"/api/snapshot" in javascript
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_server_exposes_no_mutating_http_methods(tmp_path, method):
+    workdir = tmp_path / "not-created"
+
+    with _running_server(workdir) as server:
+        status, headers, body = _request(server, method, "/api/snapshot")
+
+    assert status == 405
+    assert headers["Allow"] == "GET, HEAD, OPTIONS"
+    assert body == b""
+    assert not workdir.exists()
+
+
+def test_snapshot_endpoint_filters_and_bounds_recent_activity(tmp_path):
+    evidence = EvidenceStore(tmp_path / "evidence.jsonl")
+    evidence.append(
+        _record("req_one", "act_one", Decision.ALLOW, ResultStatus.SUCCEEDED)
+    )
+    evidence.append(_record("req_two", "act_two", Decision.BLOCK, ResultStatus.BLOCKED))
+
+    with _running_server(tmp_path) as server:
+        status, _, body = _request(
+            server,
+            "GET",
+            "/api/snapshot?request_id=req_one&limit=1",
+        )
+
+    assert status == 200
+    snapshot = json.loads(body)
+    assert snapshot["evidence"]["filtered_request_id"] == "req_one"
+    assert snapshot["evidence"]["record_count"] == 1
+    assert len(snapshot["recent_activity"]) == 1
+    assert snapshot["recent_activity"][0]["request_id"] == "req_one"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "limit=101",
+        "limit=-1",
+        "limit=not-a-number",
+        "limit=10&limit=20",
+        "unknown=value",
+        f"request_id={'x' * 257}",
+    ],
+)
+def test_snapshot_endpoint_rejects_invalid_queries(tmp_path, query):
+    with _running_server(tmp_path / "state") as server:
+        status, _, body = _request(server, "GET", f"/api/snapshot?{query}")
+
+    assert status == 400
+    assert json.loads(body)["error"] == "invalid_request"
+
+
+def test_broken_chain_is_visible_but_untrusted_evidence_is_withheld(tmp_path):
+    path = tmp_path / "evidence.jsonl"
+    EvidenceStore(path).append(
+        _record("req_one", "act_one", Decision.ALLOW, ResultStatus.SUCCEEDED)
+    )
+    path.write_text(
+        path.read_text().replace('"tool_name":"read_file"', '"tool_name":"changed"')
+    )
+
+    with _running_server(tmp_path) as server:
+        status, _, body = _request(server, "GET", "/api/snapshot")
+
+    assert status == 200
+    snapshot = json.loads(body)
+    assert snapshot["authoritative"] is False
+    assert snapshot["evidence_integrity"]["ok"] is False
+    assert snapshot["evidence"] is None
+    assert snapshot["recent_activity"] == []
+
+
+def test_server_configuration_is_bounded(tmp_path):
+    with pytest.raises(CommandCenterError, match="port"):
+        CommandCenterServer(tmp_path, port=65536)
+    with pytest.raises(CommandCenterError, match="default limit"):
+        CommandCenterServer(tmp_path, port=0, default_limit=MAX_LIMIT + 1)
+
+
+def test_command_center_cli_is_loopback_server_configuration():
+    args = build_parser().parse_args(
+        [
+            "--workdir",
+            "local-state",
+            "command-center",
+            "--port",
+            "9000",
+            "--limit",
+            "50",
+        ]
+    )
+
+    assert args.fn.__name__ == "cmd_command_center"
+    assert args.workdir == "local-state"
+    assert args.port == 9000
+    assert args.limit == 50

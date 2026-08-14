@@ -1,0 +1,320 @@
+const elements = {
+  refresh: document.querySelector("#refresh-button"),
+  filterForm: document.querySelector("#filter-form"),
+  requestFilter: document.querySelector("#request-filter"),
+  recordLimit: document.querySelector("#record-limit"),
+  clearFilter: document.querySelector("#clear-filter"),
+  syncState: document.querySelector("#sync-state"),
+  syncLabel: document.querySelector("#sync-label"),
+  errorBanner: document.querySelector("#error-banner"),
+  errorDetail: document.querySelector("#error-detail"),
+  integrityOrb: document.querySelector("#integrity-orb"),
+  integrityTitle: document.querySelector("#integrity-title"),
+  integrityDetail: document.querySelector("#integrity-detail"),
+  updatedAt: document.querySelector("#updated-at"),
+  recordCount: document.querySelector("#record-count"),
+  requestCount: document.querySelector("#request-count"),
+  approvalCount: document.querySelector("#approval-count"),
+  approvalDetail: document.querySelector("#approval-detail"),
+  availableBudget: document.querySelector("#available-budget"),
+  budgetDetail: document.querySelector("#budget-detail"),
+  evidenceFilterBadge: document.querySelector("#evidence-filter-badge"),
+  decisionBars: document.querySelector("#decision-bars"),
+  withheldState: document.querySelector("#withheld-state"),
+  decisionAllow: document.querySelector("#decision-allow"),
+  decisionBlock: document.querySelector("#decision-block"),
+  decisionApproval: document.querySelector("#decision-approval"),
+  barAllow: document.querySelector("#bar-allow"),
+  barBlock: document.querySelector("#bar-block"),
+  barApproval: document.querySelector("#bar-approval"),
+  evidenceCost: document.querySelector("#evidence-cost"),
+  rulesetCount: document.querySelector("#ruleset-count"),
+  latestEvent: document.querySelector("#latest-event"),
+  budgetState: document.querySelector("#budget-state"),
+  budgetAvailableDetail: document.querySelector("#budget-available-detail"),
+  budgetBalance: document.querySelector("#budget-balance"),
+  budgetReserved: document.querySelector("#budget-reserved"),
+  budgetSpent: document.querySelector("#budget-spent"),
+  budgetDrift: document.querySelector("#budget-drift"),
+  approvalBadge: document.querySelector("#approval-badge"),
+  approvalList: document.querySelector("#approval-list"),
+  approvalsEmpty: document.querySelector("#approvals-empty"),
+  activityCount: document.querySelector("#activity-count"),
+  activityTableWrap: document.querySelector("#activity-table-wrap"),
+  activityBody: document.querySelector("#activity-body"),
+  activityEmpty: document.querySelector("#activity-empty"),
+};
+
+const compact = new Intl.NumberFormat(undefined, { notation: "compact" });
+const integer = new Intl.NumberFormat();
+const usd = new Intl.NumberFormat(undefined, {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+const view = {
+  requestId: "",
+  limit: 25,
+};
+
+function money(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? usd.format(amount) : "—";
+}
+
+function label(value) {
+  return String(value || "unknown")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function shortId(value) {
+  const text = String(value || "—");
+  return text.length > 20 ? `${text.slice(0, 12)}…${text.slice(-5)}` : text;
+}
+
+function time(value, includeDate = false) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return "—";
+  return parsed.toLocaleString([], includeDate
+    ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+    : { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function tone(value) {
+  if (["allow", "succeeded", "approved"].includes(value)) return "healthy";
+  if (["block", "blocked", "failed", "rejected", "expired"].includes(value)) {
+    return "danger";
+  }
+  if (["approval_required", "pending", "pending_approval", "executing"].includes(value)) {
+    return "signal";
+  }
+  return "neutral";
+}
+
+function statusChip(value) {
+  const chip = document.createElement("span");
+  chip.className = "status-chip";
+  chip.dataset.tone = tone(value);
+  chip.textContent = label(value);
+  return chip;
+}
+
+function setBar(element, value, total) {
+  const width = total > 0 ? Math.max(2, (value / total) * 100) : 0;
+  element.style.width = `${width}%`;
+}
+
+function renderIntegrity(snapshot) {
+  const integrity = snapshot.evidence_integrity;
+  elements.integrityOrb.classList.remove("is-loading", "is-broken");
+  elements.integrityOrb.classList.toggle("is-broken", !integrity.ok);
+  elements.integrityTitle.textContent = integrity.ok ? "Chain intact" : "Integrity alert";
+  elements.integrityDetail.textContent = integrity.ok
+    ? `${integer.format(integrity.count)} verified records`
+    : integrity.detail;
+  elements.updatedAt.textContent = time(snapshot.generated_at);
+}
+
+function renderEvidence(evidence) {
+  const available = evidence !== null;
+  elements.decisionBars.hidden = !available;
+  elements.withheldState.hidden = available;
+
+  if (!available) {
+    elements.recordCount.textContent = "—";
+    elements.requestCount.textContent = "Totals withheld until integrity is restored";
+    elements.evidenceCost.textContent = "—";
+    elements.rulesetCount.textContent = "—";
+    elements.latestEvent.textContent = "—";
+    return;
+  }
+
+  elements.recordCount.textContent = compact.format(evidence.record_count);
+  elements.requestCount.textContent = `${compact.format(evidence.request_count)} requests · ${compact.format(evidence.action_count)} actions`;
+  elements.evidenceFilterBadge.textContent = evidence.filtered_request_id
+    ? `Request ${shortId(evidence.filtered_request_id)}`
+    : "All requests";
+
+  const decisions = evidence.decisions;
+  const allowed = decisions.allow || 0;
+  const blocked = decisions.block || 0;
+  const approval = decisions.approval_required || 0;
+  const total = allowed + blocked + approval;
+  elements.decisionAllow.textContent = integer.format(allowed);
+  elements.decisionBlock.textContent = integer.format(blocked);
+  elements.decisionApproval.textContent = integer.format(approval);
+  setBar(elements.barAllow, allowed, total);
+  setBar(elements.barBlock, blocked, total);
+  setBar(elements.barApproval, approval, total);
+
+  elements.evidenceCost.textContent = money(evidence.total_cost_usd);
+  elements.rulesetCount.textContent = integer.format(evidence.ruleset_hashes.length);
+  elements.latestEvent.textContent = time(evidence.latest_event_at, true);
+}
+
+function renderApprovals(approvals) {
+  elements.approvalCount.textContent = compact.format(approvals.actionable_count);
+  elements.approvalBadge.textContent = integer.format(approvals.actionable_count);
+  elements.approvalDetail.textContent = approvals.overdue_pending_count
+    ? `${compact.format(approvals.overdue_pending_count)} overdue pending`
+    : "No overdue pending approvals";
+  elements.approvalList.replaceChildren();
+  elements.approvalsEmpty.hidden = approvals.actionable.length > 0;
+
+  for (const approval of approvals.actionable) {
+    const item = document.createElement("article");
+    item.className = "approval-item";
+
+    const identity = document.createElement("div");
+    const tool = document.createElement("strong");
+    tool.textContent = approval.tool_name || "Unknown tool";
+    const id = document.createElement("p");
+    id.textContent = shortId(approval.approval_id);
+    id.title = approval.approval_id;
+    identity.append(tool, id);
+
+    const status = document.createElement("div");
+    const statusLabel = document.createElement("p");
+    statusLabel.className = "approval-item-label";
+    statusLabel.textContent = "Status";
+    status.append(statusLabel, statusChip(approval.status));
+
+    const request = document.createElement("div");
+    const requestLabel = document.createElement("p");
+    requestLabel.className = "approval-item-label";
+    requestLabel.textContent = "Request / action";
+    const requestValue = document.createElement("strong");
+    requestValue.textContent = `${shortId(approval.request_id)} / ${shortId(approval.action_id)}`;
+    request.append(requestLabel, requestValue);
+
+    const expiry = document.createElement("div");
+    const expiryLabel = document.createElement("p");
+    expiryLabel.className = "approval-item-label";
+    expiryLabel.textContent = "Expires";
+    const expiryValue = document.createElement("strong");
+    expiryValue.textContent = approval.expires_at ? time(approval.expires_at, true) : "No expiry";
+    expiry.append(expiryLabel, expiryValue);
+
+    item.append(identity, status, request, expiry);
+    elements.approvalList.append(item);
+  }
+}
+
+function renderBudget(budget) {
+  const ready = budget.state === "ready";
+  const summary = budget.summary;
+  const drift = budget.drift;
+  elements.budgetState.textContent = ready ? "Ledger ready" : "Not initialized";
+  elements.availableBudget.textContent = ready ? money(summary.available_usd) : "Not set";
+  elements.budgetDetail.textContent = ready
+    ? `${money(summary.reserved_usd)} reserved`
+    : "Ledger not initialized";
+  elements.budgetAvailableDetail.textContent = money(summary.available_usd);
+  elements.budgetBalance.textContent = money(summary.balance_usd);
+  elements.budgetReserved.textContent = money(summary.reserved_usd);
+  elements.budgetSpent.textContent = money(summary.total_spent_usd);
+  elements.budgetDrift.textContent = `${money(drift.drift_usd)} · ${drift.drift_pct}%`;
+}
+
+function renderActivity(activity) {
+  elements.activityBody.replaceChildren();
+  elements.activityCount.textContent = `${integer.format(activity.length)} records`;
+  elements.activityTableWrap.hidden = activity.length === 0;
+  elements.activityEmpty.hidden = activity.length > 0;
+
+  for (const record of activity) {
+    const row = document.createElement("tr");
+    const timestamp = document.createElement("td");
+    timestamp.textContent = time(record.timestamp, true);
+    const tool = document.createElement("td");
+    tool.textContent = record.tool_name || "—";
+    const decision = document.createElement("td");
+    decision.append(statusChip(record.decision));
+    const result = document.createElement("td");
+    result.append(statusChip(record.result_status));
+    const identifiers = document.createElement("td");
+    identifiers.className = "mono-pair";
+    identifiers.textContent = `${shortId(record.request_id)} / ${shortId(record.action_id)}`;
+    identifiers.title = `${record.request_id} / ${record.action_id}`;
+    const cost = document.createElement("td");
+    cost.className = "number-cell";
+    cost.textContent = money(record.cost_usd);
+    row.append(timestamp, tool, decision, result, identifiers, cost);
+    elements.activityBody.append(row);
+  }
+}
+
+function renderSnapshot(snapshot) {
+  renderIntegrity(snapshot);
+  renderEvidence(snapshot.evidence);
+  renderApprovals(snapshot.approvals);
+  renderBudget(snapshot.budget);
+  renderActivity(snapshot.recent_activity);
+  elements.errorBanner.hidden = true;
+}
+
+function renderError(error) {
+  elements.integrityOrb.classList.remove("is-loading");
+  elements.integrityOrb.classList.add("is-broken");
+  elements.integrityTitle.textContent = "Snapshot unavailable";
+  elements.integrityDetail.textContent = "Command Core did not return a current view";
+  elements.errorDetail.textContent = error.message;
+  elements.errorBanner.hidden = false;
+}
+
+function snapshotUrl() {
+  const params = new URLSearchParams({ limit: String(view.limit) });
+  if (view.requestId) params.set("request_id", view.requestId);
+  return `/api/snapshot?${params}`;
+}
+
+async function refresh() {
+  elements.refresh.disabled = true;
+  elements.refresh.textContent = "Refreshing…";
+  elements.syncState.classList.remove("is-error");
+  elements.syncState.classList.add("is-syncing");
+  elements.syncLabel.textContent = "Reading Command Core";
+  try {
+    const response = await fetch(snapshotUrl(), {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "Command Core did not return a snapshot");
+    }
+    renderSnapshot(payload);
+    elements.syncLabel.textContent = view.requestId
+      ? `Focused on ${shortId(view.requestId)}`
+      : "Live local snapshot";
+  } catch (error) {
+    const safeError = error instanceof Error ? error : new Error("Unknown snapshot error");
+    renderError(safeError);
+    elements.syncState.classList.add("is-error");
+    elements.syncLabel.textContent = "Snapshot error";
+  } finally {
+    elements.syncState.classList.remove("is-syncing");
+    elements.refresh.disabled = false;
+    elements.refresh.textContent = "Refresh now";
+  }
+}
+
+elements.filterForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  view.requestId = elements.requestFilter.value.trim();
+  view.limit = Number(elements.recordLimit.value);
+  refresh();
+});
+
+elements.clearFilter.addEventListener("click", () => {
+  elements.requestFilter.value = "";
+  view.requestId = "";
+  refresh();
+});
+
+elements.refresh.addEventListener("click", refresh);
+window.setInterval(refresh, 15_000);
+refresh();

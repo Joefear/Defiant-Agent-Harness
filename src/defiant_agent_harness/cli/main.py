@@ -11,6 +11,7 @@ dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
 dah command               emit a read-only Command Core snapshot
+dah command-center        serve the local read-only Command Center UI
 dah mcp-proxy             govern one configured MCP stdio server
 dah mcp-http-proxy        govern one remote Streamable HTTP MCP server
 """
@@ -25,6 +26,7 @@ from pathlib import Path
 from ..adapters.mock import SCRIPTS, MockAgentAdapter
 from ..approvals.store import ApprovalStore
 from ..command.core import CommandCore, CommandError
+from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
 from ..contracts import HarnessRequest, Sensitivity
 from ..evidence.store import EvidenceStore
 from ..mcp.config import McpConfigError, load_proxy_config
@@ -261,6 +263,28 @@ def cmd_command(args) -> int:
     return 0 if snapshot["authoritative"] else 1
 
 
+def cmd_command_center(args) -> int:
+    try:
+        server = CommandCenterServer(
+            args.workdir,
+            port=args.port,
+            default_limit=args.limit,
+        )
+    except (CommandCenterError, OSError) as exc:
+        print(f"{RED}cannot start Command Center: {exc}{RESET}", file=sys.stderr)
+        return 1
+
+    url = command_center_url(server)
+    print(f"Defiant Command Center (read-only)\n{url}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nCommand Center stopped")
+    finally:
+        server.server_close()
+    return 0
+
+
 def cmd_mcp_proxy(args) -> int:
     command = list(args.command)
     if command[:1] == ["--"]:
@@ -411,6 +435,14 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--limit", type=int, default=10)
     command.add_argument("--request", default="")
     command.set_defaults(fn=cmd_command)
+
+    center = sub.add_parser(
+        "command-center",
+        help="serve the local read-only Defiant Command Center UI",
+    )
+    center.add_argument("--port", type=int, default=8765)
+    center.add_argument("--limit", type=int, default=25)
+    center.set_defaults(fn=cmd_command_center)
 
     mcp = sub.add_parser(
         "mcp-proxy",

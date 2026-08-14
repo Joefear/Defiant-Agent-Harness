@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.4.
+logs. A full trusted-memory/DKE system is not part of v0.5.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.4 is
+## What v0.5 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -58,11 +58,17 @@ and approval path. `PostToolUse` seals successful external execution into
 evidence. This closes the principal bypass exposed by runners whose built-in
 tools cannot be removed from their UI.
 
-v0.4 adds the first thin **Command Core** read model. It verifies the complete
+v0.4 added the first thin **Command Core** read model. It verifies the complete
 evidence chain and emits a safe operational snapshot containing decision and
 execution counts, actionable approvals, budget state, and bounded recent
 activity. It is read-only and deliberately withholds evidence aggregates when
-the chain is broken. The graphical Command Center still comes later.
+the chain is broken.
+
+v0.5 adds the first **Command Center** UI on top of that contract. It is a
+dependency-free local dashboard bound only to loopback, with live evidence,
+approval, budget, and recent-activity views plus request filtering. It has no
+mutation, execution, approval-decision, policy, authentication, DKE, or Spartan
+surface.
 
 ## Install
 
@@ -115,9 +121,14 @@ dah budget              # ledger, spend, and estimate drift
 dah policy              # loaded rules and the ruleset hash
 dah export <request_id> # a Command-ready evidence pack
 dah command             # read-only Command Core operational snapshot
+dah command-center      # local read-only Command Center UI
 ```
 
 `dah verify` is the one to try tampering with. Edit any line of `.dah/evidence.jsonl` and it will tell you which record broke and how.
+
+`dah --workdir .dah command-center` prints the exact loopback URL for the local
+dashboard. It never opens an execution or approval path; see
+`docs/command_center.md` for the boundary and options.
 
 ## Run the MCP stdio proxy
 
@@ -267,7 +278,7 @@ src/defiant_agent_harness/
   policy/               deterministic engine + YAML rule packs
   approvals/            durable, expiring, action-bound approval queue
   budgets/              exact-decimal, action-bound reservation and settlement
-  command/              read-only, integrity-gated operational projection
+  command/              integrity-gated projection + loopback-only local UI
   evidence/             append-only hash-chained JSONL store
   tools/                capability-gated registry + reference tools
   adapters/             adapter contract (MCP-shaped) + mock adapter
@@ -309,7 +320,8 @@ Durable approvals necessarily retain the full held action in the local
 directory accordingly; it is not an export artifact.
 
 See `docs/evidence_contract.md` for the field-by-field evidence contract and
-`docs/command_core.md` for the read-only snapshot contract.
+`docs/command_core.md` for the read-only snapshot contract. See
+`docs/command_center.md` for the local UI and HTTP boundary.
 
 ## Tests
 
@@ -317,8 +329,8 @@ See `docs/evidence_contract.md` for the field-by-field evidence contract and
 pytest
 ```
 
-180 offline tests plus one opt-in live integration test cover Command Core and
-both the MCP and native-hook boundaries. The suite includes a
+196 offline tests plus one opt-in live integration test cover Command Core,
+Command Center, and both the MCP and native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
 block, and evidence-chain verification. Native-hook tests cover exact approval
@@ -329,11 +341,11 @@ server to a test run.
 
 ## Status
 
-v0.4 — headless local control loop, generic MCP stdio and Streamable HTTP
-upstreams, preview native VS Code/Copilot and Codex hook adapters, and a
-read-only Command Core operational snapshot. Not a platform or dashboard.
+v0.5 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
+snapshot, and a loopback-only read-only Command Center UI. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
-`docs/architecture.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
-`docs/codex_runner.md`.
+`docs/architecture.md`, `docs/command_center.md`, `docs/streamable_http.md`,
+`docs/native_hooks.md`, and `docs/codex_runner.md`.

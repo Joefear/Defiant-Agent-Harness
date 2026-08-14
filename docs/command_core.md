@@ -1,8 +1,8 @@
 # Command Core
 
-Command Core is the read-only bridge between Defiant Agent Harness state and a
-future Defiant Command interface. It does not approve, execute, classify, or
-alter an action. Its only job is to validate local records and project a small
+Command Core is the read-only bridge between Defiant Agent Harness state and
+Defiant Command surfaces. It does not approve, execute, classify, or alter an
+action. Its only job is to validate local records and project a small
 operational snapshot.
 
 Run it with:
@@ -38,7 +38,8 @@ contains confidential operational data and must remain access-controlled.
 
 ## Boundary
 
-This is Command Core, not Command Center. It is a local, on-demand read model;
-there is no web server, dashboard, authentication system, multi-user identity,
-remote ingestion, or off-box evidence replication yet. A future UI can consume
-this contract without gaining an authority path into the harness.
+Command Core remains a local, on-demand read model with no server, execution,
+approval, or mutation behavior of its own. The loopback-only Command Center UI
+consumes this contract without gaining an authority path into the harness. See
+`command_center.md` for that local HTTP surface. Multi-user identity, remote
+ingestion, authentication, and off-box evidence replication remain absent.

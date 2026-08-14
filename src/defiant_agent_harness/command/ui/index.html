@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Defiant Command Center</title>
+    <meta
+      name="description"
+      content="A local, read-only operational view of Defiant Command Core."
+    >
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="/" aria-label="Defiant Command Center home">
+        <span class="wordmark-mark" aria-hidden="true">D</span>
+        <span>Defiant</span>
+      </a>
+      <div class="mode-pill"><span aria-hidden="true"></span> Read-only</div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Command Center / Local operations</p>
+          <h1 id="page-title">Operational truth.<br><em>Zero authority.</em></h1>
+          <p class="hero-copy">
+            A live projection of evidence, approvals, and budget state from
+            Command Core. This surface cannot execute or approve anything.
+          </p>
+        </div>
+        <div class="integrity-panel" id="integrity-panel" aria-live="polite">
+          <p class="panel-label">Evidence integrity</p>
+          <div class="integrity-state">
+            <span class="integrity-orb is-loading" id="integrity-orb"></span>
+            <div>
+              <strong id="integrity-title">Checking chain</strong>
+              <span id="integrity-detail">Reading local state…</span>
+            </div>
+          </div>
+          <dl class="panel-meta">
+            <div><dt>Source</dt><dd>Command Core</dd></div>
+            <div><dt>Updated</dt><dd id="updated-at">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Operational summary">
+        <article class="metric-card metric-card-dark">
+          <p>Evidence records</p>
+          <strong id="record-count">—</strong>
+          <span id="request-count">Loading operational state</span>
+        </article>
+        <article class="metric-card">
+          <p>Actionable approvals</p>
+          <strong id="approval-count">—</strong>
+          <span id="approval-detail">Read-only queue visibility</span>
+        </article>
+        <article class="metric-card metric-card-accent">
+          <p>Available budget</p>
+          <strong id="available-budget">—</strong>
+          <span id="budget-detail">Exact-decimal ledger</span>
+        </article>
+      </section>
+
+      <section class="control-rail" aria-label="Snapshot controls">
+        <form class="filter-form" id="filter-form">
+          <label for="request-filter">Request focus</label>
+          <div class="input-cluster">
+            <input
+              id="request-filter"
+              name="request_id"
+              type="text"
+              maxlength="256"
+              placeholder="All request IDs"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <select id="record-limit" name="limit" aria-label="Recent activity limit">
+              <option value="10">10 records</option>
+              <option value="25" selected>25 records</option>
+              <option value="50">50 records</option>
+              <option value="100">100 records</option>
+            </select>
+            <button type="submit">Apply view</button>
+            <button class="text-button" id="clear-filter" type="button">Clear</button>
+          </div>
+        </form>
+        <div class="sync-state" id="sync-state" aria-live="polite">
+          <span class="sync-dot"></span>
+          <span id="sync-label">Live local snapshot</span>
+        </div>
+      </section>
+
+      <div class="error-banner" id="error-banner" role="alert" hidden>
+        <strong>Command Core is unavailable.</strong>
+        <span id="error-detail">The last valid snapshot remains on screen.</span>
+      </div>
+
+      <section class="dashboard-grid" aria-label="Evidence and budget detail">
+        <article class="data-panel evidence-panel" id="evidence-panel">
+          <header class="panel-heading">
+            <div>
+              <p class="eyebrow">Evidence posture</p>
+              <h2>Decision mix</h2>
+            </div>
+            <span class="subtle-badge" id="evidence-filter-badge">All requests</span>
+          </header>
+
+          <div class="decision-bars" id="decision-bars">
+            <div class="bar-row">
+              <div><span>Allowed</span><strong id="decision-allow">0</strong></div>
+              <div class="bar-track"><span class="bar-allow" id="bar-allow"></span></div>
+            </div>
+            <div class="bar-row">
+              <div><span>Blocked</span><strong id="decision-block">0</strong></div>
+              <div class="bar-track"><span class="bar-block" id="bar-block"></span></div>
+            </div>
+            <div class="bar-row">
+              <div><span>Approval required</span><strong id="decision-approval">0</strong></div>
+              <div class="bar-track"><span class="bar-approval" id="bar-approval"></span></div>
+            </div>
+          </div>
+
+          <div class="withheld-state" id="withheld-state" hidden>
+            <span aria-hidden="true">!</span>
+            <div>
+              <strong>Evidence totals withheld</strong>
+              <p>Restore chain integrity before using evidence-derived aggregates.</p>
+            </div>
+          </div>
+
+          <footer class="panel-statline">
+            <div><span>Evidence cost</span><strong id="evidence-cost">$0.00</strong></div>
+            <div><span>Rulesets seen</span><strong id="ruleset-count">0</strong></div>
+            <div><span>Latest event</span><strong id="latest-event">—</strong></div>
+          </footer>
+        </article>
+
+        <article class="data-panel budget-panel">
+          <header class="panel-heading">
+            <div>
+              <p class="eyebrow">Budget ledger</p>
+              <h2>Capital position</h2>
+            </div>
+            <span class="subtle-badge" id="budget-state">Not initialized</span>
+          </header>
+
+          <div class="budget-available">
+            <span>Available now</span>
+            <strong id="budget-available-detail">$0.00</strong>
+          </div>
+
+          <dl class="budget-ledger">
+            <div><dt>Balance</dt><dd id="budget-balance">$0.00</dd></div>
+            <div><dt>Reserved</dt><dd id="budget-reserved">$0.00</dd></div>
+            <div><dt>Total spent</dt><dd id="budget-spent">$0.00</dd></div>
+            <div><dt>Estimate drift</dt><dd id="budget-drift">$0.00 · 0%</dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <section class="data-panel approvals-panel" aria-labelledby="approvals-title">
+        <header class="panel-heading">
+          <div>
+            <p class="eyebrow">Operator queue</p>
+            <h2 id="approvals-title">Actionable approvals</h2>
+          </div>
+          <div class="heading-aside">
+            <span class="count-badge" id="approval-badge">0</span>
+            <span>Visibility only</span>
+          </div>
+        </header>
+        <div class="approval-list" id="approval-list"></div>
+        <div class="empty-state" id="approvals-empty">
+          <span class="empty-mark" aria-hidden="true">✓</span>
+          <div>
+            <strong>No actionable approvals</strong>
+            <p>Pending, approved, or executing items will appear here.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-panel activity-panel" aria-labelledby="activity-title">
+        <header class="panel-heading">
+          <div>
+            <p class="eyebrow">Evidence stream</p>
+            <h2 id="activity-title">Recent activity</h2>
+          </div>
+          <span class="subtle-badge" id="activity-count">0 records</span>
+        </header>
+        <div class="table-wrap" id="activity-table-wrap" hidden>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Tool</th>
+                <th scope="col">Decision</th>
+                <th scope="col">Result</th>
+                <th scope="col">Request / action</th>
+                <th scope="col" class="number-cell">Cost</th>
+              </tr>
+            </thead>
+            <tbody id="activity-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="activity-empty">
+          <span class="empty-mark" aria-hidden="true">↗</span>
+          <div>
+            <strong>No activity in this view</strong>
+            <p>Evidence events will appear here without exposing payloads or targets.</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="boundary-note" aria-label="Command Center authority boundary">
+        <div class="boundary-index">01</div>
+        <div>
+          <p class="eyebrow">Authority boundary</p>
+          <h2>Observe the system.<br>Never operate it from here.</h2>
+        </div>
+        <p>
+          Command Center serves a one-way projection from local Command Core.
+          There are no mutation, approval, execution, policy, or authentication
+          endpoints on this surface.
+        </p>
+      </aside>
+
+      <footer class="page-footer">
+        <p>Local state only · Auto-refreshes every 15 seconds</p>
+        <button class="refresh-button" id="refresh-button" type="button">
+          Refresh now
+        </button>
+      </footer>
+    </main>
+  </body>
+</html>

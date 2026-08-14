@@ -125,7 +125,7 @@ endpoint. It supports JSON and finite SSE responses, optional MCP session ids,
 and session DELETE on shutdown. Remote authentication values are loaded from
 environment variables. See `streamable_http.md`.
 
-## Command Core read boundary in v0.4
+## Command read boundary in v0.5
 
 Command Core is a one-way, read-only projection over evidence, approvals, and
 budget state. It verifies the complete evidence chain before calculating any
@@ -134,9 +134,14 @@ but no evidence totals or recent activity, preventing altered records from
 silently becoming dashboard truth.
 
 The snapshot excludes targets, payload previews, decision inputs, and raw tool
-results. It has no execution, approval, policy, or mutation API. A future
-Command Center may consume this projection, but it must not turn the read model
-into a second authority path. See `command_core.md`.
+results. It has no execution, approval, policy, or mutation API.
+
+Command Center consumes that snapshot through a loopback-only HTTP server. The
+server is fixed to `127.0.0.1`, accepts only bounded read query parameters, and
+implements no mutating HTTP methods. Refresh and request filtering generate a
+new projection; they do not modify harness state. The packaged browser UI has
+no execution or approval controls and no external runtime dependencies. See
+`command_core.md` and `command_center.md`.
 
 Configured tool specs extend `known_tools` for that registry instance, and the
 extension participates in the ruleset hash. Side effect, conservative cost,
@@ -170,9 +175,11 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.4
+## What is deliberately absent from v0.5
 
-- **A dashboard.** v0.4 supplies Command Core's read-only snapshot, not a web UI.
+- **Remote or multi-user Command.** Command Center is a local loopback view, not
+  a hosted service. It has no authentication, remote ingestion, or identity
+  system and must not be exposed as one.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
 - **Spartan Swarm.** Multi-agent missions need a working single-agent gate first.
 - **Complete runner containment.** The preview native hook covers supported
