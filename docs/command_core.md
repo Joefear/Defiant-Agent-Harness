@@ -11,10 +11,10 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.2.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.3.0` and
 contains:
 
-- evidence-chain integrity and an overall `authoritative` flag;
+- evidence-chain and cross-store integrity plus an overall `authoritative` flag;
 - record, request, action, decision, and execution-status counts;
 - exact-decimal aggregate cost and observed ruleset hashes;
 - approval status counts, reconciliation-required state, and safe metadata for
@@ -32,12 +32,21 @@ aggregates. If verification fails, `authoritative` is false, the process exits
 non-zero, and both `evidence` and `recent_activity` are withheld. The integrity
 failure itself remains visible so an operator can investigate it.
 
+The `state_integrity` object is the sanitized `defiant.state_integrity` audit.
+It reports `healthy`, `recovery_required`, or `unsafe`, whether execution is
+safe, per-store status, counts, and issue codes. If approvals or budget state is
+malformed, Command Core marks the snapshot non-authoritative and substitutes an
+`invalid` projection for that store instead of hiding the diagnostic behind a
+server error. No repair is attempted.
+
 The projection deliberately excludes evidence targets, payload previews,
 decision inputs, and raw results. Actionable approval entries expose only ids,
 tool name, status, timestamps, and whether operator reconciliation is required
 or already in progress. Operator identity and notes remain excluded. The
 underlying local state directory still
 contains confidential operational data and must remain access-controlled.
+Issue output excludes targets, payload previews, reconciliation notes, and raw
+results.
 
 ## Boundary
 

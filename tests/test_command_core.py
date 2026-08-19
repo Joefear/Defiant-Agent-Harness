@@ -103,6 +103,8 @@ def test_snapshot_exposes_executing_approval_as_reconciliation_required(tmp_path
         approval_scope="external_send",
         reason="operator decision required",
         status="executing",
+        decided_by="operator-7",
+        decided_at="2025-12-31T23:59:00Z",
         expires_at="2026-01-01T00:00:00Z",
     )
     atomic_write_json(
@@ -158,7 +160,8 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.2.0"
+    assert output["schema_version"] == "0.3.0"
+    assert output["state_integrity"]["status"] == "healthy"
     assert output["authoritative"] is True
 
 

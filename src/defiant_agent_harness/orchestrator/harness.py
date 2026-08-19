@@ -22,6 +22,7 @@ from ..contracts import (
 from ..evidence.store import EvidenceStore
 from ..money import ZERO, MoneyLike
 from ..policy.engine import PolicyEngine
+from ..state_integrity import StateIntegrityAuditor
 from ..tools.registry import ToolContractError, ToolRegistry, ToolResult
 
 
@@ -71,6 +72,7 @@ class Harness:
         approvals: ApprovalStore,
         budget: BudgetLedger,
         adapter: AgentAdapter,
+        state_integrity: StateIntegrityAuditor,
         dry_run: bool = False,
     ):
         self.policy = policy
@@ -79,6 +81,7 @@ class Harness:
         self.approvals = approvals
         self.budget = budget
         self.adapter = adapter
+        self.state_integrity = state_integrity
         self.dry_run = dry_run
 
     # -- entry points -------------------------------------------------
@@ -142,6 +145,7 @@ class Harness:
         execution_key: str = "",
         external_execution: bool = False,
     ) -> ActionOutcome:
+        self.state_integrity.require_safe()
         if self.evidence.by_action(action.action_id):
             decision = self._control_decision(
                 action,
@@ -239,6 +243,7 @@ class Harness:
 
     def resume_external(self, approval_id: str) -> ActionOutcome:
         """Authorize an approved exact retry for execution by another runtime."""
+        self.state_integrity.require_safe()
         pending = self.approvals.get(approval_id)
         if pending is None:
             raise ApprovalError(f"unknown approval {approval_id}")
@@ -311,6 +316,7 @@ class Harness:
         approval_id: str = "",
     ) -> ActionOutcome:
         """Seal a successful result reported by a matching post-tool hook."""
+        self.state_integrity.require_safe()
         records = self.evidence.by_action(action.action_id)
         authorization = next(
             (
@@ -395,6 +401,7 @@ class Harness:
         decided_by: str,
         note: str = "",
     ) -> ActionOutcome:
+        self.state_integrity.require_safe()
         pending = self.approvals.get(approval_id)
         if pending is None:
             raise ApprovalError(f"unknown approval {approval_id}")
@@ -488,6 +495,7 @@ class Harness:
         return outcome
 
     def reconcile_expired_approvals(self) -> list[ActionOutcome]:
+        self.state_integrity.require_safe()
         outcomes: list[ActionOutcome] = []
         for approval in self.approvals.expire_due():
             try:
@@ -531,6 +539,7 @@ class Harness:
         same command after a crash completes the transaction without replaying
         the tool or charging twice.
         """
+        self.state_integrity.require_safe()
         terminal_outcomes = {
             ResultStatus.SUCCEEDED.value: "succeeded",
             ResultStatus.FAILED.value: "failed",
@@ -877,6 +886,7 @@ def build_harness(
             starting_balance_usd=starting_budget_usd,
         ),
         adapter=adapter,
+        state_integrity=StateIntegrityAuditor(state_root),
         dry_run=dry_run,
     )
     harness.reconcile_expired_approvals()
