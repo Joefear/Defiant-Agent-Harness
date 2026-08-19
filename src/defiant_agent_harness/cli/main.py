@@ -4,6 +4,7 @@ dah demo <scenario>       run a scripted scenario end to end
 dah pending               list actions waiting on a human
 dah approve <id>          approve one held action
 dah reject <id>           reject one held action
+dah reconcile <id>        resolve one crash-stranded executing approval
 dah history               show the evidence trail
 dah show <record_id>      show one evidence record in full
 dah verify                verify the evidence hash chain
@@ -50,6 +51,7 @@ STATUS_COLOR = {
     "rejected": RED,
     "failed": RED,
     "expired": RED,
+    "not_executed": RED,
     "pending_approval": YELLOW,
     "skipped": DIM,
 }
@@ -180,6 +182,27 @@ def cmd_decide(args, approved: bool) -> int:
     print(f"{args.approval_id} -> {_c(outcome.status.value)} by {args.user}")
     print(f"evidence {outcome.evidence_record_id}")
     print(f"detail   {outcome.detail}")
+    return 0
+
+
+def cmd_reconcile(args) -> int:
+    harness = _harness(args)
+    try:
+        reconciled = harness.reconcile_execution(
+            args.approval_id,
+            args.outcome,
+            args.operator,
+            args.note,
+        )
+    except Exception as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(
+        f"{args.approval_id} -> {_c(reconciled.status.value)} "
+        f"reconciled by {args.operator}"
+    )
+    print(f"evidence {reconciled.evidence_record_id}")
+    print(f"detail   {reconciled.detail}")
     return 0
 
 
@@ -405,6 +428,20 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("approval_id")
     r.add_argument("--note", default="")
     r.set_defaults(fn=lambda args: cmd_decide(args, False))
+
+    reconcile = sub.add_parser(
+        "reconcile",
+        help="terminally resolve a crash-stranded executing approval",
+    )
+    reconcile.add_argument("approval_id")
+    reconcile.add_argument(
+        "--outcome",
+        required=True,
+        choices=["succeeded", "failed", "not_executed"],
+    )
+    reconcile.add_argument("--operator", required=True)
+    reconcile.add_argument("--note", required=True)
+    reconcile.set_defaults(fn=cmd_reconcile)
 
     h = sub.add_parser("history")
     h.add_argument("--limit", type=int, default=25)

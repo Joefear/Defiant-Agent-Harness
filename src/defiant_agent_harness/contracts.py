@@ -123,6 +123,7 @@ class ResultStatus(str, enum.Enum):
     PENDING_APPROVAL = "pending_approval"
     EXPIRED = "expired"
     REJECTED = "rejected"
+    NOT_EXECUTED = "not_executed"
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +459,10 @@ class EvidenceRecord:
     cost_usd: Decimal = ZERO
     budget_remaining_usd: Decimal | None = None
     dry_run: bool = False
+    reconciliation_outcome: str = ""
+    reconciled_by: str = ""
+    reconciled_at: str | None = None
+    reconciliation_note: str = ""
     # chain
     previous_record_hash: str = ""
     record_hash: str = ""
@@ -480,6 +485,8 @@ class EvidenceRecord:
         self.timestamp = _utc_timestamp(self.timestamp, "timestamp")
         if self.approved_at is not None:
             self.approved_at = _utc_timestamp(self.approved_at, "approved_at")
+        if self.reconciled_at is not None:
+            self.reconciled_at = _utc_timestamp(self.reconciled_at, "reconciled_at")
 
     def body(self) -> dict:
         """Everything except the record's own hash -- the hashed surface."""

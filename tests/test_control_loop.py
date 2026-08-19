@@ -18,6 +18,7 @@ from defiant_agent_harness.contracts import (
     SideEffect,
     Trust,
 )
+from defiant_agent_harness.cli.main import build_parser, main
 from defiant_agent_harness.orchestrator.harness import build_harness
 
 
@@ -175,6 +176,141 @@ def test_rejected_action_releases_reservation_after_restart(tmp_path):
     resumed = reopened.resume(pending.approval_id, False, "sam")
     assert resumed.status is ResultStatus.REJECTED
     assert reopened.budget.reservation_for(pending.action.action_id) == 0
+
+
+def test_operator_reconciles_stranded_execution_with_structured_evidence(tmp_path):
+    h, _, [pending] = run(tmp_path, "overspend", budget=500)
+    h.approvals.decide(pending.approval_id, True, "reviewer", "approved")
+    h.approvals.begin_execution(pending.approval_id, pending.action)
+
+    reconciled = h.reconcile_execution(
+        pending.approval_id,
+        "failed",
+        "operator-7",
+        "provider accepted request but returned no result",
+    )
+
+    stored = h.approvals.get(pending.approval_id)
+    evidence = h.evidence.get(reconciled.evidence_record_id)
+    assert reconciled.status is ResultStatus.FAILED
+    assert stored.status == "consumed"
+    assert stored.reconciliation_outcome == "failed"
+    assert stored.reconciled_by == "operator-7"
+    assert stored.reconciliation_completed_at
+    assert h.budget.reservation_for(pending.action.action_id) == 0
+    assert h.budget.summary()["total_spent_usd"] == "250"
+    assert evidence["reconciliation_outcome"] == "failed"
+    assert evidence["reconciled_by"] == "operator-7"
+    assert evidence["reconciliation_note"]
+
+
+def test_not_executed_operator_outcome_releases_stranded_reservation(tmp_path):
+    h, _, [pending] = run(tmp_path, "overspend", budget=500)
+    h.approvals.decide(pending.approval_id, True, "reviewer")
+    h.approvals.begin_execution(pending.approval_id, pending.action)
+
+    reconciled = h.reconcile_execution(
+        pending.approval_id,
+        "not_executed",
+        "operator-7",
+        "worker crashed before dispatch",
+    )
+
+    assert reconciled.status is ResultStatus.NOT_EXECUTED
+    assert h.budget.summary()["available_usd"] == "500"
+    assert h.budget.summary()["total_spent_usd"] == "0"
+
+
+def test_reconciliation_finishes_crash_after_terminal_evidence_without_replay(
+    tmp_path,
+):
+    h, _, [pending] = run(tmp_path, "overspend", budget=500)
+
+    def crash_before_consumption(*_args, **_kwargs):
+        raise RuntimeError("simulated crash before approval consumption")
+
+    h.approvals.mark_consumed = crash_before_consumption
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        h.resume(pending.approval_id, True, "reviewer", "approved")
+
+    assert h.approvals.get(pending.approval_id).status == "executing"
+    before_records = len(h.evidence.records())
+    before_spend = h.budget.summary()["total_spent_usd"]
+    reopened = build_harness(tmp_path, MockAgentAdapter())
+    with pytest.raises(Exception, match="conflicts"):
+        reopened.reconcile_execution(
+            pending.approval_id, "failed", "operator-7", "checked provider logs"
+        )
+    reconciled = reopened.reconcile_execution(
+        pending.approval_id, "succeeded", "operator-7", "checked provider logs"
+    )
+
+    assert reconciled.status is ResultStatus.SUCCEEDED
+    assert len(reopened.evidence.records()) == before_records
+    assert reopened.budget.summary()["total_spent_usd"] == before_spend
+    assert reopened.approvals.get(pending.approval_id).status == "consumed"
+
+
+def test_reconciliation_retry_finishes_crash_after_budget_without_double_charge(
+    tmp_path,
+):
+    h, _, [pending] = run(tmp_path, "overspend", budget=500)
+    h.approvals.decide(pending.approval_id, True, "reviewer")
+    h.approvals.begin_execution(pending.approval_id, pending.action)
+
+    def crash_before_evidence(*_args, **_kwargs):
+        raise RuntimeError("simulated crash before reconciliation evidence")
+
+    h._record = crash_before_evidence
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        h.reconcile_execution(
+            pending.approval_id, "failed", "operator-7", "provider outcome unknown"
+        )
+    assert h.budget.summary()["total_spent_usd"] == "250"
+
+    reopened = build_harness(tmp_path, MockAgentAdapter())
+    reconciled = reopened.reconcile_execution(
+        pending.approval_id, "failed", "operator-7", "provider outcome unknown"
+    )
+
+    assert reconciled.status is ResultStatus.FAILED
+    assert reopened.budget.summary()["total_spent_usd"] == "250"
+    assert reopened.approvals.get(pending.approval_id).status == "consumed"
+
+
+def test_reconcile_cli_requires_and_records_explicit_operator_outcome_and_note(
+    tmp_path, capsys
+):
+    h, _, [pending] = run(tmp_path, "overspend", budget=500)
+    h.approvals.decide(pending.approval_id, True, "reviewer")
+    h.approvals.begin_execution(pending.approval_id, pending.action)
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["--workdir", str(tmp_path), "reconcile", pending.approval_id]
+        )
+
+    exit_code = main(
+        [
+            "--workdir",
+            str(tmp_path),
+            "reconcile",
+            pending.approval_id,
+            "--outcome",
+            "not_executed",
+            "--operator",
+            "operator-7",
+            "--note",
+            "worker never dispatched",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "reconciled by operator-7" in capsys.readouterr().out
+    stored = h.approvals.get(pending.approval_id)
+    assert stored.reconciliation_outcome == "not_executed"
+    assert stored.reconciled_by == "operator-7"
+    assert stored.reconciliation_note == "worker never dispatched"
 
 
 def test_adapter_cannot_downgrade_send_email_to_no_side_effect(tmp_path):

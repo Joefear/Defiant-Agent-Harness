@@ -30,6 +30,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - allow, block, and approval-required decision counts;
 - exact-decimal evidence cost and observed ruleset count;
 - actionable approval metadata without payloads or targets;
+- a prominent reconciliation-required alert for approvals stranded in
+  `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;
 - bounded recent activity without payloads, targets, decision inputs, or raw
   tool results;

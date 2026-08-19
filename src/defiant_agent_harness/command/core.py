@@ -19,7 +19,7 @@ from ..money import ZERO, money, money_text
 from ..persistence import PersistenceError, read_json
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.1.0"
+SNAPSHOT_VERSION = "0.2.0"
 
 
 class CommandError(RuntimeError):
@@ -38,6 +38,7 @@ class CommandCore:
 
         try:
             integrity, evidence, recent = self._evidence(limit, request_id)
+            approvals = self._approvals()
             return {
                 "schema_name": SNAPSHOT_SCHEMA,
                 "schema_version": SNAPSHOT_VERSION,
@@ -50,7 +51,10 @@ class CommandCore:
                     "detail": integrity.detail,
                 },
                 "evidence": evidence,
-                "approvals": self._approvals(),
+                "reconciliation_required": bool(
+                    approvals["reconciliation_required_count"]
+                ),
+                "approvals": approvals,
                 "budget": self._budget(),
                 "recent_activity": recent,
             }
@@ -142,6 +146,7 @@ class CommandCore:
                 "total_count": 0,
                 "actionable_count": 0,
                 "overdue_pending_count": 0,
+                "reconciliation_required_count": 0,
                 "statuses": dict(status_counts),
                 "actionable": [],
             }
@@ -174,6 +179,14 @@ class CommandCore:
                         "status": approval.status,
                         "created_at": approval.created_at,
                         "expires_at": approval.expires_at or None,
+                        "reconciliation_required": approval.status == "executing",
+                        "reconciliation_state": (
+                            "in_progress"
+                            if approval.reconciliation_outcome
+                            else "required"
+                            if approval.status == "executing"
+                            else "none"
+                        ),
                     }
                 )
 
@@ -183,6 +196,7 @@ class CommandCore:
             "total_count": len(raw_approvals),
             "actionable_count": len(actionable),
             "overdue_pending_count": overdue,
+            "reconciliation_required_count": status_counts["executing"],
             "statuses": dict(status_counts),
             "actionable": actionable,
         }

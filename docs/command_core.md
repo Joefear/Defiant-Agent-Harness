@@ -11,13 +11,14 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.1.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.2.0` and
 contains:
 
 - evidence-chain integrity and an overall `authoritative` flag;
 - record, request, action, decision, and execution-status counts;
 - exact-decimal aggregate cost and observed ruleset hashes;
-- approval status counts plus safe metadata for currently actionable items;
+- approval status counts, reconciliation-required state, and safe metadata for
+  currently actionable items;
 - budget balance, reservations, spend, and estimate drift;
 - a bounded list of recent operational events.
 
@@ -33,7 +34,9 @@ failure itself remains visible so an operator can investigate it.
 
 The projection deliberately excludes evidence targets, payload previews,
 decision inputs, and raw results. Actionable approval entries expose only ids,
-tool name, status, and timestamps. The underlying local state directory still
+tool name, status, timestamps, and whether operator reconciliation is required
+or already in progress. Operator identity and notes remain excluded. The
+underlying local state directory still
 contains confidential operational data and must remain access-controlled.
 
 ## Boundary

@@ -91,6 +91,36 @@ def test_snapshot_aggregates_evidence_approvals_and_budget(tmp_path):
     assert "target" not in snapshot["recent_activity"][0]
 
 
+def test_snapshot_exposes_executing_approval_as_reconciliation_required(tmp_path):
+    executing = PendingApproval(
+        action_id="act_stranded",
+        request_id="req_stranded",
+        tool_name="send_email",
+        target="recipient@example.test",
+        payload_hash="sha256:payload",
+        authorization_hash="sha256:authorization",
+        payload_preview="sensitive",
+        approval_scope="external_send",
+        reason="operator decision required",
+        status="executing",
+        expires_at="2026-01-01T00:00:00Z",
+    )
+    atomic_write_json(
+        tmp_path / "approvals.json",
+        {executing.approval_id: asdict(executing)},
+    )
+
+    snapshot = CommandCore(tmp_path).snapshot()
+
+    assert snapshot["reconciliation_required"] is True
+    assert snapshot["approvals"]["reconciliation_required_count"] == 1
+    item = snapshot["approvals"]["actionable"][0]
+    assert item["reconciliation_required"] is True
+    assert item["reconciliation_state"] == "required"
+    assert "target" not in item
+    assert "reconciliation_note" not in item
+
+
 def test_request_filter_limits_aggregates_and_recent_activity(tmp_path):
     evidence = EvidenceStore(tmp_path / "evidence.jsonl")
     evidence.append(
@@ -128,7 +158,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.1.0"
+    assert output["schema_version"] == "0.2.0"
     assert output["authoritative"] is True
 
 

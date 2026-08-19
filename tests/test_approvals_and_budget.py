@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from defiant_agent_harness.approvals.store import ApprovalError, ApprovalStore
-from defiant_agent_harness.budgets.ledger import BudgetLedger
+from defiant_agent_harness.budgets.ledger import BudgetError, BudgetLedger
 from defiant_agent_harness.contracts import ProposedAction, SideEffect
 
 
@@ -109,6 +109,47 @@ def test_expired_approvals_drop_out_of_pending(tmp_path):
     assert s.list_pending() == []
 
 
+def test_reconciliation_requires_executing_state_and_explicit_operator_input(tmp_path):
+    s = ApprovalStore(tmp_path / "a.json")
+    pending = s.create(action(), "needs review", "scope", ["r1"])
+
+    with pytest.raises(ApprovalError, match="not executing"):
+        s.begin_reconciliation(pending.approval_id, "failed", "sam", "checked")
+
+    s.decide(pending.approval_id, True, "reviewer")
+    s.begin_execution(pending.approval_id, pending.held_action())
+    with pytest.raises(ApprovalError, match="reconciled_by"):
+        s.begin_reconciliation(pending.approval_id, "failed", "", "checked")
+    with pytest.raises(ApprovalError, match="note"):
+        s.begin_reconciliation(pending.approval_id, "failed", "sam", " ")
+    with pytest.raises(ApprovalError, match="outcome"):
+        s.begin_reconciliation(pending.approval_id, "unknown", "sam", "checked")
+
+
+def test_reconciliation_intent_is_durable_idempotent_and_immutable(tmp_path):
+    path = tmp_path / "a.json"
+    s = ApprovalStore(path)
+    pending = s.create(action(), "needs review", "scope", ["r1"])
+    s.decide(pending.approval_id, True, "reviewer")
+    s.begin_execution(pending.approval_id, pending.held_action())
+
+    started = s.begin_reconciliation(
+        pending.approval_id, "failed", "operator-7", "upstream timed out"
+    )
+    reopened = ApprovalStore(path)
+    repeated = reopened.begin_reconciliation(
+        pending.approval_id, "failed", "operator-7", "upstream timed out"
+    )
+
+    assert repeated.reconciliation_started_at == started.reconciliation_started_at
+    with pytest.raises(ApprovalError, match="different operator input"):
+        reopened.begin_reconciliation(
+            pending.approval_id, "succeeded", "operator-7", "upstream timed out"
+        )
+    with pytest.raises(ApprovalError, match="reconciliation in progress"):
+        reopened.mark_consumed(pending.approval_id, "evd_unsafe")
+
+
 # -- budget -----------------------------------------------------------------
 
 
@@ -197,3 +238,79 @@ def test_exact_decimal_arithmetic_avoids_binary_float_drift(tmp_path):
     assert b.balance_usd == Decimal("0.20")
     b.settle("0.10", "req", "a")
     assert b.balance_usd == Decimal("0.20")
+
+
+@pytest.mark.parametrize("outcome", ["succeeded", "failed"])
+def test_uncertain_execution_charges_full_reservation_conservatively(tmp_path, outcome):
+    b = BudgetLedger(tmp_path / "b.json", starting_balance_usd="10")
+    b.reserve("6", "req", "act")
+
+    result = b.reconcile_reservation(
+        "6", "req", "act", outcome, "operator-7", "verified upstream logs"
+    )
+
+    assert result["charged_usd"] == "6"
+    assert result["disposition"] == "reservation_charged"
+    assert b.summary()["balance_usd"] == "4"
+    assert b.summary()["reserved_usd"] == "0"
+
+
+def test_not_executed_reconciliation_is_the_only_path_that_releases(tmp_path):
+    b = BudgetLedger(tmp_path / "b.json", starting_balance_usd="10")
+    b.reserve("6", "req", "act")
+
+    result = b.reconcile_reservation(
+        "6", "req", "act", "not_executed", "operator-7", "worker never started"
+    )
+
+    assert result["released_usd"] == "6"
+    assert b.summary()["available_usd"] == "10"
+    assert b.summary()["total_spent_usd"] == "0"
+
+
+def test_budget_reconciliation_retry_cannot_double_charge_or_change_the_story(
+    tmp_path,
+):
+    b = BudgetLedger(tmp_path / "b.json", starting_balance_usd="10")
+    b.reserve("6", "req", "act")
+    first = b.reconcile_reservation(
+        "6", "req", "act", "succeeded", "operator-7", "provider confirms send"
+    )
+    repeated = b.reconcile_reservation(
+        "6", "req", "act", "succeeded", "operator-7", "provider confirms send"
+    )
+
+    assert repeated == first
+    assert b.summary()["balance_usd"] == "4"
+    with pytest.raises(BudgetError, match="different input"):
+        b.reconcile_reservation(
+            "6", "req", "act", "failed", "operator-7", "provider confirms send"
+        )
+
+
+def test_missing_stranded_reservation_is_charged_instead_of_assumed_free(tmp_path):
+    b = BudgetLedger(tmp_path / "b.json", starting_balance_usd="10")
+
+    result = b.reconcile_reservation(
+        "6", "req", "act", "succeeded", "operator-7", "legacy approval recovery"
+    )
+
+    assert result["disposition"] == "missing_reservation_charged"
+    assert b.summary()["balance_usd"] == "4"
+
+
+def test_reconciliation_fails_closed_on_conflicting_live_and_terminal_budget_state(
+    tmp_path,
+):
+    b = BudgetLedger(tmp_path / "b.json", starting_balance_usd="10")
+    b.reserve("2", "req", "act")
+    b.settle("1", "req", "act")
+    b.reserve("2", "req", "act")
+
+    with pytest.raises(BudgetError, match="conflicts"):
+        b.reconcile_reservation(
+            "2", "req", "act", "succeeded", "operator-7", "corrupt legacy state"
+        )
+
+    assert b.reservation_for("act") == Decimal("2")
+    assert b.summary()["total_spent_usd"] == "1"
