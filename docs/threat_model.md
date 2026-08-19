@@ -64,6 +64,12 @@ Preflight uses exact decimals. Reservations are action- and request-bound,
 negative/non-finite values are rejected, duplicate reservations fail, and
 settlement requires the original reservation.
 
+Crash-stranded executions never replay automatically. Reconciliation requires
+an explicit outcome, operator identity, and note. Confirmed or possibly
+attempted executions consume the full reservation when actual cost is unknown;
+only an explicit `not_executed` outcome releases it. Exact retries are
+idempotent, while a changed outcome, identity, or note is rejected.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

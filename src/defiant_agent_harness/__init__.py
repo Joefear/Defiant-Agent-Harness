@@ -29,7 +29,7 @@ from .contracts import (
 )
 from .orchestrator.harness import Harness, build_harness
 
-__version__ = "0.3.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "CapabilityGrant",

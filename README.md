@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.5.
+logs. A full trusted-memory/DKE system is not part of v0.6.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.5 is
+## What v0.6 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -69,6 +69,15 @@ dependency-free local dashboard bound only to loopback, with live evidence,
 approval, budget, and recent-activity views plus request filtering. It has no
 mutation, execution, approval-decision, policy, authentication, DKE, or Spartan
 surface.
+
+v0.6 begins production hardening with an explicit recovery path for approvals
+stranded in `executing` after a process crash. Automatic replay remains
+forbidden. An operator must inspect the external system, select `succeeded`,
+`failed`, or `not_executed`, and supply both identity and a non-empty note. The
+intent, conservative budget disposition, evidence, and final approval state are
+individually durable and idempotent across repeated crashes. Command Core and
+Command Center report the required intervention, but Command Center remains
+strictly read-only.
 
 ## Install
 
@@ -109,6 +118,19 @@ dah demo read_statement              # allowed and logged: no side effect
 dah --policy merchant_services demo prohibited_claim   # blocked: guaranteed-savings language
 dah --policy legal_intake demo legal_advice            # blocked: advice during intake
 ```
+
+If `dah pending` reports an approval in `executing`, first confirm that no
+executor is still alive and inspect the real external outcome. Then reconcile
+it from the operator CLI:
+
+```bash
+dah --workdir .dah reconcile apr_... \
+  --outcome not_executed \
+  --operator operator-7 \
+  --note "worker crashed before dispatch"
+```
+
+See `docs/approval_reconciliation.md` before using `succeeded` or `failed`.
 
 Then look at what happened:
 
@@ -319,7 +341,8 @@ Durable approvals necessarily retain the full held action in the local
 `approvals.json` state file so it can resume after a restart. Protect the state
 directory accordingly; it is not an export artifact.
 
-See `docs/evidence_contract.md` for the field-by-field evidence contract and
+See `docs/evidence_contract.md` for the field-by-field evidence contract,
+`docs/approval_reconciliation.md` for crash recovery, and
 `docs/command_core.md` for the read-only snapshot contract. See
 `docs/command_center.md` for the local UI and HTTP boundary.
 
@@ -329,7 +352,7 @@ See `docs/evidence_contract.md` for the field-by-field evidence contract and
 pytest
 ```
 
-196 offline tests plus one opt-in live integration test cover Command Core,
+210 offline tests plus one opt-in live integration test cover Command Core,
 Command Center, and both the MCP and native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
@@ -341,11 +364,13 @@ server to a test run.
 
 ## Status
 
-v0.5 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.6 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
-snapshot, and a loopback-only read-only Command Center UI. Not a hosted platform.
+snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
+reconciliation for uncertain executions. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
-`docs/architecture.md`, `docs/command_center.md`, `docs/streamable_http.md`,
-`docs/native_hooks.md`, and `docs/codex_runner.md`.
+`docs/architecture.md`, `docs/approval_reconciliation.md`,
+`docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
+`docs/codex_runner.md`.

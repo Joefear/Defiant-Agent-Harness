@@ -162,6 +162,24 @@ The boundary is transport control, not containment. It says nothing about
 native tools, direct HTTP, subprocesses, filesystem access outside an MCP
 server, or a runner that connects directly to the upstream server.
 
+## Crash recovery boundary in v0.6
+
+An approval moves to `executing` before a governed tool can run. If the process
+dies after that write, Defiant cannot distinguish "never dispatched" from
+"completed but not recorded" and continues to refuse automatic replay.
+
+The v0.6 operator reconciliation path is a separate CLI mutation, not a Command
+Center feature. It first validates any terminal evidence already written, then
+durably binds an explicit outcome, operator identity, and non-empty note to the
+approval. Budget reconciliation, evidence append, and final consumption each
+have an idempotent durable marker or lookup. Repeating the exact command after a
+crash completes remaining steps; changing the story is refused.
+
+When actual cost is unknown, `succeeded` and `failed` charge the full durable
+reservation. Only `not_executed` releases a live reservation. A missing
+reservation with no prior debit is charged at the approval estimate rather than
+silently treated as free. See `approval_reconciliation.md`.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -175,7 +193,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.5
+## What is deliberately absent from v0.6
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -222,7 +240,7 @@ successes. See `native_hooks.md`.
   back to normal runner permissions when a hook times out. Hook errors are
   converted to explicit deny responses, but the platform timeout rule requires
   an outer OS sandbox for production.
-- **An `executing` approval requires reconciliation after a crash.** The store
-  marks execution intent before calling a tool. If the process dies in that
-  window, automatic replay is refused because the prior side effect may have
-  occurred. An operator must reconcile the evidence and external system.
+- **Reconciliation does not discover the truth automatically.** The operator
+  must inspect the external provider or target system and assert the outcome.
+  v0.6 makes that assertion explicit, durable, conservative, and auditable; it
+  cannot prove that the human conclusion was correct.

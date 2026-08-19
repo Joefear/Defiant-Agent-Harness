@@ -387,6 +387,22 @@ h1 em {
   display: none;
 }
 
+.reconciliation-banner {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgb(194 79 35 / 45%);
+  background: var(--signal-soft);
+  color: #713016;
+  font-size: 12px;
+}
+
+.reconciliation-banner[hidden] {
+  display: none;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
@@ -652,6 +668,10 @@ h1 em {
 
 .approval-item:last-child {
   border-bottom: 0;
+}
+
+.approval-item.is-reconciliation-required {
+  box-shadow: inset 4px 0 0 var(--signal);
 }
 
 .approval-item p,

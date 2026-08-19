@@ -33,12 +33,16 @@ Format is JSON Lines: one record per line, append-only, UTF-8. A consultant can 
 | `authorization_hash` | string | binds the complete policy-relevant action |
 | `payload_trust` | enum | `trusted`, `derived`, `untrusted` |
 | `input_refs` | object[] | provenance of the material behind the payload |
-| `result_status` | enum | `succeeded`, `failed`, `blocked`, `skipped`, `pending_approval`, `expired`, `rejected` |
+| `result_status` | enum | `succeeded`, `failed`, `not_executed`, `blocked`, `skipped`, `pending_approval`, `expired`, `rejected` |
 | `result_summary` | string | short human summary |
 | `output_hash` | string | `sha256:` over the tool output |
 | `cost_usd` | decimal string | actual cost of this action |
 | `budget_remaining_usd` | decimal string | available balance after this action |
 | `dry_run` | bool | whether the effect was simulated |
+| `reconciliation_outcome` | string | explicit operator outcome for an uncertain execution, otherwise empty |
+| `reconciled_by` | string | asserted operator identity for reconciliation, otherwise empty |
+| `reconciled_at` | RFC3339 / null | when reconciliation intent was durably recorded |
+| `reconciliation_note` | string | required operator explanation, otherwise empty |
 | `previous_record_hash` | string | hash of the preceding record |
 | `record_hash` | string | `sha256:` over every other field |
 

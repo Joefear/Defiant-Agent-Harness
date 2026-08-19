@@ -96,10 +96,12 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert status == head_status == css_status == js_status == 200
     assert b"Operational truth" in body
     assert b"Actionable approvals" in body
+    assert b"Operator reconciliation required" in body
     assert int(head_headers["Content-Length"]) == len(body)
     assert head_body == b""
     assert b".dashboard-grid" in css
     assert b"/api/snapshot" in javascript
+    assert b"reconciliation_required_count" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

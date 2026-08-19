@@ -27,6 +27,12 @@ APPROVAL_STATUSES = {
     "consumed",
 }
 
+RECONCILIATION_OUTCOMES = {
+    "succeeded",
+    "failed",
+    "not_executed",
+}
+
 
 def _parse(ts: str) -> datetime:
     try:
@@ -65,6 +71,11 @@ class PendingApproval:
     consumed_at: str | None = None
     execution_owner: str = ""
     execution_key: str = ""
+    reconciliation_outcome: str = ""
+    reconciled_by: str = ""
+    reconciliation_note: str = ""
+    reconciliation_started_at: str | None = None
+    reconciliation_completed_at: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in APPROVAL_STATUSES:
@@ -77,6 +88,46 @@ class PendingApproval:
             raise ApprovalError(
                 "execution_owner and execution_key must be supplied together"
             )
+        reconciliation_values = (
+            self.reconciliation_outcome,
+            self.reconciled_by,
+            self.reconciliation_note,
+            self.reconciliation_started_at,
+        )
+        if any(reconciliation_values):
+            if self.reconciliation_outcome not in RECONCILIATION_OUTCOMES:
+                raise ApprovalError(
+                    f"invalid reconciliation outcome: {self.reconciliation_outcome!r}"
+                )
+            if (
+                not isinstance(self.reconciled_by, str)
+                or not self.reconciled_by.strip()
+            ):
+                raise ApprovalError("reconciled_by must be non-empty")
+            if (
+                not isinstance(self.reconciliation_note, str)
+                or not self.reconciliation_note.strip()
+            ):
+                raise ApprovalError("reconciliation_note must be non-empty")
+            if not self.reconciliation_started_at:
+                raise ApprovalError("reconciliation_started_at must be present")
+            _parse(self.reconciliation_started_at)
+            if self.status not in {"executing", "consumed"}:
+                raise ApprovalError(
+                    "reconciliation intent requires executing or consumed status"
+                )
+        if self.reconciliation_completed_at:
+            if not all(reconciliation_values):
+                raise ApprovalError(
+                    "completed reconciliation is missing its durable intent"
+                )
+            _parse(self.reconciliation_completed_at)
+            if self.status != "consumed" or not self.execution_record_id:
+                raise ApprovalError(
+                    "completed reconciliation requires consumed status and evidence"
+                )
+        elif self.status == "consumed" and self.reconciliation_outcome:
+            raise ApprovalError("consumed reconciliation is missing completion time")
         self.reserved_usd = money_text(
             money(self.reserved_usd, field_name="reserved_usd")
         )
@@ -377,9 +428,101 @@ class ApprovalStore:
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executing"
                 )
+            if approval.reconciliation_outcome:
+                raise ApprovalError(
+                    f"approval {approval_id} has operator reconciliation in progress"
+                )
             approval.status = "consumed"
             approval.execution_record_id = execution_record_id
             approval.consumed_at = utc_now()
+            data[approval_id] = asdict(approval)
+            self._write_all(data)
+            return approval
+
+    def begin_reconciliation(
+        self,
+        approval_id: str,
+        outcome: str,
+        reconciled_by: str,
+        note: str,
+    ) -> PendingApproval:
+        """Persist an idempotent operator decision before touching other stores."""
+        if outcome not in RECONCILIATION_OUTCOMES:
+            raise ApprovalError(
+                "outcome must be one of: " + ", ".join(sorted(RECONCILIATION_OUTCOMES))
+            )
+        if not isinstance(reconciled_by, str) or not reconciled_by.strip():
+            raise ApprovalError("reconciled_by must be non-empty")
+        if not isinstance(note, str) or not note.strip():
+            raise ApprovalError("reconciliation note must be non-empty")
+        reconciled_by = reconciled_by.strip()
+        note = note.strip()
+
+        with exclusive_file_lock(self.path):
+            data = self._read_all()
+            raw = data.get(approval_id)
+            if raw is None:
+                raise ApprovalError(f"unknown approval {approval_id}")
+            approval = PendingApproval(**raw)
+            supplied = (outcome, reconciled_by, note)
+            existing = (
+                approval.reconciliation_outcome,
+                approval.reconciled_by,
+                approval.reconciliation_note,
+            )
+            if approval.reconciliation_outcome:
+                if existing != supplied:
+                    raise ApprovalError(
+                        "reconciliation already started with different operator input"
+                    )
+                if approval.status not in {"executing", "consumed"}:
+                    raise ApprovalError(
+                        f"approval {approval_id} is {approval.status}, not reconcilable"
+                    )
+                return approval
+            if approval.status != "executing":
+                raise ApprovalError(
+                    f"approval {approval_id} is {approval.status}, not executing"
+                )
+            approval.reconciliation_outcome = outcome
+            approval.reconciled_by = reconciled_by
+            approval.reconciliation_note = note
+            approval.reconciliation_started_at = utc_now()
+            data[approval_id] = asdict(approval)
+            self._write_all(data)
+            return approval
+
+    def mark_reconciled(
+        self,
+        approval_id: str,
+        execution_record_id: str,
+    ) -> PendingApproval:
+        if not isinstance(execution_record_id, str) or not execution_record_id:
+            raise ApprovalError("execution_record_id must be non-empty")
+        with exclusive_file_lock(self.path):
+            data = self._read_all()
+            raw = data.get(approval_id)
+            if raw is None:
+                raise ApprovalError(f"unknown approval {approval_id}")
+            approval = PendingApproval(**raw)
+            if not approval.reconciliation_outcome:
+                raise ApprovalError(
+                    f"approval {approval_id} has no operator reconciliation intent"
+                )
+            if approval.status == "consumed":
+                if approval.execution_record_id != execution_record_id:
+                    raise ApprovalError(
+                        "reconciled approval is bound to a different evidence record"
+                    )
+                return approval
+            if approval.status != "executing":
+                raise ApprovalError(
+                    f"approval {approval_id} is {approval.status}, not executing"
+                )
+            approval.status = "consumed"
+            approval.execution_record_id = execution_record_id
+            approval.consumed_at = utc_now()
+            approval.reconciliation_completed_at = approval.consumed_at
             data[approval_id] = asdict(approval)
             self._write_all(data)
             return approval

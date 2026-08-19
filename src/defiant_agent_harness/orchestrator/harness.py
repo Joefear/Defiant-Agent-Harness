@@ -41,6 +41,7 @@ class ActionOutcome:
             ResultStatus.REJECTED,
             ResultStatus.EXPIRED,
             ResultStatus.FAILED,
+            ResultStatus.NOT_EXECUTED,
         }
         incomplete = self.status is ResultStatus.PENDING_APPROVAL
         if self.status is ResultStatus.PENDING_APPROVAL:
@@ -354,6 +355,10 @@ class Harness:
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executing"
                 )
+            if approval.reconciliation_outcome:
+                raise ApprovalError(
+                    f"approval {approval_id} has operator reconciliation in progress"
+                )
             if approval.action_id != action.action_id:
                 raise ApprovalError("approval does not belong to external action")
             if approval.authorization_hash != action.authorization_hash:
@@ -512,6 +517,111 @@ class Harness:
             )
         return outcomes
 
+    def reconcile_execution(
+        self,
+        approval_id: str,
+        outcome: str,
+        reconciled_by: str,
+        note: str,
+    ) -> ActionOutcome:
+        """Terminally reconcile an approval stranded in ``executing``.
+
+        The approval store records the exact operator input first. Budget and
+        evidence mutations are then individually idempotent, so repeating the
+        same command after a crash completes the transaction without replaying
+        the tool or charging twice.
+        """
+        terminal_outcomes = {
+            ResultStatus.SUCCEEDED.value: "succeeded",
+            ResultStatus.FAILED.value: "failed",
+            ResultStatus.NOT_EXECUTED.value: "not_executed",
+            ResultStatus.BLOCKED.value: "not_executed",
+            ResultStatus.REJECTED.value: "not_executed",
+            ResultStatus.EXPIRED.value: "not_executed",
+        }
+        existing_approval = self.approvals.get(approval_id)
+        if existing_approval is None:
+            raise ApprovalError(f"unknown approval {approval_id}")
+        action = existing_approval.held_action()
+        terminal_record = next(
+            (
+                record
+                for record in reversed(self.evidence.by_action(action.action_id))
+                if record.get("authorization_hash") == action.authorization_hash
+                and record.get("result_status") in terminal_outcomes
+            ),
+            None,
+        )
+        if terminal_record is not None:
+            observed = terminal_outcomes[terminal_record["result_status"]]
+            if observed != outcome:
+                raise ApprovalError(
+                    "operator outcome conflicts with the existing terminal evidence"
+                )
+
+        approval = self.approvals.begin_reconciliation(
+            approval_id,
+            outcome,
+            reconciled_by,
+            note,
+        )
+        request = approval.held_request()
+        decision = approval.held_decision()
+
+        budget_result = self.budget.reconcile_reservation(
+            approval.reserved_usd,
+            approval.request_id,
+            approval.action_id,
+            outcome,
+            approval.reconciled_by,
+            approval.reconciliation_note,
+        )
+
+        if terminal_record is None:
+            status = {
+                "succeeded": ResultStatus.SUCCEEDED,
+                "failed": ResultStatus.FAILED,
+                "not_executed": ResultStatus.NOT_EXECUTED,
+            }[outcome]
+            charged = Decimal(budget_result["charged_usd"])
+            result = None
+            if outcome != "not_executed":
+                result = ToolResult(
+                    status=outcome,
+                    summary=(
+                        f"operator reconciled an uncertain execution as {outcome}"
+                    ),
+                    output={"operator_reconciled": True},
+                    cost_usd=charged,
+                )
+            terminal_record = self._record(
+                action,
+                request,
+                decision,
+                status,
+                approved_by=approval.decided_by,
+                result=result,
+                detail=(
+                    f"operator reconciliation: {outcome}; "
+                    f"budget {budget_result['disposition']}"
+                ),
+                reconciliation_outcome=outcome,
+                reconciled_by=approval.reconciled_by,
+                reconciled_at=approval.reconciliation_started_at,
+                reconciliation_note=approval.reconciliation_note,
+            ).to_dict()
+
+        self.approvals.mark_reconciled(approval_id, terminal_record["record_id"])
+        status = ResultStatus(terminal_record["result_status"])
+        return ActionOutcome(
+            action,
+            decision,
+            status,
+            terminal_record["record_id"],
+            approval_id=approval_id,
+            detail=f"operator reconciled execution as {outcome}",
+        )
+
     # -- execution ----------------------------------------------------
 
     def _authorize_external(
@@ -665,6 +775,10 @@ class Harness:
         approved_by: str | None = None,
         result: ToolResult | None = None,
         detail: str = "",
+        reconciliation_outcome: str = "",
+        reconciled_by: str = "",
+        reconciled_at: str | None = None,
+        reconciliation_note: str = "",
     ) -> EvidenceRecord:
         record = EvidenceRecord(
             request_id=request.request_id,
@@ -697,6 +811,10 @@ class Harness:
             cost_usd=result.cost_usd if result else ZERO,
             budget_remaining_usd=self.budget.balance_usd,
             dry_run=bool(result.dry_run) if result else self.dry_run,
+            reconciliation_outcome=reconciliation_outcome,
+            reconciled_by=reconciled_by,
+            reconciled_at=reconciled_at,
+            reconciliation_note=reconciliation_note,
         )
         return self.evidence.append(record)
 

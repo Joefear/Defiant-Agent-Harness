@@ -111,7 +111,15 @@ class CommandCenterRequestHandler(BaseHTTPRequestHandler):
 
     def _snapshot(self, query: str, *, include_body: bool) -> None:
         try:
-            params = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+            # Python 3.10 treats an empty string as a malformed field under
+            # strict parsing, while newer runtimes return an empty mapping.
+            # Normalize only the no-query case; every supplied field remains
+            # strict and bounded below.
+            params = (
+                parse_qs(query, keep_blank_values=True, strict_parsing=True)
+                if query
+                else {}
+            )
             unknown = set(params) - {"limit", "request_id"}
             if unknown:
                 names = ", ".join(sorted(unknown))

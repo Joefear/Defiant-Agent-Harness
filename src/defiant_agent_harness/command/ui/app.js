@@ -8,6 +8,8 @@ const elements = {
   syncLabel: document.querySelector("#sync-label"),
   errorBanner: document.querySelector("#error-banner"),
   errorDetail: document.querySelector("#error-detail"),
+  reconciliationBanner: document.querySelector("#reconciliation-banner"),
+  reconciliationDetail: document.querySelector("#reconciliation-detail"),
   integrityOrb: document.querySelector("#integrity-orb"),
   integrityTitle: document.querySelector("#integrity-title"),
   integrityDetail: document.querySelector("#integrity-detail"),
@@ -84,8 +86,9 @@ function time(value, includeDate = false) {
 }
 
 function tone(value) {
+  if (String(value).startsWith("reconciliation_")) return "signal";
   if (["allow", "succeeded", "approved"].includes(value)) return "healthy";
-  if (["block", "blocked", "failed", "rejected", "expired"].includes(value)) {
+  if (["block", "blocked", "failed", "rejected", "expired", "not_executed"].includes(value)) {
     return "danger";
   }
   if (["approval_required", "pending", "pending_approval", "executing"].includes(value)) {
@@ -158,15 +161,23 @@ function renderEvidence(evidence) {
 function renderApprovals(approvals) {
   elements.approvalCount.textContent = compact.format(approvals.actionable_count);
   elements.approvalBadge.textContent = integer.format(approvals.actionable_count);
-  elements.approvalDetail.textContent = approvals.overdue_pending_count
-    ? `${compact.format(approvals.overdue_pending_count)} overdue pending`
-    : "No overdue pending approvals";
+  const reconciliationCount = approvals.reconciliation_required_count || 0;
+  elements.approvalDetail.textContent = reconciliationCount
+    ? `${compact.format(reconciliationCount)} require reconciliation`
+    : approvals.overdue_pending_count
+      ? `${compact.format(approvals.overdue_pending_count)} overdue pending`
+      : "No overdue pending approvals";
+  elements.reconciliationBanner.hidden = reconciliationCount === 0;
+  elements.reconciliationDetail.textContent = reconciliationCount
+    ? `${integer.format(reconciliationCount)} executing approval${reconciliationCount === 1 ? "" : "s"} must be reconciled from the operator CLI. Command Center remains visibility-only.`
+    : "";
   elements.approvalList.replaceChildren();
   elements.approvalsEmpty.hidden = approvals.actionable.length > 0;
 
   for (const approval of approvals.actionable) {
     const item = document.createElement("article");
     item.className = "approval-item";
+    item.classList.toggle("is-reconciliation-required", approval.reconciliation_required);
 
     const identity = document.createElement("div");
     const tool = document.createElement("strong");
@@ -179,8 +190,13 @@ function renderApprovals(approvals) {
     const status = document.createElement("div");
     const statusLabel = document.createElement("p");
     statusLabel.className = "approval-item-label";
-    statusLabel.textContent = "Status";
-    status.append(statusLabel, statusChip(approval.status));
+    statusLabel.textContent = approval.reconciliation_required ? "Operator action" : "Status";
+    status.append(
+      statusLabel,
+      statusChip(approval.reconciliation_required
+        ? `reconciliation_${approval.reconciliation_state}`
+        : approval.status),
+    );
 
     const request = document.createElement("div");
     const requestLabel = document.createElement("p");
