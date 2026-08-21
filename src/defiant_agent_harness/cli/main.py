@@ -9,6 +9,7 @@ dah history               show the evidence trail
 dah show <record_id>      show one evidence record in full
 dah verify                verify the evidence hash chain
 dah signing-keygen        create an encrypted Ed25519 signing key pair
+dah operator-keygen       create an encrypted operator identity key pair
 dah verify-export         verify a signed export against pinned public keys
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
@@ -46,6 +47,13 @@ from ..mcp.config import McpConfigError, load_proxy_config
 from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
 from ..mcp.session import McpTransportError
 from ..orchestrator.harness import build_harness
+from ..operator_identity import (
+    DECISION_PURPOSE,
+    RECONCILIATION_PURPOSE,
+    OperatorIdentityError,
+    OperatorTrustPolicy,
+    sign_operator_action,
+)
 from ..state_integrity import StateIntegrityAuditor
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -92,6 +100,7 @@ def cmd_demo(args) -> int:
         policy_packs=args.policy or [],
         dry_run=args.dry_run,
         workspace_root=args.workspace_root,
+        trusted_operator_keys=getattr(args, "trusted_operator_key", None),
     )
     request = HarnessRequest(
         task=f"demo: {scenario}",
@@ -122,8 +131,21 @@ def cmd_demo(args) -> int:
                 approved = bool(args.auto_approve)
                 verb = "approving" if approved else "rejecting"
                 print(f"\n  {DIM}[{verb} as {args.user}]{RESET}")
+                pending = harness.approvals.get(outcome.approval_id)
+                attestation = _operator_attestation(
+                    args,
+                    pending,
+                    purpose=DECISION_PURPOSE,
+                    outcome="approved" if approved else "rejected",
+                    operator=args.user,
+                    note="cli auto-decision",
+                )
                 resumed = harness.resume(
-                    outcome.approval_id, approved, args.user, note="cli auto-decision"
+                    outcome.approval_id,
+                    approved,
+                    args.user,
+                    note="cli auto-decision",
+                    attestation=attestation,
                 )
                 print(f"  status       {_c(resumed.status.value)}")
                 print(f"  detail       {resumed.detail}")
@@ -155,8 +177,23 @@ def cmd_pending(args) -> int:
 
 
 def cmd_decide(args, approved: bool) -> int:
-    store = ApprovalStore(Path(args.workdir) / "approvals.json")
-    pending = store.get(args.approval_id)
+    try:
+        trust = _operator_trust(args)
+        store = ApprovalStore(
+            Path(args.workdir) / "approvals.json", operator_trust=trust
+        )
+        pending = store.get(args.approval_id)
+        attestation = _operator_attestation(
+            args,
+            pending,
+            purpose=DECISION_PURPOSE,
+            outcome="approved" if approved else "rejected",
+            operator=args.user,
+            note=args.note,
+        )
+    except (OperatorIdentityError, EvidenceSigningError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
     if (
         approved
         and pending is not None
@@ -170,6 +207,7 @@ def cmd_decide(args, approved: bool) -> int:
                 True,
                 args.user,
                 args.note,
+                attestation=attestation,
             )
         except Exception as exc:
             print(f"{RED}{exc}{RESET}", file=sys.stderr)
@@ -188,6 +226,7 @@ def cmd_decide(args, approved: bool) -> int:
             approved,
             args.user,
             args.note,
+            attestation=attestation,
         )
     except Exception as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
@@ -199,13 +238,23 @@ def cmd_decide(args, approved: bool) -> int:
 
 
 def cmd_reconcile(args) -> int:
-    harness = _harness(args)
     try:
+        harness = _harness(args)
+        pending = harness.approvals.get(args.approval_id)
+        attestation = _operator_attestation(
+            args,
+            pending,
+            purpose=RECONCILIATION_PURPOSE,
+            outcome=args.outcome,
+            operator=args.operator,
+            note=args.note,
+        )
         reconciled = harness.reconcile_execution(
             args.approval_id,
             args.outcome,
             args.operator,
             args.note,
+            attestation=attestation,
         )
     except Exception as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
@@ -356,11 +405,15 @@ def cmd_verify_export(args) -> int:
 
 def cmd_command(args) -> int:
     try:
-        snapshot = CommandCore(args.workdir).snapshot(
+        _validate_trusted_operator_paths(args)
+        snapshot = CommandCore(
+            args.workdir,
+            trusted_operator_keys=args.trusted_operator_key,
+        ).snapshot(
             limit=args.limit,
             request_id=args.request,
         )
-    except CommandError as exc:
+    except (CommandError, OperatorIdentityError, EvidenceSigningError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
     print(json.dumps(snapshot, indent=2, sort_keys=True))
@@ -368,19 +421,31 @@ def cmd_command(args) -> int:
 
 
 def cmd_doctor(args) -> int:
-    report = StateIntegrityAuditor(args.workdir).audit()
-    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
-    return 0 if report.safe_to_execute else 1
+    try:
+        trust = _operator_trust(args)
+        report = StateIntegrityAuditor(args.workdir, operator_trust=trust).audit()
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return 0 if report.safe_to_execute else 1
+    except (OperatorIdentityError, EvidenceSigningError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
 
 
 def cmd_command_center(args) -> int:
     try:
+        _validate_trusted_operator_paths(args)
         server = CommandCenterServer(
             args.workdir,
             port=args.port,
             default_limit=args.limit,
+            trusted_operator_keys=args.trusted_operator_key,
         )
-    except (CommandCenterError, OSError) as exc:
+    except (
+        CommandCenterError,
+        OperatorIdentityError,
+        EvidenceSigningError,
+        OSError,
+    ) as exc:
         print(f"{RED}cannot start Command Center: {exc}{RESET}", file=sys.stderr)
         return 1
 
@@ -400,6 +465,7 @@ def cmd_mcp_proxy(args) -> int:
     if command[:1] == ["--"]:
         command = command[1:]
     try:
+        _validate_trusted_operator_paths(args)
         config = load_proxy_config(
             args.config,
             command_override=command or None,
@@ -414,14 +480,16 @@ def cmd_mcp_proxy(args) -> int:
             policy_packs=args.policy or [],
             sensitivity=Sensitivity(args.sensitivity),
             dry_run=args.dry_run,
+            trusted_operator_keys=args.trusted_operator_key,
         )
-    except (McpConfigError, McpTransportError, OSError) as exc:
+    except (McpConfigError, McpTransportError, OperatorIdentityError, OSError) as exc:
         print(f"MCP proxy failed: {exc}", file=sys.stderr)
         return 2
 
 
 def cmd_mcp_http_proxy(args) -> int:
     try:
+        _validate_trusted_operator_paths(args)
         config = load_proxy_config(
             args.config,
             runner_override=args.runner or None,
@@ -435,8 +503,9 @@ def cmd_mcp_http_proxy(args) -> int:
             policy_packs=args.policy or [],
             sensitivity=Sensitivity(args.sensitivity),
             dry_run=args.dry_run,
+            trusted_operator_keys=args.trusted_operator_key,
         )
-    except (McpConfigError, McpTransportError, OSError) as exc:
+    except (McpConfigError, McpTransportError, OperatorIdentityError, OSError) as exc:
         print(f"MCP HTTP proxy failed: {exc}", file=sys.stderr)
         return 2
 
@@ -462,11 +531,90 @@ def _harness(args):
         MockAgentAdapter(),
         policy_packs=policy_packs,
         workspace_root=args.workspace_root,
+        trusted_operator_keys=getattr(args, "trusted_operator_key", None),
+    )
+
+
+def _operator_trust(args) -> OperatorTrustPolicy | None:
+    specs = getattr(args, "trusted_operator_key", None) or []
+    if not specs:
+        return None
+    _validate_trusted_operator_paths(args)
+    return OperatorTrustPolicy.from_specs(specs)
+
+
+def _validate_trusted_operator_paths(args) -> None:
+    for spec in getattr(args, "trusted_operator_key", None) or []:
+        _, separator, path = spec.partition("=")
+        if not separator or not path.strip():
+            raise OperatorIdentityError(
+                "trusted operator keys must use IDENTITY=PUBLIC_KEY.pem"
+            )
+        _require_external_secret(
+            args.workdir, path.strip(), "trusted operator public key"
+        )
+
+
+def _operator_attestation(
+    args,
+    approval,
+    *,
+    purpose: str,
+    outcome: str,
+    operator: str,
+    note: str,
+) -> dict | None:
+    specs = getattr(args, "trusted_operator_key", None) or []
+    private_key = getattr(args, "operator_key", None)
+    passphrase_file = getattr(args, "operator_passphrase_file", None)
+    configured = bool(specs or private_key or passphrase_file)
+    if not configured:
+        return None
+    if not specs or not private_key or not passphrase_file:
+        raise OperatorIdentityError(
+            "signed operator actions require --operator-key, "
+            "--operator-passphrase-file, and --trusted-operator-key"
+        )
+    if approval is None:
+        raise OperatorIdentityError("cannot sign an unknown approval")
+    _validate_trusted_operator_paths(args)
+    _require_external_secret(args.workdir, private_key, "operator private key")
+    _require_external_secret(args.workdir, passphrase_file, "operator passphrase file")
+    return sign_operator_action(
+        approval,
+        private_key,
+        read_passphrase(passphrase_file),
+        purpose=purpose,
+        outcome=outcome,
+        operator=operator,
+        note=note,
     )
 
 
 def _indent(text: str, pad: str = "    ") -> str:
     return "\n".join(pad + line for line in text.splitlines())
+
+
+def _add_operator_trust(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--trusted-operator-key",
+        action="append",
+        default=[],
+        metavar="IDENTITY=PUBLIC_KEY.pem",
+        help="trusted operator identity/key binding (repeatable for rotation)",
+    )
+
+
+def _add_operator_signing(parser: argparse.ArgumentParser) -> None:
+    _add_operator_trust(parser)
+    parser.add_argument(
+        "--operator-key",
+        help="encrypted Ed25519 private key used for this operator action",
+    )
+    parser.add_argument(
+        "--operator-passphrase-file",
+        help="file containing the operator key passphrase",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -490,6 +638,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[value.value for value in Sensitivity],
     )
     d.add_argument("--dry-run", action="store_true")
+    _add_operator_signing(d)
     auto = d.add_mutually_exclusive_group()
     auto.add_argument(
         "--auto-approve",
@@ -508,12 +657,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("approve")
     a.add_argument("approval_id")
-    a.add_argument("--note", default="")
+    a.add_argument("--note", required=True)
+    _add_operator_signing(a)
     a.set_defaults(fn=lambda args: cmd_decide(args, True))
 
     r = sub.add_parser("reject")
     r.add_argument("approval_id")
-    r.add_argument("--note", default="")
+    r.add_argument("--note", required=True)
+    _add_operator_signing(r)
     r.set_defaults(fn=lambda args: cmd_decide(args, False))
 
     reconcile = sub.add_parser(
@@ -528,6 +679,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reconcile.add_argument("--operator", required=True)
     reconcile.add_argument("--note", required=True)
+    _add_operator_signing(reconcile)
     reconcile.set_defaults(fn=cmd_reconcile)
 
     h = sub.add_parser("history")
@@ -566,6 +718,15 @@ def build_parser() -> argparse.ArgumentParser:
     keygen.add_argument("--passphrase-file", required=True)
     keygen.set_defaults(fn=cmd_signing_keygen)
 
+    operator_keygen = sub.add_parser(
+        "operator-keygen",
+        help="generate an encrypted Ed25519 operator identity key pair",
+    )
+    operator_keygen.add_argument("--private-key", required=True)
+    operator_keygen.add_argument("--public-key", required=True)
+    operator_keygen.add_argument("--passphrase-file", required=True)
+    operator_keygen.set_defaults(fn=cmd_signing_keygen)
+
     verify_export_parser = sub.add_parser(
         "verify-export",
         help="verify a signed evidence export using pinned public keys",
@@ -583,6 +744,7 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="audit evidence, approval, and budget state without mutation",
     )
+    _add_operator_trust(doctor)
     doctor.set_defaults(fn=cmd_doctor)
 
     command = sub.add_parser(
@@ -591,6 +753,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     command.add_argument("--limit", type=int, default=10)
     command.add_argument("--request", default="")
+    _add_operator_trust(command)
     command.set_defaults(fn=cmd_command)
 
     center = sub.add_parser(
@@ -599,6 +762,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     center.add_argument("--port", type=int, default=8765)
     center.add_argument("--limit", type=int, default=25)
+    _add_operator_trust(center)
     center.set_defaults(fn=cmd_command_center)
 
     mcp = sub.add_parser(
@@ -617,6 +781,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[value.value for value in Sensitivity],
     )
     mcp.add_argument("--dry-run", action="store_true")
+    _add_operator_trust(mcp)
     mcp.add_argument(
         "command",
         nargs=argparse.REMAINDER,
@@ -640,6 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[value.value for value in Sensitivity],
     )
     http.add_argument("--dry-run", action="store_true")
+    _add_operator_trust(http)
     http.set_defaults(fn=cmd_mcp_http_proxy)
 
     return p

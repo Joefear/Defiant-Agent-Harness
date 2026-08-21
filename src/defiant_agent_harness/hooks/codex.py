@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .copilot import CopilotHookGate
+from .copilot import CopilotHookGate, _trusted_operator_keys_from_env
 
 CODEX_HOOK_MAPPING_VERSION = "codex-hook-v1"
 
@@ -23,6 +23,7 @@ class CodexHookGate(CopilotHookGate):
         *,
         user_id: str = "codex-operator",
         workspace_id: str = "defiant-agent-harness",
+        trusted_operator_keys: list[str] | None = None,
     ):
         super().__init__(
             workspace_root,
@@ -34,6 +35,7 @@ class CodexHookGate(CopilotHookGate):
             mapping_version=CODEX_HOOK_MAPPING_VERSION,
             policy_pack="codex_hook",
             server_name="codex-native-hook",
+            trusted_operator_keys=trusted_operator_keys,
         )
 
     def pre_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
@@ -50,11 +52,13 @@ def run_hook(
     workspace_root: str | Path,
     state_root: str | Path,
     user_id: str = "codex-operator",
+    trusted_operator_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     gate = CodexHookGate(
         workspace_root,
         state_root,
         user_id=user_id,
+        trusted_operator_keys=trusted_operator_keys,
     )
     if phase == "pre":
         return gate.pre_tool_use(event)
@@ -90,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace_root=workspace_root,
             state_root=state_root,
             user_id=os.environ.get("DAH_CODEX_USER", "codex-operator"),
+            trusted_operator_keys=_trusted_operator_keys_from_env(),
         )
     except Exception as exc:
         reason = f"Defiant Codex hook failed closed: {type(exc).__name__}: {exc}"

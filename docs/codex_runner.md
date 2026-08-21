@@ -64,7 +64,7 @@ repository root, approve it:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m defiant_agent_harness.cli.main --workdir ".dah-codex-mcp" --workspace-root "examples/vscode_agent/workspace" --user "codex-operator" approve "<approval-id>"
+python -m defiant_agent_harness.cli.main --workdir ".dah-codex-mcp" --workspace-root "examples/vscode_agent/workspace" --user "codex-operator" approve "<approval-id>" --note "Reviewed exact Codex MCP write"
 ```
 
 Then tell Codex to retry the exact same `defiant_filesystem.write_file` call
@@ -83,7 +83,7 @@ PowerShell with the hook state directory:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m defiant_agent_harness.cli.main --workdir ".dah-codex-hooks" --workspace-root "." --user "codex-operator" approve "<approval-id>"
+python -m defiant_agent_harness.cli.main --workdir ".dah-codex-hooks" --workspace-root "." --user "codex-operator" approve "<approval-id>" --note "Reviewed exact native write"
 ```
 
 Then retry the exact same native tool input. `PostToolUse` seals the external

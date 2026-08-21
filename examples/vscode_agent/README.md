@@ -52,7 +52,7 @@ Open a terminal yourself in the repository root:
 ```powershell
 $env:PYTHONPATH="$PWD\src"
 python -m defiant_agent_harness.cli.main --workdir .dah-hooks --workspace-root . pending
-python -m defiant_agent_harness.cli.main --workdir .dah-hooks --workspace-root . --user vscode-operator approve <approval_id>
+python -m defiant_agent_harness.cli.main --workdir .dah-hooks --workspace-root . --user vscode-operator approve <approval_id> --note "Reviewed exact native write"
 ```
 
 Tell the same agent:
@@ -119,7 +119,7 @@ Approve the held MCP write:
 ```powershell
 $env:PYTHONPATH="$PWD\src"
 python -m defiant_agent_harness.cli.main --workdir .dah-vscode pending
-python -m defiant_agent_harness.cli.main --workdir .dah-vscode --user vscode-operator approve <approval_id>
+python -m defiant_agent_harness.cli.main --workdir .dah-vscode --user vscode-operator approve <approval_id> --note "Reviewed exact MCP write"
 ```
 
 Then ask the agent to retry the exact same `write_file` call and read the file
@@ -134,7 +134,7 @@ approve and verify with:
 ```powershell
 $env:PYTHONPATH="$PWD\src"
 python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp pending
-python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp --user copilot-cli-operator approve <approval_id>
+python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp --user copilot-cli-operator approve <approval_id> --note "Reviewed exact Copilot MCP write"
 python -m defiant_agent_harness.cli.main --workdir .dah-copilot-mcp verify
 ```
 

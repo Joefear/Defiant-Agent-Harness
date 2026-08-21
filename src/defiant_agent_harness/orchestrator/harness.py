@@ -21,6 +21,7 @@ from ..contracts import (
 )
 from ..evidence.store import EvidenceStore
 from ..money import ZERO, MoneyLike
+from ..operator_identity import OperatorTrustPolicy, validate_external_trust_specs
 from ..policy.engine import PolicyEngine
 from ..state_integrity import StateIntegrityAuditor
 from ..tools.registry import ToolContractError, ToolRegistry, ToolResult
@@ -400,6 +401,8 @@ class Harness:
         approved: bool,
         decided_by: str,
         note: str = "",
+        *,
+        attestation: dict | None = None,
     ) -> ActionOutcome:
         self.state_integrity.require_safe()
         pending = self.approvals.get(approval_id)
@@ -420,7 +423,13 @@ class Harness:
         original_decision = pending.held_decision()
 
         if pending.status == "pending":
-            pending = self.approvals.decide(approval_id, approved, decided_by, note)
+            pending = self.approvals.decide(
+                approval_id,
+                approved,
+                decided_by,
+                note,
+                attestation=attestation,
+            )
         elif not approved:
             raise ApprovalError("an approved action cannot later be rejected")
 
@@ -531,6 +540,8 @@ class Harness:
         outcome: str,
         reconciled_by: str,
         note: str,
+        *,
+        attestation: dict | None = None,
     ) -> ActionOutcome:
         """Terminally reconcile an approval stranded in ``executing``.
 
@@ -573,6 +584,7 @@ class Harness:
             outcome,
             reconciled_by,
             note,
+            attestation=attestation,
         )
         request = approval.held_request()
         decision = approval.held_decision()
@@ -852,10 +864,12 @@ def build_harness(
     tools: ToolRegistry | None = None,
     workspace_root: str | Path | None = None,
     authority_context: dict | None = None,
+    trusted_operator_keys: list[str] | None = None,
 ) -> Harness:
     from ..tools.builtin import default_registry
 
     state_root = Path(workdir)
+    validate_external_trust_specs(trusted_operator_keys or [], state_root)
     state_root.mkdir(parents=True, exist_ok=True)
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
@@ -863,6 +877,11 @@ def build_harness(
     registry = tools or default_registry(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
+    )
+    operator_trust = (
+        OperatorTrustPolicy.from_specs(trusted_operator_keys)
+        if trusted_operator_keys
+        else None
     )
     harness = Harness(
         policy=PolicyEngine.default(
@@ -880,13 +899,17 @@ def build_harness(
         ),
         tools=registry,
         evidence=EvidenceStore(state_root / "evidence.jsonl"),
-        approvals=ApprovalStore(state_root / "approvals.json"),
+        approvals=ApprovalStore(
+            state_root / "approvals.json", operator_trust=operator_trust
+        ),
         budget=BudgetLedger(
             state_root / "budget.json",
             starting_balance_usd=starting_budget_usd,
         ),
         adapter=adapter,
-        state_integrity=StateIntegrityAuditor(state_root),
+        state_integrity=StateIntegrityAuditor(
+            state_root, operator_trust=operator_trust
+        ),
         dry_run=dry_run,
     )
     harness.reconcile_expired_approvals()

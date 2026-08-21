@@ -249,6 +249,8 @@ def test_write_requires_durable_exact_retry_then_records_success(tmp_path, capsy
                 "sam",
                 "approve",
                 approval.approval_id,
+                "--note",
+                "reviewed native write",
             ]
         )
         == 0

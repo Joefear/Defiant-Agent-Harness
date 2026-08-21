@@ -16,6 +16,14 @@ from ..contracts import (
     utc_now,
 )
 from ..money import ZERO, MoneyLike, money, money_text
+from ..operator_identity import (
+    DECISION_PURPOSE,
+    RECONCILIATION_PURPOSE,
+    OperatorIdentityError,
+    OperatorIdentityStatus,
+    OperatorTrustPolicy,
+    unsigned_status,
+)
 from ..persistence import atomic_write_json, exclusive_file_lock, read_json
 
 APPROVAL_STATUSES = {
@@ -63,6 +71,7 @@ class PendingApproval:
     decided_by: str | None = None
     decided_at: str | None = None
     note: str = ""
+    decision_attestation: dict[str, Any] | None = None
     reserved_usd: str = "0"
     action_snapshot: dict[str, Any] | None = None
     request_snapshot: dict[str, Any] | None = None
@@ -76,6 +85,7 @@ class PendingApproval:
     reconciliation_note: str = ""
     reconciliation_started_at: str | None = None
     reconciliation_completed_at: str | None = None
+    reconciliation_attestation: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.status not in APPROVAL_STATUSES:
@@ -105,6 +115,10 @@ class PendingApproval:
                 raise ApprovalError(
                     f"{self.status} approval requires operator identity and decision time"
                 )
+        for name in ("decision_attestation", "reconciliation_attestation"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, dict):
+                raise ApprovalError(f"{name} must be an object")
         if self.status in {"consumed", "rejected", "expired"} and not self.consumed_at:
             raise ApprovalError(f"{self.status} approval requires consumed_at")
         if self.status == "consumed" and not self.execution_record_id:
@@ -183,10 +197,16 @@ class ApprovalError(RuntimeError):
 
 
 class ApprovalStore:
-    def __init__(self, path: str | Path, default_ttl_minutes: int = 60):
+    def __init__(
+        self,
+        path: str | Path,
+        default_ttl_minutes: int = 60,
+        operator_trust: OperatorTrustPolicy | None = None,
+    ):
         if default_ttl_minutes <= 0:
             raise ValueError("default_ttl_minutes must be positive")
         self.path = Path(path)
+        self.operator_trust = operator_trust
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.default_ttl_minutes = default_ttl_minutes
         if not self.path.exists():
@@ -346,6 +366,8 @@ class ApprovalStore:
         approved: bool,
         decided_by: str,
         note: str = "",
+        *,
+        attestation: dict[str, Any] | None = None,
     ) -> PendingApproval:
         if not isinstance(decided_by, str) or not decided_by.strip():
             raise ApprovalError("decided_by must be non-empty")
@@ -368,10 +390,31 @@ class ApprovalStore:
                 raise ApprovalError(
                     f"approval {approval_id} expired at {approval.expires_at}"
                 )
+            decided_by = decided_by.strip()
+            note = note.strip()
+            if attestation is not None and self.operator_trust is None:
+                raise ApprovalError(
+                    "trusted operator keys are required to store an attestation"
+                )
+            if self.operator_trust is not None:
+                try:
+                    self.operator_trust.require(
+                        attestation,
+                        approval,
+                        purpose=DECISION_PURPOSE,
+                        outcome="approved" if approved else "rejected",
+                        operator=decided_by,
+                        note=note,
+                    )
+                except OperatorIdentityError as exc:
+                    raise ApprovalError(str(exc)) from exc
             approval.status = "approved" if approved else "rejected"
             approval.decided_by = decided_by
-            approval.decided_at = utc_now()
+            approval.decided_at = (
+                attestation["signed_at"] if attestation is not None else utc_now()
+            )
             approval.note = note
+            approval.decision_attestation = attestation
             if not approved:
                 approval.consumed_at = approval.decided_at
             data[approval_id] = asdict(approval)
@@ -398,6 +441,7 @@ class ApprovalStore:
             raise ApprovalError("approval does not belong to this action")
         if approval.authorization_hash != action.authorization_hash:
             raise ApprovalError("action changed after approval -- the approval is void")
+        self._require_decision_identity(approval)
         return approval
 
     def begin_execution(
@@ -427,6 +471,7 @@ class ApprovalStore:
                 raise ApprovalError("approval does not belong to this action")
             if approval.authorization_hash != action.authorization_hash:
                 raise ApprovalError("action changed after approval")
+            self._require_decision_identity(approval)
             approval.status = "executing"
             data[approval_id] = asdict(approval)
             self._write_all(data)
@@ -464,6 +509,8 @@ class ApprovalStore:
         outcome: str,
         reconciled_by: str,
         note: str,
+        *,
+        attestation: dict[str, Any] | None = None,
     ) -> PendingApproval:
         """Persist an idempotent operator decision before touching other stores."""
         if outcome not in RECONCILIATION_OUTCOMES:
@@ -498,18 +545,96 @@ class ApprovalStore:
                     raise ApprovalError(
                         f"approval {approval_id} is {approval.status}, not reconcilable"
                     )
+                if self.operator_trust is not None:
+                    status = self.reconciliation_identity(approval)
+                    if not status.ok:
+                        raise ApprovalError(
+                            "operator identity verification failed: " + status.detail
+                        )
                 return approval
             if approval.status != "executing":
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executing"
                 )
+            if attestation is not None and self.operator_trust is None:
+                raise ApprovalError(
+                    "trusted operator keys are required to store an attestation"
+                )
+            if self.operator_trust is not None:
+                try:
+                    self.operator_trust.require(
+                        attestation,
+                        approval,
+                        purpose=RECONCILIATION_PURPOSE,
+                        outcome=outcome,
+                        operator=reconciled_by,
+                        note=note,
+                    )
+                except OperatorIdentityError as exc:
+                    raise ApprovalError(str(exc)) from exc
             approval.reconciliation_outcome = outcome
             approval.reconciled_by = reconciled_by
             approval.reconciliation_note = note
-            approval.reconciliation_started_at = utc_now()
+            approval.reconciliation_started_at = (
+                attestation["signed_at"] if attestation is not None else utc_now()
+            )
+            approval.reconciliation_attestation = attestation
             data[approval_id] = asdict(approval)
             self._write_all(data)
             return approval
+
+    def decision_identity(self, approval: PendingApproval) -> OperatorIdentityStatus:
+        if approval.decision_attestation is None:
+            return unsigned_status(approval.decided_by or "")
+        if self.operator_trust is None:
+            return OperatorIdentityStatus(
+                False,
+                "unverified",
+                "operator attestation is present but no trust pins were configured",
+                operator=approval.decided_by or "",
+                key_id=str(approval.decision_attestation.get("key_id", "")),
+                signed_at=str(approval.decision_attestation.get("signed_at", "")),
+            )
+        return self.operator_trust.assess(
+            approval.decision_attestation,
+            approval,
+            purpose=DECISION_PURPOSE,
+            outcome="rejected" if approval.status == "rejected" else "approved",
+            operator=approval.decided_by or "",
+            note=approval.note,
+        )
+
+    def reconciliation_identity(
+        self, approval: PendingApproval
+    ) -> OperatorIdentityStatus:
+        if approval.reconciliation_attestation is None:
+            return unsigned_status(approval.reconciled_by)
+        if self.operator_trust is None:
+            return OperatorIdentityStatus(
+                False,
+                "unverified",
+                "reconciliation attestation is present but no trust pins were configured",
+                operator=approval.reconciled_by,
+                key_id=str(approval.reconciliation_attestation.get("key_id", "")),
+                signed_at=str(approval.reconciliation_attestation.get("signed_at", "")),
+            )
+        return self.operator_trust.assess(
+            approval.reconciliation_attestation,
+            approval,
+            purpose=RECONCILIATION_PURPOSE,
+            outcome=approval.reconciliation_outcome,
+            operator=approval.reconciled_by,
+            note=approval.reconciliation_note,
+        )
+
+    def _require_decision_identity(self, approval: PendingApproval) -> None:
+        if self.operator_trust is None:
+            return
+        status = self.decision_identity(approval)
+        if not status.ok:
+            raise ApprovalError(
+                f"operator identity verification failed: {status.detail}"
+            )
 
     def mark_reconciled(
         self,

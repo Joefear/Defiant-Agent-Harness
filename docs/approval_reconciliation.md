@@ -63,8 +63,10 @@ operator note and provide no reconcile button or mutation endpoint.
 
 ## Security limits
 
-The operator identity is a CLI assertion, not cryptographic authentication.
-Reconciliation records what the operator concluded; it cannot verify the
-external system or prove that conclusion correct. Protect the state directory,
-retain provider receipts, and treat reconciliation as a privileged operational
-procedure.
+v0.9 can bind the operator identity, outcome, note, approval authority, and
+timestamp to an Ed25519 key explicitly pinned to that identity. A runtime
+configured with operator trust pins requires this signature before touching
+budget or evidence. See `operator_identity.md`. Reconciliation still records
+what the operator concluded; it cannot verify the external system or prove that
+conclusion correct. Protect the state directory, retain provider receipts, and
+treat reconciliation as a privileged operational procedure.

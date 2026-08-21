@@ -153,6 +153,8 @@ def test_codex_write_requires_approval_and_exact_retry(tmp_path, capsys):
                 "sam",
                 "approve",
                 approval.approval_id,
+                "--note",
+                "reviewed Codex write",
             ]
         )
         == 0

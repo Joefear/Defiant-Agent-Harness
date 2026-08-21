@@ -13,6 +13,11 @@ from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
 from .evidence.store import GENESIS
 from .money import ZERO, money, money_text
+from .operator_identity import (
+    DECISION_PURPOSE,
+    RECONCILIATION_PURPOSE,
+    OperatorTrustPolicy,
+)
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
@@ -109,8 +114,13 @@ class StateIntegrityReport:
 class StateIntegrityAuditor:
     """Audit evidence, approvals, and budget state without mutating any store."""
 
-    def __init__(self, workdir: str | Path):
+    def __init__(
+        self,
+        workdir: str | Path,
+        operator_trust: OperatorTrustPolicy | None = None,
+    ):
         self.workdir = Path(workdir)
+        self.operator_trust = operator_trust
 
     def require_safe(self) -> StateIntegrityReport:
         report = self.audit()
@@ -293,6 +303,11 @@ class StateIntegrityAuditor:
         report.stores["approvals"] = {
             "state": "ready" if valid else "invalid",
             "approval_count": len(approvals),
+            "operator_identity_policy": (
+                "signed_required"
+                if self.operator_trust is not None
+                else "not_configured"
+            ),
         }
         return approvals
 
@@ -309,6 +324,49 @@ class StateIntegrityAuditor:
                 action_id=approval.action_id,
                 approval_id=approval.approval_id,
             )
+        if self.operator_trust is not None and approval.status in {
+            "approved",
+            "executing",
+            "consumed",
+            "rejected",
+        }:
+            status = self.operator_trust.assess(
+                approval.decision_attestation,
+                approval,
+                purpose=DECISION_PURPOSE,
+                outcome=("rejected" if approval.status == "rejected" else "approved"),
+                operator=approval.decided_by or "",
+                note=approval.note,
+            )
+            if not status.ok:
+                self._issue(
+                    report,
+                    "operator_decision_identity_invalid",
+                    "critical",
+                    "approvals",
+                    status.detail,
+                    action_id=approval.action_id,
+                    approval_id=approval.approval_id,
+                )
+        if self.operator_trust is not None and approval.reconciliation_outcome:
+            status = self.operator_trust.assess(
+                approval.reconciliation_attestation,
+                approval,
+                purpose=RECONCILIATION_PURPOSE,
+                outcome=approval.reconciliation_outcome,
+                operator=approval.reconciled_by,
+                note=approval.reconciliation_note,
+            )
+            if not status.ok:
+                self._issue(
+                    report,
+                    "operator_reconciliation_identity_invalid",
+                    "critical",
+                    "approvals",
+                    status.detail,
+                    action_id=approval.action_id,
+                    approval_id=approval.approval_id,
+                )
         if approval.status == "consumed" and not approval.execution_record_id:
             self._issue(
                 report,
