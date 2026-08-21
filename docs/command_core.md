@@ -48,6 +48,11 @@ contains confidential operational data and must remain access-controlled.
 Issue output excludes targets, payload previews, reconciliation notes, and raw
 results.
 
+Signed evidence exports are deliberately outside this live-state projection.
+Command Core does not load private keys, accept trust roots, import signed
+exports, or treat an export signature as authority over current state. Use the
+offline `dah verify-export` workflow documented in `evidence_signing.md`.
+
 ## Boundary
 
 Command Core remains a local, on-demand read model with no server, execution,

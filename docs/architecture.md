@@ -196,6 +196,24 @@ approval, or tool mutation. `dah doctor`, Command Core, and Command Center read
 the same sanitized audit contract without creating or repairing state. See
 `state_integrity.md`.
 
+## Evidence authenticity boundary in v0.8
+
+The live JSONL chain remains the local system of record. v0.8 adds a separate,
+operator-invoked export attestation rather than introducing a private key into
+the runtime authority path. A request export binds its selected records to the
+verified full-chain count and head hash. Ed25519 signs a domain-separated
+statement containing the canonical payload hash, signing time, public-key
+identifier, asserted signer identity, and required note.
+
+Private keys are encrypted and supplied from outside `.dah`. Verifiers accept
+only explicitly pinned public keys received out of band; the export cannot
+appoint its own trust root. Repeated trust-key arguments support planned key
+rotation while old public keys remain usable for historical verification. This
+proves that the holder of a pinned key signed one exact export. It does not
+provide certificate identity, trusted time, hardware-backed custody, automatic
+revocation, or proof that no later chain tail was removed. See
+`evidence_signing.md`.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -209,7 +227,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.7
+## What is deliberately absent from v0.8
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -222,7 +240,6 @@ successes. See `native_hooks.md`.
 - **Real reference-tool side effects.** The built-ins still simulate writes,
   sends, publishes, exports, deletes, and spends. Proxied upstream tools are
   real and must be classified accordingly.
-- **Signed evidence.** The chain detects tampering by anyone without write access to the whole file. It does not yet prove authorship to a third party, which needs a signing key and a key-management story.
 - **Multi-user identity.** `approved_by` is a string. Real identity binding is a later arc.
 - **Automatic state repair.** The auditor detects contradictions and fails
   closed. Repair requires offline investigation or restore from a known-good
@@ -266,3 +283,11 @@ successes. See `native_hooks.md`.
 - **Cross-store auditing is point-in-time.** It does not turn local JSON files
   into a transactional database. Defiant assumes one logical writer per state
   directory and uses conservative per-file locks to reject concurrent writes.
+- **Signing identity is key-based, not account-based.** A valid v0.8
+  attestation proves possession of a pinned private key. The signer string and
+  note are cryptographically bound assertions, not authentication against an
+  identity provider. Key custody and the mapping from key id to accountable
+  operator remain deployment controls.
+- **Signed exports are point-in-time.** They authenticate one exported payload
+  and its stated full-chain head. They do not prove that the live evidence file
+  was never extended or later truncated; off-box retention is still required.

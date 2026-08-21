@@ -55,7 +55,8 @@ surface is intentionally small:
 
 `POST`, `PUT`, `PATCH`, and `DELETE` return `405 Method Not Allowed`. There are
 no endpoints for execution, approval decisions, policy changes, state writes,
-authentication, DKE, or Spartan features. Browser assets use same-origin fetch,
+evidence signing, key upload, signed-export import, authentication, DKE, or
+Spartan features. Browser assets use same-origin fetch,
 ship without external dependencies, and are served with no-store, content-type,
 frame, referrer, and content-security headers.
 
@@ -89,6 +90,10 @@ access control. Do not place this server behind a network proxy, expose its port
 to another host, or treat it as a multi-user service. The underlying state
 directory still contains confidential operational material and must remain
 access-controlled.
+
+v0.8 evidence signing is an operator CLI and offline-verification workflow.
+Command Center never receives a private key, passphrase, signed export, or
+trusted-key mutation path.
 
 See `command_core.md` for the JSON projection contract,
 `state_integrity.md` for the audit contract, and `architecture.md` for the

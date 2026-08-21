@@ -8,6 +8,8 @@ dah reconcile <id>        resolve one crash-stranded executing approval
 dah history               show the evidence trail
 dah show <record_id>      show one evidence record in full
 dah verify                verify the evidence hash chain
+dah signing-keygen        create an encrypted Ed25519 signing key pair
+dah verify-export         verify a signed export against pinned public keys
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
@@ -30,7 +32,16 @@ from ..approvals.store import ApprovalStore
 from ..command.core import CommandCore, CommandError
 from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
 from ..contracts import HarnessRequest, Sensitivity
-from ..evidence.store import EvidenceStore
+from ..evidence.signing import (
+    EvidenceSigningError,
+    generate_key_pair,
+    load_export,
+    read_passphrase,
+    sign_export,
+    verify_export,
+    write_export,
+)
+from ..evidence.store import EvidenceError, EvidenceStore
 from ..mcp.config import McpConfigError, load_proxy_config
 from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
 from ..mcp.session import McpTransportError
@@ -270,9 +281,77 @@ def cmd_policy(args) -> int:
 
 
 def cmd_export(args) -> int:
-    store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-    print(json.dumps(store.export_request(args.request_id), indent=2, sort_keys=True))
+    try:
+        store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
+        document = store.export_request(args.request_id)
+        if args.signing_key:
+            if not args.passphrase_file:
+                raise EvidenceSigningError(
+                    "--passphrase-file is required with --signing-key"
+                )
+            _require_external_secret(args.workdir, args.signing_key, "signing key")
+            _require_external_secret(
+                args.workdir, args.passphrase_file, "passphrase file"
+            )
+            document = sign_export(
+                document,
+                args.signing_key,
+                read_passphrase(args.passphrase_file),
+                signer=args.signer,
+                note=args.note,
+            )
+        elif args.passphrase_file or args.signer or args.note:
+            raise EvidenceSigningError(
+                "--passphrase-file, --signer, and --note require --signing-key"
+            )
+        if args.output:
+            write_export(args.output, document)
+            print(f"wrote evidence export {args.output}")
+        else:
+            print(json.dumps(document, indent=2, sort_keys=True))
+        return 0
+    except (EvidenceError, EvidenceSigningError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+
+
+def cmd_signing_keygen(args) -> int:
+    try:
+        _require_external_secret(args.workdir, args.private_key, "private key")
+        _require_external_secret(args.workdir, args.public_key, "public key")
+        _require_external_secret(args.workdir, args.passphrase_file, "passphrase file")
+        key_id = generate_key_pair(
+            args.private_key,
+            args.public_key,
+            read_passphrase(args.passphrase_file),
+        )
+    except EvidenceSigningError as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(f"private key  {args.private_key}")
+    print(f"public key   {args.public_key}")
+    print(f"key id       {key_id}")
     return 0
+
+
+def _require_external_secret(workdir: str | Path, path: str | Path, label: str) -> None:
+    state_root = Path(workdir).resolve()
+    candidate = Path(path).resolve()
+    if candidate == state_root or candidate.is_relative_to(state_root):
+        raise EvidenceSigningError(f"{label} must be stored outside the workdir")
+
+
+def cmd_verify_export(args) -> int:
+    try:
+        for trusted_key in args.trusted_key:
+            _require_external_secret(args.workdir, trusted_key, "trusted public key")
+        document = load_export(args.export_path)
+        status = verify_export(document, args.trusted_key)
+    except EvidenceSigningError as exc:
+        print(json.dumps({"ok": False, "detail": str(exc)}, indent=2))
+        return 1
+    print(json.dumps(status.to_dict(), indent=2, sort_keys=True))
+    return 0 if status.ok else 1
 
 
 def cmd_command(args) -> int:
@@ -471,7 +550,34 @@ def build_parser() -> argparse.ArgumentParser:
 
     e = sub.add_parser("export")
     e.add_argument("request_id")
+    e.add_argument("--signing-key", help="encrypted Ed25519 private key PEM")
+    e.add_argument("--passphrase-file", help="file containing the key passphrase")
+    e.add_argument("--signer", default="", help="required signer identity")
+    e.add_argument("--note", default="", help="required signing rationale")
+    e.add_argument("--output", help="new output file; existing files are refused")
     e.set_defaults(fn=cmd_export)
+
+    keygen = sub.add_parser(
+        "signing-keygen",
+        help="generate an encrypted Ed25519 evidence-signing key pair",
+    )
+    keygen.add_argument("--private-key", required=True)
+    keygen.add_argument("--public-key", required=True)
+    keygen.add_argument("--passphrase-file", required=True)
+    keygen.set_defaults(fn=cmd_signing_keygen)
+
+    verify_export_parser = sub.add_parser(
+        "verify-export",
+        help="verify a signed evidence export using pinned public keys",
+    )
+    verify_export_parser.add_argument("export_path")
+    verify_export_parser.add_argument(
+        "--trusted-key",
+        action="append",
+        required=True,
+        help="trusted Ed25519 public key PEM (repeatable for rotation)",
+    )
+    verify_export_parser.set_defaults(fn=cmd_verify_export)
 
     doctor = sub.add_parser(
         "doctor",
