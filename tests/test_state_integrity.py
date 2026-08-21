@@ -222,7 +222,7 @@ def test_sealed_unbound_authorization_is_recovery_state_not_orphan(tmp_path):
 
     assert report.safe_to_execute is True
     assert report.recovery_required is True
-    assert "unbound_execution_recovery_required" in _issue_codes(report)
+    assert "authorization_reconciliation_required" in _issue_codes(report)
     assert "orphan_reservation" not in _issue_codes(report)
 
 
@@ -265,7 +265,7 @@ def test_doctor_emits_json_exit_status_and_does_not_initialize_state(tmp_path, c
 
     assert exit_code == 0
     assert payload["schema_name"] == "defiant.state_integrity"
-    assert payload["schema_version"] == "0.3.0"
+    assert payload["schema_version"] == "0.4.0"
     assert payload["safe_to_execute"] is True
     assert not workdir.exists()
 

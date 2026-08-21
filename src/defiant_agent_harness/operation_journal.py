@@ -10,11 +10,18 @@ from typing import Any
 from .approvals.store import PendingApproval
 from .contracts import EvidenceRecord, ResultStatus, new_id, sha256_of, utc_now
 from .money import money, money_text
+from .operator_identity import AuthorizationReconciliationSubject
 from .persistence import atomic_write_json, exclusive_file_lock, read_json
 
 JOURNAL_SCHEMA = "defiant.operation_journal"
-JOURNAL_VERSION = "0.1.0"
-OPERATION_KINDS = {"approval_create", "approval_reject", "approval_expire"}
+JOURNAL_VERSION = "0.2.0"
+_SUPPORTED_JOURNAL_VERSIONS = {"0.1.0", JOURNAL_VERSION}
+OPERATION_KINDS = {
+    "approval_create",
+    "approval_reject",
+    "approval_expire",
+    "authorization_reconcile",
+}
 _STATE_FIELDS = {"schema_name", "schema_version", "active"}
 _OPERATION_FIELDS = {
     "operation_id",
@@ -101,7 +108,7 @@ class OperationJournal:
             raise OperationJournalError("operation journal fields do not match schema")
         if raw.get("schema_name") != JOURNAL_SCHEMA:
             raise OperationJournalError("unsupported operation journal schema")
-        if raw.get("schema_version") != JOURNAL_VERSION:
+        if raw.get("schema_version") not in _SUPPORTED_JOURNAL_VERSIONS:
             raise OperationJournalError("unsupported operation journal version")
         active = raw.get("active")
         if active is None:
@@ -162,23 +169,77 @@ def _validate_payload(kind: str, payload: dict[str, Any]) -> None:
             "reserved_usd",
             "evidence",
         },
+        "authorization_reconcile": {
+            "authority",
+            "expected_usd",
+            "outcome",
+            "reconciled_by",
+            "note",
+            "attestation",
+            "evidence",
+        },
     }[kind]
     if set(payload) != expected_fields:
         raise OperationJournalError("journal payload fields do not match operation")
     try:
-        reserved = money(payload["reserved_usd"], field_name="journal reservation")
+        amount_field = (
+            "expected_usd" if kind == "authorization_reconcile" else "reserved_usd"
+        )
+        reserved = money(payload[amount_field], field_name="journal reservation")
         evidence = EvidenceRecord(**payload["evidence"])
     except (KeyError, TypeError, ValueError, RuntimeError) as exc:
         raise OperationJournalError(f"journal payload is invalid: {exc}") from exc
     if evidence.record_hash or evidence.previous_record_hash:
         raise OperationJournalError("journal evidence must be unsealed")
-    expected_status = {
-        "approval_create": ResultStatus.PENDING_APPROVAL,
-        "approval_reject": ResultStatus.REJECTED,
-        "approval_expire": ResultStatus.EXPIRED,
-    }[kind]
+    expected_status = (
+        {
+            "succeeded": ResultStatus.SUCCEEDED,
+            "failed": ResultStatus.FAILED,
+            "not_executed": ResultStatus.NOT_EXECUTED,
+        }.get(payload.get("outcome"))
+        if kind == "authorization_reconcile"
+        else {
+            "approval_create": ResultStatus.PENDING_APPROVAL,
+            "approval_reject": ResultStatus.REJECTED,
+            "approval_expire": ResultStatus.EXPIRED,
+        }[kind]
+    )
     if evidence.result_status is not expected_status:
         raise OperationJournalError("journal evidence status does not match operation")
+    if kind == "authorization_reconcile":
+        try:
+            authority = AuthorizationReconciliationSubject(**payload["authority"])
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise OperationJournalError(
+                f"journal authorization authority is invalid: {exc}"
+            ) from exc
+        if (
+            authority.action_id != evidence.action_id
+            or authority.request_id != evidence.request_id
+            or authority.authorization_hash != evidence.authorization_hash
+        ):
+            raise OperationJournalError(
+                "journal authorization does not match terminal evidence"
+            )
+        for field in ("reconciled_by", "note"):
+            if not isinstance(payload[field], str) or not payload[field].strip():
+                raise OperationJournalError(f"journal {field} must be non-empty")
+        if evidence.reconciliation_outcome != payload["outcome"]:
+            raise OperationJournalError(
+                "journal evidence reconciliation outcome does not match"
+            )
+        if (
+            evidence.reconciled_by != payload["reconciled_by"].strip()
+            or evidence.reconciliation_note != payload["note"].strip()
+        ):
+            raise OperationJournalError(
+                "journal evidence operator input does not match"
+            )
+        if payload["attestation"] is not None and not isinstance(
+            payload["attestation"], dict
+        ):
+            raise OperationJournalError("journal authorization attestation is invalid")
+        return
     if kind == "approval_create":
         try:
             approval = PendingApproval(**payload["approval"])

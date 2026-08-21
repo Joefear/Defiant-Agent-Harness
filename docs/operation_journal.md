@@ -12,7 +12,9 @@ The journal covers:
 - rejecting a held approval, releasing its reservation, and recording terminal
   evidence; and
 - expiring a held approval, releasing its reservation, and recording terminal
-  evidence.
+  evidence; and
+- reconciling a sealed approval-free authorization, including its exact budget
+  resolution and terminal evidence.
 
 Before the first store changes, the harness writes one prepared operation to
 `operation_journal.json`. The entry binds an operation id, kind, preparation
@@ -20,6 +22,10 @@ time, strict payload schema, and canonical payload hash. It contains immutable
 prepared approval/evidence snapshots and exact reservation identifiers. The
 state directory remains confidential because these snapshots can contain held
 action material and operator attestations.
+
+v0.12 writes journal schema `0.2.0`. Readers continue to accept v0.11 schema
+`0.1.0`, allowing an empty or active older journal to upgrade without losing
+its recovery intent.
 
 ## Recovery
 
@@ -46,8 +52,10 @@ the stale lock.
 
 The journal never records or infers that a tool executed. An approval in
 `executing`, or an authorization whose external result is unknown, remains on
-the explicit operator reconciliation path. The journal cannot turn the absence
-of a response into `succeeded`, `failed`, or `not_executed`.
+the explicit operator reconciliation path. Only after the operator supplies an
+outcome, identity, and note does v0.12 journal the resulting deterministic local
+mutations. The journal cannot turn the absence of a response into `succeeded`,
+`failed`, or `not_executed`.
 
 ## Read-only visibility
 

@@ -93,6 +93,12 @@ operator note, and attestation never enter the browser snapshot. The dashboard
 does not recover, retry, complete, delete, or force-clear an operation; normal
 authority startup performs deterministic recovery before its integrity gate.
 
+v0.12 also places approval-free uncertain authorizations in the operator queue.
+Each item contains only the sealed authority record id, request and action ids,
+tool name, timestamp, and recovery state. The banner distinguishes approval and
+approval-free counts. Targets, payloads, operator notes, attestations, and raw
+results remain excluded, and no reconciliation control or endpoint is added.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

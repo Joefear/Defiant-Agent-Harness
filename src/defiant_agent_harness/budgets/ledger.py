@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal, DecimalException, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 from ..contracts import utc_now
 from ..money import ZERO, MoneyLike, money, money_text
@@ -139,6 +140,24 @@ class BudgetLedger:
                 reconciliation.get("remaining_usd", "0"),
                 "reconciliation remaining_usd",
             )
+            authority_type = reconciliation.get("authority_type")
+            if authority_type is not None:
+                if authority_type != "authorization":
+                    raise BudgetError("invalid reconciliation authority_type")
+                for field_name in (
+                    "authority_record_id",
+                    "authority_record_hash",
+                ):
+                    if (
+                        not isinstance(reconciliation.get(field_name), str)
+                        or not reconciliation[field_name].strip()
+                    ):
+                        raise BudgetError(
+                            f"reconciliation is missing non-empty {field_name}"
+                        )
+                attestation = reconciliation.get("attestation")
+                if attestation is not None and not isinstance(attestation, dict):
+                    raise BudgetError("reconciliation attestation must be an object")
         if not isinstance(data.get("entries", []), list):
             raise BudgetError("entries must be a list")
         for index, entry in enumerate(data.get("entries", [])):
@@ -187,6 +206,35 @@ class BudgetLedger:
             if reservation
             else ZERO
         )
+
+    def exposure_for(self, request_id: str, action_id: str) -> Decimal:
+        """Return the durable worst-case estimate for one authorized action."""
+        data = self._validated_read()
+        reservation = data.get("reservations", {}).get(action_id)
+        if reservation is not None:
+            if reservation.get("request_id") != request_id:
+                raise BudgetError("reservation/request mismatch")
+            return money(reservation.get("amount_usd"), field_name="reservation amount")
+        for entry in reversed(data.get("entries", [])):
+            if (
+                entry.get("kind") == "reserve"
+                and entry.get("request_id") == request_id
+                and entry.get("action_id") == action_id
+            ):
+                return money(entry.get("amount_usd"), field_name="reserved estimate")
+        return ZERO
+
+    def prior_debit_for(self, request_id: str, action_id: str) -> Decimal | None:
+        """Return a durable prior debit amount, if execution already settled."""
+        data = self._validated_read()
+        for entry in reversed(data.get("entries", [])):
+            if (
+                entry.get("kind") == "debit"
+                and entry.get("request_id") == request_id
+                and entry.get("action_id") == action_id
+            ):
+                return money(entry.get("amount_usd"), field_name="prior debit")
+        return None
 
     # -- mutations ----------------------------------------------------
 
@@ -428,7 +476,11 @@ class BudgetLedger:
         outcome: str,
         reconciled_by: str,
         note: str,
-    ) -> dict[str, str]:
+        *,
+        authority_record_id: str = "",
+        authority_record_hash: str = "",
+        attestation: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Resolve an uncertain execution budget exactly once.
 
         Successful and failed attempts are charged at the full reservation when
@@ -458,6 +510,17 @@ class BudgetLedger:
                 "note": note,
                 "expected_usd": money_text(expected),
             }
+            if authority_record_id or authority_record_hash or attestation is not None:
+                if not authority_record_id or not authority_record_hash:
+                    raise BudgetError(
+                        "authorization reconciliation requires sealed authority ids"
+                    )
+                supplied |= {
+                    "authority_type": "authorization",
+                    "authority_record_id": authority_record_id,
+                    "authority_record_hash": authority_record_hash,
+                    "attestation": attestation,
+                }
             if existing is not None:
                 if any(existing.get(key) != value for key, value in supplied.items()):
                     raise BudgetError(
@@ -475,7 +538,7 @@ class BudgetLedger:
                 )
                 if reserved != expected:
                     raise BudgetError(
-                        "approval and ledger reservation amounts do not match"
+                        "authority and ledger reservation amounts do not match"
                     )
                 del data["reservations"][action_id]
 

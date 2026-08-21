@@ -28,7 +28,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.6.0"
+SNAPSHOT_VERSION = "0.7.0"
 
 
 class CommandError(RuntimeError):
@@ -73,6 +73,12 @@ class CommandCore:
                 if audit.stores["approvals"]["state"] == "invalid"
                 else self._approvals()
             )
+            authorization_reconciliation = (
+                _unavailable_authorization_reconciliation()
+                if audit.stores["evidence"]["state"] == "invalid"
+                or audit.stores["approvals"]["state"] == "invalid"
+                else self._authorization_reconciliation()
+            )
             budget = (
                 _unavailable_budget()
                 if audit.stores["budget"]["state"] == "invalid"
@@ -95,8 +101,10 @@ class CommandCore:
                 "evidence": evidence,
                 "reconciliation_required": bool(
                     approvals["reconciliation_required_count"]
+                    or authorization_reconciliation["required_count"]
                 ),
                 "approvals": approvals,
+                "authorization_reconciliation": authorization_reconciliation,
                 "budget": budget,
                 "recent_activity": recent,
             }
@@ -296,6 +304,44 @@ class CommandCore:
             note=approval.note,
         )
 
+    def _authorization_reconciliation(self) -> dict[str, Any]:
+        evidence_path = self.workdir / "evidence.jsonl"
+        if not evidence_path.exists():
+            return {
+                "state": "not_initialized",
+                "required_count": 0,
+                "items": [],
+            }
+        approval_actions: set[str] = set()
+        approvals_path = self.workdir / "approvals.json"
+        if approvals_path.exists():
+            approval_actions = {
+                raw.get("action_id", "")
+                for raw in read_json(approvals_path).values()
+                if isinstance(raw, dict)
+            }
+        items = [
+            {
+                "authority_record_id": record["record_id"],
+                "request_id": record["request_id"],
+                "action_id": record["action_id"],
+                "tool_name": record.get("tool_name", ""),
+                "authorized_at": record["timestamp"],
+                "reconciliation_state": "required",
+            }
+            for record in EvidenceStore(evidence_path).open_authorizations()
+            if record.get("action_id") not in approval_actions
+            and record.get("decision") == "allow"
+        ]
+        items.sort(
+            key=lambda item: (item["authorized_at"], item["authority_record_id"])
+        )
+        return {
+            "state": "ready",
+            "required_count": len(items),
+            "items": items,
+        }
+
     def _reconciliation_identity(
         self, approval: PendingApproval
     ) -> OperatorIdentityStatus:
@@ -372,6 +418,14 @@ def _unavailable_approvals() -> dict[str, Any]:
         "identity_assurance": {},
         "statuses": {status: 0 for status in sorted(APPROVAL_STATUSES)},
         "actionable": [],
+    }
+
+
+def _unavailable_authorization_reconciliation() -> dict[str, Any]:
+    return {
+        "state": "invalid",
+        "required_count": 0,
+        "items": [],
     }
 
 

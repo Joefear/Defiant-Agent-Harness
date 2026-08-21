@@ -268,6 +268,26 @@ external tool or infer whether one succeeded. An approval stranded in
 outcome, identity, and note. Doctor, Command Core, and Command Center expose
 only sanitized journal metadata and never recover, repair, or clear it.
 
+## Approval-free recovery boundary in v0.12
+
+A sealed execution authorization can exist without an approval when policy
+allowed the action directly. If the process stops before terminal evidence, the
+authorization proves permission but not whether the tool ran. v0.12 gives this
+state an explicit operator path keyed by the sealed evidence record rather than
+inventing an approval.
+
+The operator must assert `succeeded`, `failed`, or `not_executed` with identity
+and a non-empty note. Signed mode uses a separate Ed25519 domain bound to the
+authorization record id and hash, action, request, and authorization hash. The
+operation journal makes the resulting budget marker and terminal evidence
+idempotent across crashes. A prior debit is preserved; otherwise possible
+execution consumes the durable estimate and only positive `not_executed`
+evidence releases it.
+
+This path does not replay tools, discover provider truth, or apply to an action
+owned by an approval. Doctor, Command Core, and Command Center expose sanitized
+recovery metadata, but the dashboard remains read-only.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -281,7 +301,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.11
+## What is deliberately absent from v0.12
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity

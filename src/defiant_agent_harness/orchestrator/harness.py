@@ -19,10 +19,14 @@ from ..contracts import (
     sha256_of,
     utc_now,
 )
-from ..evidence.store import EvidenceStore
+from ..evidence.store import EvidenceError, EvidenceStore
 from ..money import ZERO, MoneyLike, money
 from ..operation_journal import JournalOperation, OperationJournal
-from ..operator_identity import validate_external_trust_specs
+from ..operator_identity import (
+    AuthorizationReconciliationSubject,
+    OperatorIdentityError,
+    validate_external_trust_specs,
+)
 from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
 from ..state_integrity import StateIntegrityAuditor
@@ -64,6 +68,16 @@ class ActionOutcome:
             evidence_record_id=self.evidence_record_id,
             approval_id=self.approval_id,
         )
+
+
+@dataclass(frozen=True)
+class AuthorizationReconciliationOutcome:
+    authority_record_id: str
+    action_id: str
+    request_id: str
+    status: ResultStatus
+    evidence_record_id: str
+    detail: str
 
 
 class Harness:
@@ -697,6 +711,105 @@ class Harness:
             detail=f"operator reconciled execution as {outcome}",
         )
 
+    def reconcile_authorization(
+        self,
+        authority_record_id: str,
+        outcome: str,
+        reconciled_by: str,
+        note: str,
+        *,
+        attestation: dict | None = None,
+    ) -> AuthorizationReconciliationOutcome:
+        """Resolve an uncertain execution not backed by an approval."""
+        self.recover_operation()
+        self.state_integrity.require_safe()
+        if outcome not in {"succeeded", "failed", "not_executed"}:
+            raise ValueError("outcome must be one of: succeeded, failed, not_executed")
+        if not isinstance(reconciled_by, str) or not reconciled_by.strip():
+            raise ValueError("reconciled_by must be non-empty")
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError("reconciliation note must be non-empty")
+        reconciled_by = reconciled_by.strip()
+        note = note.strip()
+
+        authority_record = self.evidence.get(authority_record_id)
+        if authority_record is None:
+            raise ValueError(f"unknown evidence record {authority_record_id}")
+        subject = AuthorizationReconciliationSubject.from_record(authority_record)
+        approvals = self.approvals.for_action(subject.action_id)
+        if approvals:
+            raise ApprovalError(
+                "authorization belongs to an approval; reconcile by approval id"
+            )
+        self._require_authorization_reconciliation_identity(
+            subject,
+            outcome,
+            reconciled_by,
+            note,
+            attestation,
+        )
+
+        terminal = self._authorization_terminal(subject)
+        if terminal is not None:
+            self._validate_existing_authorization_reconciliation(
+                terminal, outcome, reconciled_by, note
+            )
+            return AuthorizationReconciliationOutcome(
+                subject.authority_record_id,
+                subject.action_id,
+                subject.request_id,
+                ResultStatus(terminal["result_status"]),
+                terminal["record_id"],
+                f"operator reconciled authorization as {outcome}",
+            )
+
+        expected = self.budget.exposure_for(subject.request_id, subject.action_id)
+        prior_debit = self.budget.prior_debit_for(subject.request_id, subject.action_id)
+        if prior_debit is not None:
+            evidence_cost = prior_debit
+        elif outcome == "not_executed":
+            evidence_cost = ZERO
+        else:
+            evidence_cost = expected
+        status = {
+            "succeeded": ResultStatus.SUCCEEDED,
+            "failed": ResultStatus.FAILED,
+            "not_executed": ResultStatus.NOT_EXECUTED,
+        }[outcome]
+        reconciled_at = (
+            attestation["signed_at"] if attestation is not None else utc_now()
+        )
+        terminal_record = self._make_authorization_reconciliation_record(
+            authority_record,
+            status,
+            evidence_cost,
+            outcome,
+            reconciled_by,
+            reconciled_at,
+            note,
+        )
+        operation = self.operation_journal.prepare(
+            "authorization_reconcile",
+            {
+                "authority": asdict(subject),
+                "expected_usd": str(expected),
+                "outcome": outcome,
+                "reconciled_by": reconciled_by,
+                "note": note,
+                "attestation": attestation,
+                "evidence": terminal_record.to_dict(),
+            },
+        )
+        self._recover_operation(operation)
+        return AuthorizationReconciliationOutcome(
+            subject.authority_record_id,
+            subject.action_id,
+            subject.request_id,
+            status,
+            terminal_record.record_id,
+            f"operator reconciled authorization as {outcome}",
+        )
+
     # -- execution ----------------------------------------------------
 
     def _authorize_external(
@@ -927,6 +1040,53 @@ class Harness:
             reconciliation_note=reconciliation_note,
         )
 
+    def _make_authorization_reconciliation_record(
+        self,
+        authority: dict,
+        status: ResultStatus,
+        evidence_cost: Decimal,
+        outcome: str,
+        reconciled_by: str,
+        reconciled_at: str,
+        note: str,
+    ) -> EvidenceRecord:
+        executed = outcome != "not_executed"
+        return EvidenceRecord(
+            request_id=authority["request_id"],
+            action_id=authority["action_id"],
+            decision=authority["decision"],
+            result_status=status,
+            agent_runner=authority.get("agent_runner", ""),
+            model_id=authority.get("model_id", ""),
+            user_id=authority.get("user_id", ""),
+            workspace_id=authority.get("workspace_id", ""),
+            tool_name=authority.get("tool_name", ""),
+            target=authority.get("target", ""),
+            side_effect_level=authority.get("side_effect_level", "none"),
+            policy_ids=list(authority.get("policy_ids", [])),
+            policy_version=authority.get("policy_version", ""),
+            ruleset_hash=authority.get("ruleset_hash", ""),
+            decision_reason=authority.get("decision_reason", ""),
+            decision_inputs=dict(authority.get("decision_inputs", {})),
+            payload_hash=authority.get("payload_hash", ""),
+            authorization_hash=authority["authorization_hash"],
+            payload_trust=authority.get("payload_trust", "derived"),
+            input_refs=list(authority.get("input_refs", [])),
+            output_hash=(
+                sha256_of({"operator_reconciled": True, "outcome": outcome})
+                if executed
+                else ""
+            ),
+            result_summary=f"operator reconciliation: {outcome}",
+            cost_usd=evidence_cost,
+            budget_remaining_usd=None,
+            dry_run=bool(authority.get("dry_run", False)),
+            reconciliation_outcome=outcome,
+            reconciled_by=reconciled_by,
+            reconciled_at=reconciled_at,
+            reconciliation_note=note,
+        )
+
     def recover_operation(self) -> JournalOperation | None:
         operation = self.operation_journal.active()
         if operation is not None:
@@ -934,11 +1094,16 @@ class Harness:
         return operation
 
     def _recover_operation(self, operation: JournalOperation) -> None:
+        chain = self.evidence.verify()
+        if not chain.ok:
+            raise EvidenceError(
+                "refusing journal recovery with broken evidence chain: " + chain.detail
+            )
         payload = operation.payload
         record = EvidenceRecord(**payload["evidence"])
         if record.record_hash or record.previous_record_hash:
             raise ValueError("journal evidence must be an unsealed prepared record")
-        reserved = money(payload.get("reserved_usd", "0"))
+        reserved = money(payload.get("expected_usd", payload.get("reserved_usd", "0")))
         if operation.kind == "approval_create":
             approval = PendingApproval(**payload["approval"])
             if reserved > ZERO:
@@ -965,10 +1130,110 @@ class Harness:
                 self.budget.ensure_release(
                     reserved, payload["request_id"], payload["action_id"]
                 )
+        elif operation.kind == "authorization_reconcile":
+            subject = AuthorizationReconciliationSubject(**payload["authority"])
+            authority = self.evidence.get(subject.authority_record_id)
+            if authority is None:
+                raise ValueError(
+                    f"unknown authorization evidence {subject.authority_record_id}"
+                )
+            if AuthorizationReconciliationSubject.from_record(authority) != subject:
+                raise ValueError("authorization evidence conflicts with journal")
+            if self.approvals.for_action(subject.action_id):
+                raise ApprovalError("journaled authorization belongs to an approval")
+            self._require_authorization_reconciliation_identity(
+                subject,
+                payload["outcome"],
+                payload["reconciled_by"],
+                payload["note"],
+                payload.get("attestation"),
+            )
+            terminal = self._authorization_terminal(subject)
+            if terminal is not None and terminal.get("record_id") != record.record_id:
+                raise ValueError("authorization has conflicting terminal evidence")
+            self.budget.reconcile_reservation(
+                reserved,
+                subject.request_id,
+                subject.action_id,
+                payload["outcome"],
+                payload["reconciled_by"],
+                payload["note"],
+                authority_record_id=subject.authority_record_id,
+                authority_record_hash=subject.authority_record_hash,
+                attestation=payload.get("attestation"),
+            )
         else:
             raise ValueError(f"unsupported journal operation: {operation.kind}")
         self.evidence.append_idempotent(record)
         self.operation_journal.complete(operation.operation_id)
+
+    def _require_authorization_reconciliation_identity(
+        self,
+        subject: AuthorizationReconciliationSubject,
+        outcome: str,
+        reconciled_by: str,
+        note: str,
+        attestation: dict | None,
+    ) -> None:
+        trust = self.approvals.operator_trust
+        if attestation is not None and trust is None:
+            raise OperatorIdentityError(
+                "trusted operator keys are required to store an attestation"
+            )
+        if trust is not None:
+            trust.require_authorization_reconciliation(
+                attestation,
+                subject,
+                outcome=outcome,
+                operator=reconciled_by,
+                note=note,
+            )
+
+    def _authorization_terminal(
+        self, subject: AuthorizationReconciliationSubject
+    ) -> dict | None:
+        terminal_statuses = {
+            ResultStatus.SUCCEEDED.value,
+            ResultStatus.FAILED.value,
+            ResultStatus.BLOCKED.value,
+            ResultStatus.REJECTED.value,
+            ResultStatus.EXPIRED.value,
+            ResultStatus.NOT_EXECUTED.value,
+        }
+        return next(
+            (
+                item
+                for item in reversed(self.evidence.by_action(subject.action_id))
+                if item.get("authorization_hash") == subject.authorization_hash
+                and item.get("result_status") in terminal_statuses
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _validate_existing_authorization_reconciliation(
+        terminal: dict,
+        outcome: str,
+        reconciled_by: str,
+        note: str,
+    ) -> None:
+        observed = {
+            ResultStatus.SUCCEEDED.value: "succeeded",
+            ResultStatus.FAILED.value: "failed",
+            ResultStatus.NOT_EXECUTED.value: "not_executed",
+        }.get(terminal.get("result_status"))
+        if observed != outcome:
+            raise ValueError(
+                "operator outcome conflicts with existing terminal evidence"
+            )
+        if (
+            terminal.get("reconciliation_outcome") != outcome
+            or terminal.get("reconciled_by") != reconciled_by
+            or terminal.get("reconciliation_note") != note
+        ):
+            raise ValueError(
+                "authorization reconciliation already exists with different input"
+            )
 
     def _validate_journaled_approval(
         self, payload: dict, reserved: Decimal

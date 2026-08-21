@@ -2,9 +2,11 @@
 
 v0.7 adds a read-only, cross-store audit over `evidence.jsonl`,
 `approvals.json`, and `budget.json`. v0.10 extends it to durable
-`operator_trust.json`, and v0.11 adds the deterministic local
-`operation_journal.json`. The audit distinguishes expected crash recovery
-states from contradictions that make further authority unsafe.
+`operator_trust.json`, v0.11 adds the deterministic local
+`operation_journal.json`, and v0.12 validates approval-free authorization
+reconciliation across evidence and budget markers. The audit distinguishes
+expected crash recovery states from contradictions that make further authority
+unsafe.
 
 Run it without initializing or modifying the state directory:
 
@@ -19,7 +21,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.3.0` and exits
+The command emits schema `defiant.state_integrity` version `0.4.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -37,7 +39,8 @@ operation journal, or a live reservation backed by a sealed external-execution
 authorization is a recovery condition, not corruption. Deterministic journaled
 local work is completed before the authority gate. Defiant still refuses
 automatic external replay. Use the v0.6 operator reconciliation procedure where
-an approval id exists.
+an approval id exists, or the v0.12 authorization procedure where only sealed
+authorization evidence exists.
 
 ## Critical invariants
 
@@ -53,6 +56,11 @@ The auditor verifies:
   trust-transition signature;
 - journal schema, canonical payload hash, operation-specific payload shape,
   exact approval/reservation/evidence bindings, and unsealed prepared evidence;
+- every approval-free reconciliation marker binds the sealed authorization,
+  durable estimate, explicit operator input, optional signature, and matching
+  terminal evidence;
+- a sealed `approval_required` authorization cannot be reclassified as
+  approval-free when its approval record is absent;
 - budget structure and entry shape;
 - every live reservation belongs to an active approval or sealed unfinished
   authorization;

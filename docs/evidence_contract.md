@@ -46,6 +46,11 @@ Format is JSON Lines: one record per line, append-only, UTF-8. A consultant can 
 | `previous_record_hash` | string | hash of the preceding record |
 | `record_hash` | string | `sha256:` over every other field |
 
+For v0.12 approval-free authorization reconciliation, the terminal evidence
+uses the reconciliation fields without fabricating `approved_by`. Its outcome,
+operator, note, timestamp, action, request, authorization hash, and conservative
+cost must agree with the authorization-bound budget reconciliation marker.
+
 ## Hashing
 
 All hashes are `"sha256:" + sha256(canonical_json(value))`, where canonical

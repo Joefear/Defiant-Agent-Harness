@@ -29,6 +29,12 @@ DECISION_PURPOSE = "approval_decision"
 RECONCILIATION_PURPOSE = "execution_reconciliation"
 _PURPOSES = {DECISION_PURPOSE, RECONCILIATION_PURPOSE}
 _DOMAIN = b"Defiant Agent Harness operator authority v0.1.0\x00"
+AUTHORIZATION_RECONCILIATION_SCHEMA = "defiant.operator.authorization_reconciliation"
+AUTHORIZATION_RECONCILIATION_VERSION = "0.1.0"
+AUTHORIZATION_RECONCILIATION_PURPOSE = "authorization_reconciliation"
+_AUTHORIZATION_RECONCILIATION_DOMAIN = (
+    b"Defiant Agent Harness authorization reconciliation v0.1.0\x00"
+)
 TRUST_TRANSITION_SCHEMA = "defiant.operator.trust_transition"
 TRUST_TRANSITION_VERSION = "0.1.0"
 TRUST_TRANSITION_PURPOSE = "operator_trust_rotation"
@@ -67,6 +73,23 @@ _TRUST_TRANSITION_FIELDS = {
     "to_bindings_hash",
     "signature",
 }
+_AUTHORIZATION_RECONCILIATION_FIELDS = {
+    "schema_name",
+    "schema_version",
+    "algorithm",
+    "purpose",
+    "key_id",
+    "signed_at",
+    "operator",
+    "note",
+    "outcome",
+    "authority_record_id",
+    "authority_record_hash",
+    "action_id",
+    "request_id",
+    "authorization_hash",
+    "signature",
+}
 
 
 class OperatorIdentityError(RuntimeError):
@@ -84,6 +107,55 @@ class OperatorIdentityStatus:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class AuthorizationReconciliationSubject:
+    """Exact sealed authorization requiring an operator-supplied outcome."""
+
+    authority_record_id: str
+    authority_record_hash: str
+    action_id: str
+    request_id: str
+    authorization_hash: str
+    authorized_at: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "authority_record_id",
+            "authority_record_hash",
+            "action_id",
+            "request_id",
+            "authorization_hash",
+            "authorized_at",
+        ):
+            _bounded_text(getattr(self, field), field, _MAX_NOTE_CHARS)
+        for field in ("authority_record_hash", "authorization_hash"):
+            if not _is_sha256(getattr(self, field)):
+                raise OperatorIdentityError(f"{field} is invalid")
+        _timestamp(self.authorized_at, "authorized_at")
+
+    @classmethod
+    def from_record(
+        cls, record: dict[str, Any]
+    ) -> "AuthorizationReconciliationSubject":
+        if not isinstance(record, dict):
+            raise OperatorIdentityError("authorization evidence must be an object")
+        if record.get("result_status") != "skipped":
+            raise OperatorIdentityError("evidence is not an execution authorization")
+        if record.get("decision") != "allow":
+            raise OperatorIdentityError(
+                "evidence is not an approval-free execution authorization"
+            )
+        values = {
+            "authority_record_id": record.get("record_id"),
+            "authority_record_hash": record.get("record_hash"),
+            "action_id": record.get("action_id"),
+            "request_id": record.get("request_id"),
+            "authorization_hash": record.get("authorization_hash"),
+            "authorized_at": record.get("timestamp"),
+        }
+        return cls(**values)
 
 
 class OperatorTrustPolicy:
@@ -231,6 +303,116 @@ class OperatorTrustPolicy:
         except (OperatorIdentityError, TypeError, ValueError, OverflowError) as exc:
             return OperatorIdentityStatus(False, "invalid", str(exc))
 
+    def require_authorization_reconciliation(
+        self,
+        attestation: dict[str, Any] | None,
+        subject: AuthorizationReconciliationSubject,
+        *,
+        outcome: str,
+        operator: str,
+        note: str,
+    ) -> OperatorIdentityStatus:
+        if not isinstance(attestation, dict):
+            raise OperatorIdentityError(
+                "a signed authorization reconciliation is required"
+            )
+        status = self.verify_authorization_reconciliation(attestation, subject)
+        if not status.ok:
+            raise OperatorIdentityError(status.detail)
+        expected = {
+            "outcome": outcome,
+            "operator": operator.strip(),
+            "note": note.strip(),
+        }
+        for field, value in expected.items():
+            if not hmac.compare_digest(attestation[field], value):
+                raise OperatorIdentityError(
+                    f"authorization reconciliation {field} does not match"
+                )
+        return status
+
+    def verify_authorization_reconciliation(
+        self,
+        attestation: dict[str, Any],
+        subject: AuthorizationReconciliationSubject,
+    ) -> OperatorIdentityStatus:
+        try:
+            _validate_authorization_reconciliation(attestation)
+            operator = attestation["operator"]
+            key_id = attestation["key_id"]
+            key = self._keys.get(operator, {}).get(key_id)
+            if key is None:
+                raise OperatorIdentityError(
+                    f"key {key_id} is not trusted for operator {operator!r}"
+                )
+            expected = {
+                "authority_record_id": subject.authority_record_id,
+                "authority_record_hash": subject.authority_record_hash,
+                "action_id": subject.action_id,
+                "request_id": subject.request_id,
+                "authorization_hash": subject.authorization_hash,
+            }
+            for field, value in expected.items():
+                if not hmac.compare_digest(attestation[field], value):
+                    raise OperatorIdentityError(
+                        f"authorization reconciliation {field} does not match authority"
+                    )
+            signed_at = _parsed_timestamp(attestation["signed_at"], "signed_at")
+            authorized_at = _parsed_timestamp(subject.authorized_at, "authorized_at")
+            if signed_at < authorized_at:
+                raise OperatorIdentityError(
+                    "reconciliation signature predates authorization"
+                )
+            if signed_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+                raise OperatorIdentityError(
+                    "operator signature time is too far in the future"
+                )
+            signature = _decode_signature(attestation["signature"])
+            statement = {
+                name: value
+                for name, value in attestation.items()
+                if name != "signature"
+            }
+            try:
+                key.verify(
+                    signature,
+                    _authorization_reconciliation_statement_bytes(statement),
+                )
+            except InvalidSignature as exc:
+                raise OperatorIdentityError(
+                    "authorization reconciliation signature is invalid"
+                ) from exc
+            return OperatorIdentityStatus(
+                True,
+                "signed_trusted",
+                "signature valid and operator key trusted",
+                operator=operator,
+                key_id=key_id,
+                signed_at=attestation["signed_at"],
+            )
+        except (OperatorIdentityError, TypeError, ValueError, OverflowError) as exc:
+            return OperatorIdentityStatus(False, "invalid", str(exc))
+
+    def assess_authorization_reconciliation(
+        self,
+        attestation: dict[str, Any] | None,
+        subject: AuthorizationReconciliationSubject,
+        *,
+        outcome: str,
+        operator: str,
+        note: str,
+    ) -> OperatorIdentityStatus:
+        try:
+            return self.require_authorization_reconciliation(
+                attestation,
+                subject,
+                outcome=outcome,
+                operator=operator,
+                note=note,
+            )
+        except (OperatorIdentityError, TypeError, ValueError, OverflowError) as exc:
+            return OperatorIdentityStatus(False, "invalid", str(exc))
+
     def require_trust_transition(
         self,
         attestation: dict[str, Any] | None,
@@ -323,6 +505,47 @@ def sign_operator_action(
         "authorization_hash": approval.authorization_hash,
     }
     signature = key.sign(_statement_bytes(statement))
+    return {
+        **statement,
+        "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
+    }
+
+
+def sign_authorization_reconciliation(
+    subject: AuthorizationReconciliationSubject,
+    private_key_path: str | Path,
+    passphrase: bytes,
+    *,
+    outcome: str,
+    operator: str,
+    note: str,
+    signed_at: str | None = None,
+) -> dict[str, Any]:
+    """Sign one explicit outcome for a sealed approval-free authorization."""
+
+    operator = _bounded_text(operator.strip(), "operator", _MAX_OPERATOR_CHARS)
+    note = _bounded_text(note.strip(), "note", _MAX_NOTE_CHARS)
+    outcome = _bounded_text(outcome.strip(), "outcome", 64)
+    if outcome not in {"succeeded", "failed", "not_executed"}:
+        raise OperatorIdentityError("invalid authorization reconciliation outcome")
+    key = _load_private_key(private_key_path, passphrase)
+    statement = {
+        "schema_name": AUTHORIZATION_RECONCILIATION_SCHEMA,
+        "schema_version": AUTHORIZATION_RECONCILIATION_VERSION,
+        "algorithm": ALGORITHM,
+        "purpose": AUTHORIZATION_RECONCILIATION_PURPOSE,
+        "key_id": public_key_id(key.public_key()),
+        "signed_at": _timestamp(signed_at or utc_now(), "signed_at"),
+        "operator": operator,
+        "note": note,
+        "outcome": outcome,
+        "authority_record_id": subject.authority_record_id,
+        "authority_record_hash": subject.authority_record_hash,
+        "action_id": subject.action_id,
+        "request_id": subject.request_id,
+        "authorization_hash": subject.authorization_hash,
+    }
+    signature = key.sign(_authorization_reconciliation_statement_bytes(statement))
     return {
         **statement,
         "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
@@ -468,6 +691,45 @@ def _validate_attestation(attestation: dict[str, Any]) -> None:
         raise OperatorIdentityError("operator authorization hash is invalid")
 
 
+def _validate_authorization_reconciliation(attestation: dict[str, Any]) -> None:
+    if set(attestation) != _AUTHORIZATION_RECONCILIATION_FIELDS:
+        raise OperatorIdentityError(
+            "authorization reconciliation fields do not match the schema"
+        )
+    if attestation.get("schema_name") != AUTHORIZATION_RECONCILIATION_SCHEMA:
+        raise OperatorIdentityError("unsupported authorization reconciliation schema")
+    if attestation.get("schema_version") != AUTHORIZATION_RECONCILIATION_VERSION:
+        raise OperatorIdentityError("unsupported authorization reconciliation version")
+    if attestation.get("algorithm") != ALGORITHM:
+        raise OperatorIdentityError(
+            "unsupported authorization reconciliation algorithm"
+        )
+    if attestation.get("purpose") != AUTHORIZATION_RECONCILIATION_PURPOSE:
+        raise OperatorIdentityError("unsupported authorization reconciliation purpose")
+    for field in (
+        "key_id",
+        "operator",
+        "note",
+        "outcome",
+        "authority_record_id",
+        "authority_record_hash",
+        "action_id",
+        "request_id",
+        "authorization_hash",
+        "signature",
+    ):
+        _bounded_text(attestation.get(field), field, _MAX_NOTE_CHARS)
+    if attestation["outcome"] not in {"succeeded", "failed", "not_executed"}:
+        raise OperatorIdentityError("invalid authorization reconciliation outcome")
+    _timestamp(attestation.get("signed_at"), "signed_at")
+    for field in ("key_id", "authority_record_hash", "authorization_hash"):
+        if not _is_sha256(attestation[field]):
+            raise OperatorIdentityError(
+                f"authorization reconciliation {field} is invalid"
+            )
+    _decode_signature(attestation["signature"])
+
+
 def _validate_trust_transition(attestation: dict[str, Any]) -> None:
     if set(attestation) != _TRUST_TRANSITION_FIELDS:
         raise OperatorIdentityError("trust transition fields do not match the schema")
@@ -551,6 +813,14 @@ def _read_limited(path: Path, label: str) -> bytes:
 
 def _statement_bytes(statement: dict[str, Any]) -> bytes:
     return _DOMAIN + canonical_json(statement).encode("utf-8")
+
+
+def _authorization_reconciliation_statement_bytes(
+    statement: dict[str, Any],
+) -> bytes:
+    return _AUTHORIZATION_RECONCILIATION_DOMAIN + canonical_json(statement).encode(
+        "utf-8"
+    )
 
 
 def _trust_statement_bytes(statement: dict[str, Any]) -> bytes:
