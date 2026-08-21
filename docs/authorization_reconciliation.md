@@ -63,3 +63,7 @@ record id, request id, action id, tool name, timestamp, and recovery state.
 Targets, payloads, notes, signatures, and raw results remain excluded. Command
 Center remains strictly read-only and has no reconcile, replay, delete, or
 force-complete endpoint.
+
+An active `execution_complete` journal is different: the tool result is already
+known and v0.13 will finish its exact local completion without operator input.
+See `known_result_recovery.md`.

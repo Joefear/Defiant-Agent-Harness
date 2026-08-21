@@ -210,6 +210,7 @@ function renderApprovals(approvals, operatorTrust, authorizationReconciliation) 
     const item = document.createElement("article");
     item.className = "approval-item";
     item.classList.toggle("is-reconciliation-required", approval.reconciliation_required);
+    const knownResultRecovery = approval.reconciliation_state === "known_result_recovery";
 
     const identity = document.createElement("div");
     const tool = document.createElement("strong");
@@ -222,12 +223,18 @@ function renderApprovals(approvals, operatorTrust, authorizationReconciliation) 
     const status = document.createElement("div");
     const statusLabel = document.createElement("p");
     statusLabel.className = "approval-item-label";
-    statusLabel.textContent = approval.reconciliation_required ? "Operator action" : "Status";
+    statusLabel.textContent = approval.reconciliation_required
+      ? "Operator action"
+      : knownResultRecovery
+        ? "Automatic recovery"
+        : "Status";
     status.append(
       statusLabel,
       statusChip(approval.reconciliation_required
         ? `reconciliation_${approval.reconciliation_state}`
-        : approval.status),
+        : knownResultRecovery
+          ? approval.reconciliation_state
+          : approval.status),
     );
     const operatorIdentity = approval.reconciliation_identity || approval.operator_identity;
     if (operatorIdentity && operatorIdentity.assurance !== "not_applicable") {

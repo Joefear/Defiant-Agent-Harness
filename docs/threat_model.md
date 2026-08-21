@@ -96,6 +96,12 @@ authorization hash, budget exposure, optional signature, and terminal evidence
 must agree. Exact retries cannot double charge or duplicate evidence; tampered
 markers, signatures, estimates, or terminal records fail closed.
 
+v0.13 persists a returned tool result before its cross-store completion. Exact
+settlement, terminal evidence, sealed authorization, and optional approval
+consumption must agree. Restart never calls the tool and cannot double debit or
+duplicate evidence. A result that was not returned and journaled remains
+uncertain and cannot use this deterministic path.
+
 ### 9. Signed-mode downgrade or unauthorized trust replacement
 
 A process restarts without operator trust pins, or with a different mapping,

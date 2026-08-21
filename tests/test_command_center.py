@@ -105,6 +105,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"reconciliation_required_count" in javascript
     assert b"approval-free" in javascript
     assert b"state_integrity" in javascript
+    assert b"known_result_recovery" in javascript
+    assert b"Automatic recovery" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

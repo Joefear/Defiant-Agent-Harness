@@ -21,7 +21,11 @@ from ..contracts import (
 )
 from ..evidence.store import EvidenceError, EvidenceStore
 from ..money import ZERO, MoneyLike, money
-from ..operation_journal import JournalOperation, OperationJournal
+from ..operation_journal import (
+    ExecutionCompletionSubject,
+    JournalOperation,
+    OperationJournal,
+)
 from ..operator_identity import (
     AuthorizationReconciliationSubject,
     OperatorIdentityError,
@@ -401,19 +405,16 @@ class Harness:
                 raise ApprovalError("external action changed after approval")
             approved_by = approval.decided_by
         estimate = self.budget.reservation_for(action.action_id)
-        if estimate > ZERO:
-            self.budget.settle(ZERO, request.request_id, action.action_id)
-        record = self._record(
+        record = self._complete_known_result(
+            authorization,
             action,
             request,
             decision,
-            ResultStatus.SUCCEEDED,
-            approved_by=approved_by,
-            result=result,
-            detail=result.summary,
+            result,
+            estimate,
+            approved_by,
+            approval_id,
         )
-        if approval_id:
-            self.approvals.mark_consumed(approval_id, record.record_id)
         return ActionOutcome(
             action,
             decision,
@@ -554,7 +555,6 @@ class Harness:
             approved_by=decided_by,
             approval_id=approval_id,
         )
-        self.approvals.mark_consumed(approval_id, outcome.evidence_record_id)
         return outcome
 
     def reconcile_expired_approvals(self) -> list[ActionOutcome]:
@@ -857,25 +857,17 @@ class Harness:
         )
         grant = self.tools.authorize(action, authorization)
         result = self.tools.execute(action, grant, dry_run=self.dry_run)
-
-        if estimate > ZERO:
-            actual = result.cost_usd if result.status == "succeeded" else ZERO
-            self.budget.settle(actual, request.request_id, action.action_id)
-
-        status = (
-            ResultStatus.SUCCEEDED
-            if result.status == "succeeded"
-            else ResultStatus.FAILED
-        )
-        final = self._record(
+        final = self._complete_known_result(
+            authorization.to_dict(),
             action,
             request,
             decision,
-            status,
-            approved_by=approved_by,
-            result=result,
-            detail=result.summary,
+            result,
+            estimate,
+            approved_by,
+            approval_id,
         )
+        status = ResultStatus(final.result_status)
         return ActionOutcome(
             action,
             decision,
@@ -885,6 +877,67 @@ class Harness:
             result=result,
             detail=result.summary,
         )
+
+    def _complete_known_result(
+        self,
+        authorization: dict,
+        action: ProposedAction,
+        request: HarnessRequest,
+        decision: GuardrailDecision,
+        result: ToolResult,
+        estimate: Decimal,
+        approved_by: str | None,
+        approval_id: str,
+    ) -> EvidenceRecord:
+        """Journal a known tool result before completing local state."""
+        actual = (
+            ZERO
+            if result.dry_run
+            else result.cost_usd
+            if result.cost_usd > ZERO
+            else estimate
+        )
+        result.cost_usd = actual
+        status = (
+            ResultStatus.SUCCEEDED
+            if result.status == "succeeded"
+            else ResultStatus.FAILED
+        )
+        disposition = "settle" if estimate > ZERO or actual > ZERO else "none"
+        remaining = (
+            self.budget.preview_settlement(
+                estimate,
+                actual,
+                request.request_id,
+                action.action_id,
+            )
+            if disposition == "settle"
+            else self.budget.balance_usd
+        )
+        record = self._make_record(
+            action,
+            request,
+            decision,
+            status,
+            approved_by=approved_by,
+            result=result,
+            detail=result.summary,
+            budget_remaining_usd=remaining,
+        )
+        subject = ExecutionCompletionSubject.from_record(authorization)
+        operation = self.operation_journal.prepare(
+            "execution_complete",
+            {
+                "authority": asdict(subject),
+                "approval_id": approval_id,
+                "reserved_usd": str(estimate),
+                "actual_usd": str(actual),
+                "budget_disposition": disposition,
+                "evidence": record.to_dict(),
+            },
+        )
+        self._recover_operation(operation)
+        return record
 
     # -- decisions and helpers --------------------------------------
 
@@ -1162,6 +1215,72 @@ class Harness:
                 authority_record_hash=subject.authority_record_hash,
                 attestation=payload.get("attestation"),
             )
+        elif operation.kind == "execution_complete":
+            subject = ExecutionCompletionSubject(**payload["authority"])
+            authority = self.evidence.get(subject.authority_record_id)
+            if authority is None:
+                raise ValueError(
+                    f"unknown completion authority {subject.authority_record_id}"
+                )
+            if ExecutionCompletionSubject.from_record(authority) != subject:
+                raise ValueError("completion authority conflicts with journal")
+            approval_id = payload["approval_id"]
+            if approval_id:
+                approval = self.approvals.get(approval_id)
+                if approval is None:
+                    raise ApprovalError(f"unknown approval {approval_id}")
+                if (
+                    approval.action_id != subject.action_id
+                    or approval.request_id != subject.request_id
+                    or approval.authorization_hash != subject.authorization_hash
+                ):
+                    raise ApprovalError(
+                        "journaled completion does not match approval authority"
+                    )
+                if approval.status not in {"executing", "consumed"}:
+                    raise ApprovalError(
+                        f"approval {approval_id} is {approval.status}, not recoverable"
+                    )
+                if approval.status == "consumed" and (
+                    approval.execution_record_id != record.record_id
+                ):
+                    raise ApprovalError(
+                        "consumed approval references different completion evidence"
+                    )
+                if approval.reconciliation_outcome:
+                    raise ApprovalError(
+                        "approval has operator reconciliation in progress"
+                    )
+                if self.approvals.operator_trust is not None:
+                    identity = self.approvals.decision_identity(approval)
+                    if not identity.ok:
+                        raise ApprovalError(
+                            "operator identity verification failed: " + identity.detail
+                        )
+            elif self.approvals.for_action(subject.action_id):
+                raise ApprovalError(
+                    "approval-free completion belongs to an approval action"
+                )
+            terminal = self._authorization_terminal(subject)
+            if terminal is not None and terminal.get("record_id") != record.record_id:
+                raise ValueError(
+                    "completion authority has conflicting terminal evidence"
+                )
+            if payload["budget_disposition"] == "settle":
+                self.budget.ensure_settlement(
+                    reserved,
+                    payload["actual_usd"],
+                    subject.request_id,
+                    subject.action_id,
+                    record.record_id,
+                )
+            elif self.budget.reservation_for(subject.action_id) > ZERO:
+                raise ValueError("no-budget completion has a live reservation")
+            self.evidence.append_idempotent(record)
+            if approval_id:
+                self.approvals.ensure_consumed(approval_id, record.record_id)
+            self.operation_journal.complete(operation.operation_id)
+            return
         else:
             raise ValueError(f"unsupported journal operation: {operation.kind}")
         self.evidence.append_idempotent(record)
