@@ -88,6 +88,27 @@ class PendingApproval:
             raise ApprovalError(
                 "execution_owner and execution_key must be supplied together"
             )
+        _parse(self.created_at)
+        if self.expires_at:
+            _parse(self.expires_at)
+        for name in (
+            "decided_at",
+            "consumed_at",
+            "reconciliation_started_at",
+            "reconciliation_completed_at",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                _parse(value)
+        if self.status in {"approved", "executing", "consumed", "rejected"}:
+            if not self.decided_by or not self.decided_at:
+                raise ApprovalError(
+                    f"{self.status} approval requires operator identity and decision time"
+                )
+        if self.status in {"consumed", "rejected", "expired"} and not self.consumed_at:
+            raise ApprovalError(f"{self.status} approval requires consumed_at")
+        if self.status == "consumed" and not self.execution_record_id:
+            raise ApprovalError("consumed approval requires execution evidence")
         reconciliation_values = (
             self.reconciliation_outcome,
             self.reconciled_by,
@@ -111,7 +132,6 @@ class PendingApproval:
                 raise ApprovalError("reconciliation_note must be non-empty")
             if not self.reconciliation_started_at:
                 raise ApprovalError("reconciliation_started_at must be present")
-            _parse(self.reconciliation_started_at)
             if self.status not in {"executing", "consumed"}:
                 raise ApprovalError(
                     "reconciliation intent requires executing or consumed status"
@@ -121,7 +141,6 @@ class PendingApproval:
                 raise ApprovalError(
                     "completed reconciliation is missing its durable intent"
                 )
-            _parse(self.reconciliation_completed_at)
             if self.status != "consumed" or not self.execution_record_id:
                 raise ApprovalError(
                     "completed reconciliation requires consumed status and evidence"

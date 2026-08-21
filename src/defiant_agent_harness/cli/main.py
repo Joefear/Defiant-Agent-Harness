@@ -11,6 +11,7 @@ dah verify                verify the evidence hash chain
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
+dah doctor                audit cross-store state without mutating it
 dah command               emit a read-only Command Core snapshot
 dah command-center        serve the local read-only Command Center UI
 dah mcp-proxy             govern one configured MCP stdio server
@@ -34,6 +35,7 @@ from ..mcp.config import McpConfigError, load_proxy_config
 from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
 from ..mcp.session import McpTransportError
 from ..orchestrator.harness import build_harness
+from ..state_integrity import StateIntegrityAuditor
 
 DEFAULT_WORKDIR = Path(".dah")
 
@@ -286,6 +288,12 @@ def cmd_command(args) -> int:
     return 0 if snapshot["authoritative"] else 1
 
 
+def cmd_doctor(args) -> int:
+    report = StateIntegrityAuditor(args.workdir).audit()
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0 if report.safe_to_execute else 1
+
+
 def cmd_command_center(args) -> int:
     try:
         server = CommandCenterServer(
@@ -464,6 +472,12 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("export")
     e.add_argument("request_id")
     e.set_defaults(fn=cmd_export)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help="audit evidence, approval, and budget state without mutation",
+    )
+    doctor.set_defaults(fn=cmd_doctor)
 
     command = sub.add_parser(
         "command",

@@ -26,6 +26,7 @@ Press `Ctrl+C` in the serving terminal to stop it.
 ## What the interface shows
 
 - complete evidence-chain integrity and snapshot generation time;
+- cross-store state health, recovery warnings, and fail-closed integrity alerts;
 - record, request, and action totals;
 - allow, block, and approval-required decision counts;
 - exact-decimal evidence cost and observed ruleset count;
@@ -71,9 +72,15 @@ mix, and recent activity are withheld. Approval and budget projections remain
 separate local-state observations; the page never presents altered evidence as
 dashboard truth.
 
-If a snapshot cannot be built because local state is malformed or unreadable,
-the API returns `503` and the interface shows an availability error while
-retaining the last valid view already in the browser.
+The state-integrity banner separately reports recoverable crash conditions or
+critical cross-store contradictions. Critical issues make the snapshot
+non-authoritative and authority-bearing harness operations fail closed. If one
+JSON store is malformed, its projection is marked `invalid`; the sanitized
+doctor result remains visible and no browser repair control is added.
+
+If a snapshot cannot be built because of an unexpected read failure outside the
+audited stores, the API returns `503` and the interface shows an availability
+error while retaining the last valid view already in the browser.
 
 ## Security scope
 
@@ -83,5 +90,6 @@ to another host, or treat it as a multi-user service. The underlying state
 directory still contains confidential operational material and must remain
 access-controlled.
 
-See `command_core.md` for the JSON projection contract and `architecture.md`
-for the authority-boundary rationale.
+See `command_core.md` for the JSON projection contract,
+`state_integrity.md` for the audit contract, and `architecture.md` for the
+authority-boundary rationale.

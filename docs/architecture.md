@@ -180,6 +180,22 @@ reservation. Only `not_executed` releases a live reservation. A missing
 reservation with no prior debit is charged at the approval estimate rather than
 silently treated as free. See `approval_reconciliation.md`.
 
+## State integrity boundary in v0.7
+
+The three durable stores are individually atomic but do not form one database
+transaction. v0.7 therefore audits their shared authority bindings before each
+authority-bearing harness entry point. Evidence must be intact; approval ids,
+action snapshots, requests, reservations, terminal records, and reconciliation
+markers must agree; terminal approvals cannot retain reservations; and a store
+lock stops new authority.
+
+The auditor explicitly models valid crash windows. An `executing` approval or a
+sealed unfinished external authorization is recovery-required, not corrupt.
+Critical contradictions raise `StateIntegrityError` before new evidence, budget,
+approval, or tool mutation. `dah doctor`, Command Core, and Command Center read
+the same sanitized audit contract without creating or repairing state. See
+`state_integrity.md`.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -193,7 +209,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.6
+## What is deliberately absent from v0.7
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -208,6 +224,9 @@ successes. See `native_hooks.md`.
   real and must be classified accordingly.
 - **Signed evidence.** The chain detects tampering by anyone without write access to the whole file. It does not yet prove authorship to a third party, which needs a signing key and a key-management story.
 - **Multi-user identity.** `approved_by` is a string. Real identity binding is a later arc.
+- **Automatic state repair.** The auditor detects contradictions and fails
+  closed. Repair requires offline investigation or restore from a known-good
+  copy; the dashboard has no repair or mutation path.
 
 ## Known limits
 
@@ -244,3 +263,6 @@ successes. See `native_hooks.md`.
   must inspect the external provider or target system and assert the outcome.
   v0.6 makes that assertion explicit, durable, conservative, and auditable; it
   cannot prove that the human conclusion was correct.
+- **Cross-store auditing is point-in-time.** It does not turn local JSON files
+  into a transactional database. Defiant assumes one logical writer per state
+  directory and uses conservative per-file locks to reject concurrent writes.

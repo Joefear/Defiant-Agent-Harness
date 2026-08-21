@@ -88,9 +88,15 @@ class BudgetLedger:
         for action_id, reservation in reservations.items():
             if not action_id or not isinstance(reservation, dict):
                 raise BudgetError("invalid reservation entry")
-            money(reservation.get("amount_usd", "0"), field_name="reservation amount")
+            amount = money(
+                reservation.get("amount_usd", "0"), field_name="reservation amount"
+            )
+            if amount == ZERO:
+                raise BudgetError("reservation amount must be positive")
             if not reservation.get("request_id"):
                 raise BudgetError("reservation is missing request_id")
+            if not reservation.get("created_at"):
+                raise BudgetError("reservation is missing created_at")
         reconciliations = data.setdefault("reconciliations", {})
         if not isinstance(reconciliations, dict):
             raise BudgetError("reconciliations must be an object")
@@ -135,6 +141,18 @@ class BudgetLedger:
             )
         if not isinstance(data.get("entries", []), list):
             raise BudgetError("entries must be a list")
+        for index, entry in enumerate(data.get("entries", [])):
+            if not isinstance(entry, dict):
+                raise BudgetError(f"entry {index} must be an object")
+            if not isinstance(entry.get("kind"), str) or not entry["kind"]:
+                raise BudgetError(f"entry {index} is missing kind")
+            money(entry.get("amount_usd", "0"), field_name=f"entry {index} amount")
+            _finite_decimal(
+                entry.get("balance_after_usd"),
+                f"entry {index} balance_after_usd",
+            )
+            if not isinstance(entry.get("at"), str) or not entry["at"]:
+                raise BudgetError(f"entry {index} is missing timestamp")
         return data
 
     def _write(self, data: dict) -> None:

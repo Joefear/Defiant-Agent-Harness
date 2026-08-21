@@ -28,8 +28,14 @@ from .contracts import (
     Trust,
 )
 from .orchestrator.harness import Harness, build_harness
+from .state_integrity import (
+    IntegrityIssue,
+    StateIntegrityAuditor,
+    StateIntegrityError,
+    StateIntegrityReport,
+)
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -40,10 +46,14 @@ __all__ = [
     "GuardrailDecision",
     "Harness",
     "HarnessRequest",
+    "IntegrityIssue",
     "ProposedAction",
     "ResultStatus",
     "Sensitivity",
     "SideEffect",
+    "StateIntegrityAuditor",
+    "StateIntegrityError",
+    "StateIntegrityReport",
     "Trust",
     "build_harness",
 ]

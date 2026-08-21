@@ -8,6 +8,9 @@ const elements = {
   syncLabel: document.querySelector("#sync-label"),
   errorBanner: document.querySelector("#error-banner"),
   errorDetail: document.querySelector("#error-detail"),
+  stateIntegrityBanner: document.querySelector("#state-integrity-banner"),
+  stateIntegrityTitle: document.querySelector("#state-integrity-title"),
+  stateIntegrityDetail: document.querySelector("#state-integrity-detail"),
   reconciliationBanner: document.querySelector("#reconciliation-banner"),
   reconciliationDetail: document.querySelector("#reconciliation-detail"),
   integrityOrb: document.querySelector("#integrity-orb"),
@@ -121,6 +124,23 @@ function renderIntegrity(snapshot) {
   elements.updatedAt.textContent = time(snapshot.generated_at);
 }
 
+function renderStateIntegrity(integrity) {
+  const critical = integrity.issue_counts.critical || 0;
+  const warnings = integrity.issue_counts.warning || 0;
+  const visible = integrity.status !== "healthy";
+  elements.stateIntegrityBanner.hidden = !visible;
+  elements.stateIntegrityBanner.classList.toggle(
+    "is-warning",
+    integrity.status === "recovery_required",
+  );
+  elements.stateIntegrityTitle.textContent = integrity.safe_to_execute
+    ? "State recovery required."
+    : "State integrity alert.";
+  elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
+    ? `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`
+    : `${integer.format(critical)} critical ${critical === 1 ? "inconsistency" : "inconsistencies"} detected. Authority-bearing operations are blocked.`;
+}
+
 function renderEvidence(evidence) {
   const available = evidence !== null;
   elements.decisionBars.hidden = !available;
@@ -223,7 +243,11 @@ function renderBudget(budget) {
   const ready = budget.state === "ready";
   const summary = budget.summary;
   const drift = budget.drift;
-  elements.budgetState.textContent = ready ? "Ledger ready" : "Not initialized";
+  elements.budgetState.textContent = ready
+    ? "Ledger ready"
+    : budget.state === "invalid"
+      ? "State invalid"
+      : "Not initialized";
   elements.availableBudget.textContent = ready ? money(summary.available_usd) : "Not set";
   elements.budgetDetail.textContent = ready
     ? `${money(summary.reserved_usd)} reserved`
@@ -265,6 +289,7 @@ function renderActivity(activity) {
 
 function renderSnapshot(snapshot) {
   renderIntegrity(snapshot);
+  renderStateIntegrity(snapshot.state_integrity);
   renderEvidence(snapshot.evidence);
   renderApprovals(snapshot.approvals);
   renderBudget(snapshot.budget);

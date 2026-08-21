@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.6.
+logs. A full trusted-memory/DKE system is not part of v0.7.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.6 is
+## What v0.7 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -78,6 +78,13 @@ intent, conservative budget disposition, evidence, and final approval state are
 individually durable and idempotent across repeated crashes. Command Core and
 Command Center report the required intervention, but Command Center remains
 strictly read-only.
+
+v0.7 adds a read-only cross-store state auditor and fail-closed execution gate.
+It verifies evidence, approvals, budgets, reservations, terminal evidence, and
+reconciliation markers together before an authority-bearing operation. Expected
+crash windows remain recoverable and visible; contradictions block new
+authority. `dah doctor`, Command Core, and Command Center remain usable for
+sanitized diagnostics without repairing or mutating state.
 
 ## Install
 
@@ -139,6 +146,7 @@ dah pending             # what is waiting on a human
 dah history             # the full trail, including everything that was refused
 dah show <record_id>    # one record in full
 dah verify              # confirm the hash chain is intact
+dah doctor              # read-only cross-store integrity and recovery audit
 dah budget              # ledger, spend, and estimate drift
 dah policy              # loaded rules and the ruleset hash
 dah export <request_id> # a Command-ready evidence pack
@@ -342,7 +350,8 @@ Durable approvals necessarily retain the full held action in the local
 directory accordingly; it is not an export artifact.
 
 See `docs/evidence_contract.md` for the field-by-field evidence contract,
-`docs/approval_reconciliation.md` for crash recovery, and
+`docs/approval_reconciliation.md` for crash recovery,
+`docs/state_integrity.md` for cross-store auditing, and
 `docs/command_core.md` for the read-only snapshot contract. See
 `docs/command_center.md` for the local UI and HTTP boundary.
 
@@ -352,7 +361,7 @@ See `docs/evidence_contract.md` for the field-by-field evidence contract,
 pytest
 ```
 
-210 offline tests plus one opt-in live integration test cover Command Core,
+225 offline tests plus one opt-in live integration test cover Command Core,
 Command Center, and both the MCP and native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
@@ -364,13 +373,14 @@ server to a test run.
 
 ## Status
 
-v0.6 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.7 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
-reconciliation for uncertain executions. Not a hosted platform.
+reconciliation plus cross-store integrity gating. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
+`docs/state_integrity.md`,
 `docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
 `docs/codex_runner.md`.

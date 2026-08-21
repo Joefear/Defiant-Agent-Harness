@@ -70,6 +70,19 @@ attempted executions consume the full reservation when actual cost is unknown;
 only an explicit `not_executed` outcome releases it. Exact retries are
 idempotent, while a changed outcome, identity, or note is rejected.
 
+### 8. Divergent or partially corrupted local state
+
+A crash, concurrent writer, or manual edit leaves evidence, approval, and
+budget files individually readable but mutually contradictory.
+
+v0.7 audits the complete evidence chain and cross-store authority bindings
+before new execution, resume, completion, or reconciliation. Orphan or mismatched
+reservations, terminal reservation leaks, absent consumed evidence, conflicting
+reconciliation markers, malformed stores, and live lock files fail closed.
+Expected crash windows remain visible as recovery-required warnings. The doctor,
+Command Core, and Command Center paths are read-only and remain available for
+sanitized diagnosis.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

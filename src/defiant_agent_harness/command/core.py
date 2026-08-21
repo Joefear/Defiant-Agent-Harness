@@ -17,9 +17,10 @@ from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..money import ZERO, money, money_text
 from ..persistence import PersistenceError, read_json
+from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.2.0"
+SNAPSHOT_VERSION = "0.3.0"
 
 
 class CommandError(RuntimeError):
@@ -37,13 +38,32 @@ class CommandCore:
             raise CommandError("limit must not be negative")
 
         try:
-            integrity, evidence, recent = self._evidence(limit, request_id)
-            approvals = self._approvals()
+            audit = StateIntegrityAuditor(self.workdir).audit()
+            audit_payload = audit.to_dict()
+            if audit.stores["evidence"]["state"] == "invalid":
+                detail = _store_issue_detail(audit_payload, "evidence")
+                integrity = ChainStatus(
+                    False, audit.counts["evidence_records"], detail=detail
+                )
+                evidence, recent = None, []
+            else:
+                integrity, evidence, recent = self._evidence(limit, request_id)
+            approvals = (
+                _unavailable_approvals()
+                if audit.stores["approvals"]["state"] == "invalid"
+                else self._approvals()
+            )
+            budget = (
+                _unavailable_budget()
+                if audit.stores["budget"]["state"] == "invalid"
+                else self._budget()
+            )
             return {
                 "schema_name": SNAPSHOT_SCHEMA,
                 "schema_version": SNAPSHOT_VERSION,
                 "generated_at": utc_now(),
-                "authoritative": integrity.ok,
+                "authoritative": integrity.ok and audit.safe_to_execute,
+                "state_integrity": audit_payload,
                 "evidence_integrity": {
                     "ok": integrity.ok,
                     "count": integrity.count,
@@ -55,7 +75,7 @@ class CommandCore:
                     approvals["reconciliation_required_count"]
                 ),
                 "approvals": approvals,
-                "budget": self._budget(),
+                "budget": budget,
                 "recent_activity": recent,
             }
         except (
@@ -241,6 +261,44 @@ def _empty_evidence(request_id: str) -> dict[str, Any]:
         "ruleset_hashes": [],
         "latest_event_at": None,
     }
+
+
+def _unavailable_approvals() -> dict[str, Any]:
+    return {
+        "state": "invalid",
+        "total_count": 0,
+        "actionable_count": 0,
+        "overdue_pending_count": 0,
+        "reconciliation_required_count": 0,
+        "statuses": {status: 0 for status in sorted(APPROVAL_STATUSES)},
+        "actionable": [],
+    }
+
+
+def _unavailable_budget() -> dict[str, Any]:
+    return {
+        "state": "invalid",
+        "summary": {
+            "balance_usd": "0",
+            "reserved_usd": "0",
+            "available_usd": "0",
+            "total_spent_usd": "0",
+            "entry_count": 0,
+        },
+        "drift": {
+            "total_estimated_usd": "0",
+            "total_spent_usd": "0",
+            "drift_usd": "0",
+            "drift_pct": "0",
+        },
+    }
+
+
+def _store_issue_detail(audit: dict[str, Any], store: str) -> str:
+    for issue in audit["issues"]:
+        if issue["store"] == store and issue["severity"] == "critical":
+            return issue["detail"]
+    return f"{store} state is invalid"
 
 
 def _required_text(record: dict[str, Any], field: str, index: int) -> str:
