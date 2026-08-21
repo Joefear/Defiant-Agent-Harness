@@ -5,6 +5,20 @@ reconciliation. This replaces a caller-supplied operator string with proof that
 the holder of a key explicitly pinned to that exact operator authorized one
 exact action.
 
+v0.10 makes that choice durable. The first authority-bearing startup supplied
+with trust bindings enrolls signed-required mode in
+`.dah/operator_trust.json`. It stores only sorted operator/key IDs, hashes,
+timestamps, and signed rotation records—not public-key paths or private
+material. Once enrolled, authority-bearing startup without matching pins fails
+closed. Omitting the flags can no longer silently return the work directory to
+legacy unsigned mode.
+
+When upgrading an existing v0.9 work directory that already contains signed
+approval or reconciliation attestations, the first v0.10 authority startup
+also requires the complete current pins and enrolls them. It refuses to treat
+those records as legacy authority merely because `operator_trust.json` does not
+exist yet.
+
 Signed mode is enabled by supplying one or more trust bindings in this form:
 
 ```text
@@ -47,9 +61,10 @@ dah --workdir .dah --user alice approve apr_... `
 ```
 
 Use the same signing arguments with `reject`. Unsigned legacy mode remains
-available only when no trust pins are configured. A runtime started with any
-`--trusted-operator-key` is strict: it refuses unsigned, invalid, replayed, or
-untrusted approvals immediately before execution.
+available only for a work directory that has never enrolled operator trust.
+After enrollment, every authority-bearing CLI, proxy, or hook process must
+receive the complete enrolled mapping. It refuses missing or changed pins as
+well as unsigned, invalid, replayed, or untrusted approvals before execution.
 
 ## Reconcile an uncertain execution
 
@@ -102,13 +117,40 @@ only assurance, operator, key id, and signing time. It excludes the signature
 and operator note. Command Center renders this projection but has no key upload,
 approval, reconciliation, or other mutation endpoint.
 
+These diagnostic paths never enroll or rotate trust. If durable signed mode is
+present but pins are omitted, they still start, mark the snapshot unsafe and
+non-authoritative, and report `operator_trust_unverified`. A malformed state or
+different mapping is likewise visible without repair.
+
 ## Rotation and compromise
 
-Repeat `--trusted-operator-key` to trust old and new public keys for the same
-identity during a planned rotation. Remove a compromised key from every runtime
-trust set after reviewing all decisions made with that key. Historical records
-signed by a removed key become untrusted under the current policy; retain a
-separately governed historical trust manifest if audit policy requires it.
+Online rotation is deliberately additive. Supply the complete current mapping,
+the complete post-rotation mapping, a private key already trusted in the current
+generation, its identity, and a non-empty note:
+
+```powershell
+dah --workdir .dah operator-trust-rotate `
+  --trusted-operator-key alice=C:\DefiantKeys\alice-2026-public.pem `
+  --new-trusted-operator-key alice=C:\DefiantKeys\alice-2026-public.pem `
+  --new-trusted-operator-key alice=C:\DefiantKeys\alice-2027-public.pem `
+  --operator-key C:\DefiantKeys\alice-2026-private.pem `
+  --operator-passphrase-file C:\DefiantKeys\alice-2026.passphrase `
+  --operator alice `
+  --note "Stage the reviewed 2027 key"
+```
+
+The transition signature binds the prior and next generation, both mapping
+hashes, operator, note, signer key ID, and time. The durable chain also records
+each resulting key-ID mapping, allowing every transition to be verified on
+restart. A newly introduced key cannot authorize its own addition. Exact
+retries are idempotent.
+
+Removal, reassignment, or replacement is refused online because it would make
+the durable history unverifiable or let a changed startup configuration bypass
+the old trust root. For compromise recovery, stop all writers, preserve the
+state and evidence for investigation, and perform a separately governed offline
+recovery. v0.10 intentionally provides no automatic delete, reset, or force
+rotation command.
 
 This mechanism proves key possession under an explicit local trust mapping. It
 does not provide certificate identity, remote authentication, trusted time,

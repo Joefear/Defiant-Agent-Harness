@@ -178,15 +178,21 @@ function renderEvidence(evidence) {
   elements.latestEvent.textContent = time(evidence.latest_event_at, true);
 }
 
-function renderApprovals(approvals) {
+function renderApprovals(approvals, operatorTrust) {
   elements.approvalCount.textContent = compact.format(approvals.actionable_count);
   elements.approvalBadge.textContent = integer.format(approvals.actionable_count);
   const reconciliationCount = approvals.reconciliation_required_count || 0;
-  elements.approvalDetail.textContent = reconciliationCount
+  const trustDetail = operatorTrust.state === "ready"
+    ? operatorTrust.verification === "verified"
+      ? `Signed trust g${operatorTrust.generation}`
+      : `Trust ${label(operatorTrust.verification)}`
+    : "Operator trust not enrolled";
+  const approvalDetail = reconciliationCount
     ? `${compact.format(reconciliationCount)} require reconciliation`
     : approvals.overdue_pending_count
       ? `${compact.format(approvals.overdue_pending_count)} overdue pending`
       : "No overdue pending approvals";
+  elements.approvalDetail.textContent = `${approvalDetail} · ${trustDetail}`;
   elements.reconciliationBanner.hidden = reconciliationCount === 0;
   elements.reconciliationDetail.textContent = reconciliationCount
     ? `${integer.format(reconciliationCount)} executing approval${reconciliationCount === 1 ? "" : "s"} must be reconciled from the operator CLI. Command Center remains visibility-only.`
@@ -301,7 +307,7 @@ function renderSnapshot(snapshot) {
   renderIntegrity(snapshot);
   renderStateIntegrity(snapshot.state_integrity);
   renderEvidence(snapshot.evidence);
-  renderApprovals(snapshot.approvals);
+  renderApprovals(snapshot.approvals, snapshot.operator_trust);
   renderBudget(snapshot.budget);
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;

@@ -10,6 +10,7 @@ dah show <record_id>      show one evidence record in full
 dah verify                verify the evidence hash chain
 dah signing-keygen        create an encrypted Ed25519 signing key pair
 dah operator-keygen       create an encrypted operator identity key pair
+dah operator-trust-rotate authorize an additive operator trust rotation
 dah verify-export         verify a signed export against pinned public keys
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
@@ -53,7 +54,10 @@ from ..operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
     sign_operator_action,
+    sign_trust_transition,
 )
+from ..operator_trust_state import OperatorTrustStateStore
+from ..persistence import PersistenceError
 from ..state_integrity import StateIntegrityAuditor
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -422,13 +426,61 @@ def cmd_command(args) -> int:
 
 def cmd_doctor(args) -> int:
     try:
-        trust = _operator_trust(args)
+        trust = _operator_trust(args, authority=False)
         report = StateIntegrityAuditor(args.workdir, operator_trust=trust).audit()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.safe_to_execute else 1
     except (OperatorIdentityError, EvidenceSigningError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
+
+
+def cmd_operator_trust_rotate(args) -> int:
+    try:
+        current_specs = args.trusted_operator_key or []
+        candidate_specs = args.new_trusted_operator_key or []
+        if not current_specs or not candidate_specs:
+            raise OperatorIdentityError(
+                "rotation requires current and new trusted operator keys"
+            )
+        _validate_operator_specs(args.workdir, current_specs)
+        _validate_operator_specs(args.workdir, candidate_specs)
+        _require_external_secret(
+            args.workdir, args.operator_key, "operator private key"
+        )
+        _require_external_secret(
+            args.workdir,
+            args.operator_passphrase_file,
+            "operator passphrase file",
+        )
+        current = OperatorTrustPolicy.from_specs(current_specs)
+        candidate = OperatorTrustPolicy.from_specs(candidate_specs)
+        store = OperatorTrustStateStore(Path(args.workdir) / "operator_trust.json")
+        state = store.get()
+        if state is None:
+            raise OperatorIdentityError(
+                "operator trust is not enrolled; start an authority path once first"
+            )
+        attestation = sign_trust_transition(
+            args.operator_key,
+            read_passphrase(args.operator_passphrase_file),
+            from_generation=state.generation,
+            from_bindings_hash=state.bindings_hash,
+            to_bindings_hash=candidate.bindings_hash,
+            operator=args.operator,
+            note=args.note,
+        )
+        rotated = store.rotate(current, candidate, attestation)
+    except (OperatorIdentityError, EvidenceSigningError, PersistenceError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(f"operator trust generation {rotated.generation}")
+    print(f"bindings {rotated.bindings_hash}")
+    print(
+        f"operators {len(rotated.bindings)}  "
+        f"keys {sum(len(keys) for keys in rotated.bindings.values())}"
+    )
+    return 0
 
 
 def cmd_command_center(args) -> int:
@@ -535,24 +587,30 @@ def _harness(args):
     )
 
 
-def _operator_trust(args) -> OperatorTrustPolicy | None:
+def _operator_trust(args, *, authority: bool = True) -> OperatorTrustPolicy | None:
     specs = getattr(args, "trusted_operator_key", None) or []
-    if not specs:
-        return None
     _validate_trusted_operator_paths(args)
-    return OperatorTrustPolicy.from_specs(specs)
+    if authority:
+        return OperatorTrustStateStore(
+            Path(args.workdir) / "operator_trust.json"
+        ).resolve_for_authority(specs)
+    return OperatorTrustPolicy.from_specs(specs) if specs else None
 
 
 def _validate_trusted_operator_paths(args) -> None:
-    for spec in getattr(args, "trusted_operator_key", None) or []:
+    _validate_operator_specs(
+        args.workdir, getattr(args, "trusted_operator_key", None) or []
+    )
+
+
+def _validate_operator_specs(workdir: str | Path, specs: list[str]) -> None:
+    for spec in specs:
         _, separator, path = spec.partition("=")
         if not separator or not path.strip():
             raise OperatorIdentityError(
                 "trusted operator keys must use IDENTITY=PUBLIC_KEY.pem"
             )
-        _require_external_secret(
-            args.workdir, path.strip(), "trusted operator public key"
-        )
+        _require_external_secret(workdir, path.strip(), "trusted operator public key")
 
 
 def _operator_attestation(
@@ -653,6 +711,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(fn=cmd_demo)
 
     s = sub.add_parser("pending", help="list actions awaiting approval")
+    _add_operator_trust(s)
     s.set_defaults(fn=cmd_pending)
 
     a = sub.add_parser("approve")
@@ -695,9 +754,11 @@ def build_parser() -> argparse.ArgumentParser:
     v.set_defaults(fn=cmd_verify)
 
     b = sub.add_parser("budget")
+    _add_operator_trust(b)
     b.set_defaults(fn=cmd_budget)
 
     pol = sub.add_parser("policy")
+    _add_operator_trust(pol)
     pol.set_defaults(fn=cmd_policy)
 
     e = sub.add_parser("export")
@@ -726,6 +787,24 @@ def build_parser() -> argparse.ArgumentParser:
     operator_keygen.add_argument("--public-key", required=True)
     operator_keygen.add_argument("--passphrase-file", required=True)
     operator_keygen.set_defaults(fn=cmd_signing_keygen)
+
+    rotate = sub.add_parser(
+        "operator-trust-rotate",
+        help="authorize a signed, strictly additive operator trust rotation",
+    )
+    _add_operator_trust(rotate)
+    rotate.add_argument(
+        "--new-trusted-operator-key",
+        action="append",
+        required=True,
+        metavar="IDENTITY=PUBLIC_KEY.pem",
+        help="complete post-rotation identity/key binding (repeatable)",
+    )
+    rotate.add_argument("--operator-key", required=True)
+    rotate.add_argument("--operator-passphrase-file", required=True)
+    rotate.add_argument("--operator", required=True)
+    rotate.add_argument("--note", required=True)
+    rotate.set_defaults(fn=cmd_operator_trust_rotate)
 
     verify_export_parser = sub.add_parser(
         "verify-export",
@@ -813,7 +892,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except (OperatorIdentityError, PersistenceError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

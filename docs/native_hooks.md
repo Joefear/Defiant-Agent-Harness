@@ -84,10 +84,13 @@ If the process stops after authorization but before `PostToolUse`, Defiant does
 not claim success. An approval left in `executing` is treated as uncertain and
 automatic replay is refused.
 
-For v0.9 signed mode, set `DAH_TRUSTED_OPERATOR_KEYS` to a JSON array of
+For signed mode, set `DAH_TRUSTED_OPERATOR_KEYS` to a JSON array of
 `IDENTITY=PUBLIC_KEY.pem` bindings before starting the runner. The hook loads
 only public keys and fails closed on malformed configuration or an unsigned,
 invalid, untrusted, or replayed approval. See `operator_identity.md`.
+The first trusted hook startup durably enrolls that mapping. Later hook startup
+with the variable missing or changed fails closed before processing an event;
+planned changes use the operator trust rotation CLI.
 
 Current Copilot CLI camel-case payloads do not include a tool invocation ID.
 Defiant therefore derives a stable correlation key from the session, working

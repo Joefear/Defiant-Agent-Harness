@@ -1,8 +1,9 @@
 # State integrity auditing
 
 v0.7 adds a read-only, cross-store audit over `evidence.jsonl`,
-`approvals.json`, and `budget.json`. The audit distinguishes expected crash
-recovery states from contradictions that make further authority unsafe.
+`approvals.json`, and `budget.json`. v0.10 extends it to durable
+`operator_trust.json`. The audit distinguishes expected crash recovery states
+from contradictions that make further authority unsafe.
 
 Run it without initializing or modifying the state directory:
 
@@ -10,12 +11,14 @@ Run it without initializing or modifying the state directory:
 dah --workdir .dah doctor
 ```
 
-In v0.9, add repeatable
+For signed mode, add repeatable
 `--trusted-operator-key IDENTITY=PUBLIC_KEY.pem` options to audit operator
 decision and reconciliation attestations under the same policy used by the
-runtime.
+runtime, as well as the durable trust-generation chain. Omitting them after
+enrollment does not prevent this read-only command from starting; it reports
+`operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.1.0` and exits
+The command emits schema `defiant.state_integrity` version `0.2.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -42,6 +45,9 @@ The auditor verifies:
   approved states, and durable action/request bindings;
 - when trust pins are configured, signed operator purpose, outcome, identity,
   note, key assignment, signature, and approval-authority binding;
+- durable signed-mode enrollment, canonical binding hashes, contiguous
+  generations, strictly additive mappings, prior-generation signers, and every
+  trust-transition signature;
 - budget structure and entry shape;
 - every live reservation belongs to an active approval or sealed unfinished
   authorization;
@@ -66,8 +72,9 @@ budget, or tool mutation occurs. Diagnostic commands do not construct a
 harness and remain usable.
 
 The audit is a local point-in-time consistency check, not a database
-transaction, repair engine, or OS sandbox. Signature verification is enabled
-only when operator trust pins are supplied. Defiant still assumes one
+transaction, repair engine, or OS sandbox. A durable trust chain without
+external pins is visible but cannot be authenticated and is therefore unsafe.
+Defiant still assumes one
 logical writer per state directory, uses per-file exclusive locks, and requires
 the directory to be access-controlled. Restore corrupt state from a known-good
 copy or investigate it offline; do not edit a live store merely to clear an

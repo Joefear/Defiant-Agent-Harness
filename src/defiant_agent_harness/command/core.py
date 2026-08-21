@@ -28,7 +28,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.4.0"
+SNAPSHOT_VERSION = "0.5.0"
 
 
 class CommandError(RuntimeError):
@@ -84,6 +84,7 @@ class CommandCore:
                 "generated_at": utc_now(),
                 "authoritative": integrity.ok and audit.safe_to_execute,
                 "state_integrity": audit_payload,
+                "operator_trust": audit_payload["stores"]["operator_trust"],
                 "evidence_integrity": {
                     "ok": integrity.ok,
                     "count": integrity.count,
