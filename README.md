@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.7.
+logs. A full trusted-memory/DKE system is not part of v0.8.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.7 is
+## What v0.8 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -86,6 +86,14 @@ crash windows remain recoverable and visible; contradictions block new
 authority. `dah doctor`, Command Core, and Command Center remain usable for
 sanitized diagnostics without repairing or mutating state.
 
+v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
+Signing requires an encrypted private key kept outside harness state, an
+explicit signer identity, and a non-empty note. Verification pins public keys
+out of band and supports deliberate rotation without trusting a key embedded in
+the export. A broken chain, empty request, cross-request record, malformed
+schema, or inconsistent chain metadata cannot be signed. Command Center remains
+strictly read-only and never receives private-key material.
+
 ## Install
 
 ```bash
@@ -94,7 +102,7 @@ cd Defiant-Agent-Harness
 pip install -e ".[dev]"
 ```
 
-Python 3.10+. The only runtime dependency is PyYAML.
+Python 3.10+. Runtime dependencies are PyYAML and `cryptography`.
 
 ## Try it
 
@@ -146,6 +154,8 @@ dah pending             # what is waiting on a human
 dah history             # the full trail, including everything that was refused
 dah show <record_id>    # one record in full
 dah verify              # confirm the hash chain is intact
+dah signing-keygen      # generate an encrypted Ed25519 signing key pair
+dah verify-export ...   # verify a signed export against pinned public keys
 dah doctor              # read-only cross-store integrity and recovery audit
 dah budget              # ledger, spend, and estimate drift
 dah policy              # loaded rules and the ruleset hash
@@ -155,6 +165,12 @@ dah command-center      # local read-only Command Center UI
 ```
 
 `dah verify` is the one to try tampering with. Edit any line of `.dah/evidence.jsonl` and it will tell you which record broke and how.
+
+To hand evidence to an external reviewer, sign a request export with an
+encrypted Ed25519 private key and explicit operator context, then verify it
+against a public key distributed through a separate trusted channel. See
+`docs/evidence_signing.md` for key generation, signing, verification, rotation,
+and compromise handling.
 
 `dah --workdir .dah command-center` prints the exact loopback URL for the local
 dashboard. It never opens an execution or approval path; see
@@ -350,6 +366,7 @@ Durable approvals necessarily retain the full held action in the local
 directory accordingly; it is not an export artifact.
 
 See `docs/evidence_contract.md` for the field-by-field evidence contract,
+`docs/evidence_signing.md` for offline-verifiable exports,
 `docs/approval_reconciliation.md` for crash recovery,
 `docs/state_integrity.md` for cross-store auditing, and
 `docs/command_core.md` for the read-only snapshot contract. See
@@ -361,7 +378,7 @@ See `docs/evidence_contract.md` for the field-by-field evidence contract,
 pytest
 ```
 
-225 offline tests plus one opt-in live integration test cover Command Core,
+241 offline tests plus one opt-in live integration test cover Command Core,
 Command Center, and both the MCP and native-hook boundaries. The suite includes a
 real subprocess MCP flow across initialization, tool discovery, allow, durable
 approval, proxy restart, exact-call retry, destructive block, unmapped-tool
@@ -373,14 +390,15 @@ server to a test run.
 
 ## Status
 
-v0.7 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.8 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
-reconciliation plus cross-store integrity gating. Not a hosted platform.
+reconciliation, cross-store integrity gating, and offline-verifiable signed
+evidence exports. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
-`docs/state_integrity.md`,
+`docs/state_integrity.md`, `docs/evidence_signing.md`,
 `docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
 `docs/codex_runner.md`.

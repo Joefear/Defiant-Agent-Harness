@@ -117,6 +117,19 @@ tree. A package name and version are stronger than `latest`, but a production
 install still needs a reviewed lockfile, immutable image digest, or equivalent
 artifact verification.
 
+**Evidence export forgery or alteration.** v0.8 signs the canonical request
+export with Ed25519 only after the complete live chain verifies. Verification
+requires an independently pinned public key and rejects payload, signer, note,
+timestamp, schema, signature, or key-id tampering. The export cannot appoint its
+own trust key.
+
+**Signing-key theft.** Encryption protects a private-key file at rest, not while
+an authorized signer is using it. A stolen private key can produce valid
+signatures. Keep the key and passphrase outside `.dah`, separate them where
+practical, rotate after compromise, and distribute revocation through the
+organization's trust process. Defiant does not backdate-proof signatures or
+provide trusted hardware or certificate identity.
+
 **Side channels in real-write adapters.** A tool allowed to write into a folder
 watched by another publisher creates an indirect outward path and needs its own
 policy boundary.
@@ -131,6 +144,9 @@ policy boundary.
   are not an OS sandbox.
 - Policy files are under operator control and not writable by the agent.
 - The evidence file is on storage the agent cannot write to directly.
+- Evidence-export private keys and passphrases are outside agent-writable and
+  harness state paths; trusted public keys reach verifiers through an
+  authenticated out-of-band channel.
 - The local state directory is access-controlled; durable approvals retain held
   payloads there.
 - `approved_by` is an assertion by the CLI caller. Real identity binding is a later arc.

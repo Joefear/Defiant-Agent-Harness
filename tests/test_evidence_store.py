@@ -92,6 +92,16 @@ def test_export_pack_carries_chain_status(tmp_path):
     assert pack["chain_status"]["ok"] is True
 
 
+def test_export_refuses_concurrent_or_crash_stranded_lock(tmp_path):
+    path = tmp_path / "e.jsonl"
+    store = EvidenceStore(path)
+    record = store.append(rec(1))
+    path.with_name(path.name + ".lock").write_text("pid=99999\n")
+
+    with pytest.raises(EvidenceError, match="state file is locked"):
+        store.export_request(record.request_id)
+
+
 def test_append_is_durable_across_instances(tmp_path):
     p = tmp_path / "e.jsonl"
     EvidenceStore(p).append(rec(1))

@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from ..contracts import EvidenceRecord, sha256_of
+from ..contracts import EvidenceRecord, sha256_of, utc_now
 from ..persistence import PersistenceError, exclusive_file_lock
+from .signing import EXPORT_SCHEMA, EXPORT_VERSION
 
 GENESIS = "sha256:" + "0" * 64
 
@@ -171,10 +172,29 @@ class EvidenceStore:
     # -- export ------------------------------------------------------
 
     def export_request(self, request_id: str) -> dict:
-        records = self.by_request(request_id)
+        try:
+            with exclusive_file_lock(self.path):
+                status = self._verify_unlocked()
+                all_records = list(self._raw())
+        except PersistenceError as exc:
+            raise EvidenceError(str(exc)) from exc
+        records = [
+            record for record in all_records if record.get("request_id") == request_id
+        ]
         return {
+            "schema_name": EXPORT_SCHEMA,
+            "schema_version": EXPORT_VERSION,
             "request_id": request_id,
+            "exported_at": utc_now(),
             "record_count": len(records),
-            "chain_status": self.verify().__dict__,
+            "full_chain_record_count": status.count,
+            "chain_head_hash": (
+                all_records[-1]["record_hash"]
+                if status.ok and all_records
+                else GENESIS
+                if status.ok
+                else None
+            ),
+            "chain_status": status.__dict__,
             "records": records,
         }

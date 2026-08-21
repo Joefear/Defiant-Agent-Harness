@@ -61,7 +61,30 @@ It proves that no record was altered in place, deleted from the middle, or
 reordered without detection. `verify()` reports the failing index. The writer
 refuses to append if the existing file is malformed or the chain is broken.
 
-It does not prove authorship to a third party — that needs signing keys — and it does not prevent truncation of the tail by someone with write access to the file. Off-box replication answers truncation, and belongs to Command.
+It does not prevent truncation of the tail by someone with write access to the
+file. Off-box replication answers truncation, and belongs to Command. v0.8 can
+prove that the holder of an explicitly trusted Ed25519 key signed one exact
+point-in-time request export; it does not turn the mutable local file into
+immutable off-box storage.
+
+## Export and attestation contract
+
+`dah export` emits schema `defiant.evidence.export` version `0.2.0`. It binds
+request-scoped records to the verified complete-chain record count and head
+hash, includes the export timestamp, and preserves the complete chain status.
+Unsigned exports remain useful local artifacts but make no authorship claim.
+
+With `--signing-key`, the document also contains schema
+`defiant.evidence.attestation` version `0.1.0`. Ed25519 signs a domain-separated
+statement containing the canonical payload hash, public-key id, signing time,
+asserted signer identity, and required note. The public key is not embedded as
+a trust decision. `dah verify-export` requires one or more independently pinned
+public-key files and rejects an untrusted key even when the mathematics of the
+signature is otherwise valid.
+
+Signing refuses a broken chain, empty request, cross-request record, malformed
+hash or timestamp, inconsistent count, unsupported schema, or non-canonical
+JSON value. See `evidence_signing.md` for the operator and rotation procedures.
 
 ## Data handling
 
@@ -89,4 +112,5 @@ dah history                # tail of the trail
 dah show <record_id>       # one record in full
 dah verify                 # chain integrity
 dah export <request_id>    # a pack: records + chain status, ready for Command
+dah verify-export <file> --trusted-key <public.pem>  # offline authenticity
 ```
