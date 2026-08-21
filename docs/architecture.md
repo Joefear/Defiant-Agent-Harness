@@ -252,6 +252,22 @@ Core, and Command Center never enroll, rotate, repair, or receive private-key
 material. Their projection contains generation, counts, mapping hash, and
 verification status only.
 
+## Crash-safe local operation boundary in v0.11
+
+Approval creation, rejection, and expiry each update more than one local store.
+v0.11 prepares those deterministic transitions in a single-operation journal
+before changing approvals, reservations, or evidence. Recovery reapplies or
+recognizes each exact step idempotently and clears the journal only after all
+prepared state is durable. A mismatch fails closed and preserves the journal
+for investigation.
+
+This is intentionally not a general transaction engine. The journal contains
+only local outcomes that the harness already knows. It cannot replay an
+external tool or infer whether one succeeded. An approval stranded in
+`executing` remains subject to explicit operator reconciliation with an
+outcome, identity, and note. Doctor, Command Core, and Command Center expose
+only sanitized journal metadata and never recover, repair, or clear it.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -265,7 +281,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.10
+## What is deliberately absent from v0.11
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity

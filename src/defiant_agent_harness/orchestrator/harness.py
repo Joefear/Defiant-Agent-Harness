@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
 
@@ -20,7 +20,8 @@ from ..contracts import (
     utc_now,
 )
 from ..evidence.store import EvidenceStore
-from ..money import ZERO, MoneyLike
+from ..money import ZERO, MoneyLike, money
+from ..operation_journal import JournalOperation, OperationJournal
 from ..operator_identity import validate_external_trust_specs
 from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
@@ -75,6 +76,7 @@ class Harness:
         budget: BudgetLedger,
         adapter: AgentAdapter,
         state_integrity: StateIntegrityAuditor,
+        operation_journal: OperationJournal,
         dry_run: bool = False,
     ):
         self.policy = policy
@@ -84,6 +86,7 @@ class Harness:
         self.budget = budget
         self.adapter = adapter
         self.state_integrity = state_integrity
+        self.operation_journal = operation_journal
         self.dry_run = dry_run
 
     # -- entry points -------------------------------------------------
@@ -147,6 +150,8 @@ class Harness:
         execution_key: str = "",
         external_execution: bool = False,
     ) -> ActionOutcome:
+        self.recover_operation()
+        self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
         if self.evidence.by_action(action.action_id):
             decision = self._control_decision(
@@ -197,32 +202,35 @@ class Harness:
                     },
                 )
                 return self._terminal(action, request, decision, ResultStatus.BLOCKED)
-            self.budget.reserve(estimate, request.request_id, action.action_id)
-
         if decision.decision is Decision.APPROVAL_REQUIRED:
-            try:
-                pending = self.approvals.create(
-                    action=action,
-                    decision_reason=decision.reason,
-                    approval_scope=decision.approval_scope,
-                    policy_ids=decision.policy_ids,
-                    request=request,
-                    decision=decision,
-                    reserved_usd=estimate,
-                    execution_owner=execution_owner,
-                    execution_key=execution_key,
-                )
-            except Exception:
-                if estimate > ZERO:
-                    self.budget.release(request.request_id, action.action_id)
-                raise
-            record = self._record(
+            pending = self.approvals.prepare(
+                action=action,
+                decision_reason=decision.reason,
+                approval_scope=decision.approval_scope,
+                policy_ids=decision.policy_ids,
+                request=request,
+                decision=decision,
+                reserved_usd=estimate,
+                execution_owner=execution_owner,
+                execution_key=execution_key,
+            )
+            record = self._make_record(
                 action,
                 request,
                 decision,
                 ResultStatus.PENDING_APPROVAL,
                 detail=f"held for approval {pending.approval_id}",
+                budget_remaining_usd=self.budget.balance_usd - estimate,
             )
+            operation = self.operation_journal.prepare(
+                "approval_create",
+                {
+                    "approval": asdict(pending),
+                    "reserved_usd": pending.reserved_usd,
+                    "evidence": record.to_dict(),
+                },
+            )
+            self._recover_operation(operation)
             return ActionOutcome(
                 action,
                 decision,
@@ -231,6 +239,9 @@ class Harness:
                 approval_id=pending.approval_id,
                 detail=decision.reason,
             )
+
+        if estimate > ZERO:
+            self.budget.reserve(estimate, request.request_id, action.action_id)
 
         if external_execution:
             return self._authorize_external(
@@ -245,6 +256,8 @@ class Harness:
 
     def resume_external(self, approval_id: str) -> ActionOutcome:
         """Authorize an approved exact retry for execution by another runtime."""
+        self.recover_operation()
+        self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
         pending = self.approvals.get(approval_id)
         if pending is None:
@@ -318,6 +331,7 @@ class Harness:
         approval_id: str = "",
     ) -> ActionOutcome:
         """Seal a successful result reported by a matching post-tool hook."""
+        self.recover_operation()
         self.state_integrity.require_safe()
         records = self.evidence.by_action(action.action_id)
         authorization = next(
@@ -405,6 +419,8 @@ class Harness:
         *,
         attestation: dict | None = None,
     ) -> ActionOutcome:
+        self.recover_operation()
+        self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
         pending = self.approvals.get(approval_id)
         if pending is None:
@@ -423,7 +439,7 @@ class Harness:
         request = pending.held_request()
         original_decision = pending.held_decision()
 
-        if pending.status == "pending":
+        if pending.status == "pending" and approved:
             pending = self.approvals.decide(
                 approval_id,
                 approved,
@@ -431,19 +447,42 @@ class Harness:
                 note,
                 attestation=attestation,
             )
-        elif not approved:
+        elif pending.status != "pending" and not approved:
             raise ApprovalError("an approved action cannot later be rejected")
 
         if not approved:
-            self._release_reservation(pending)
-            record = self._record(
+            decided_by, note = self.approvals.validate_decision(
+                approval_id,
+                False,
+                decided_by,
+                note,
+                attestation=attestation,
+            )
+            record = self._make_record(
                 action,
                 request,
                 original_decision,
                 ResultStatus.REJECTED,
                 approved_by=decided_by,
                 detail=note or "rejected by human reviewer",
+                budget_remaining_usd=(
+                    self.budget.balance_usd + money(pending.reserved_usd)
+                ),
             )
+            operation = self.operation_journal.prepare(
+                "approval_reject",
+                {
+                    "approval_id": approval_id,
+                    "action_id": pending.action_id,
+                    "request_id": pending.request_id,
+                    "reserved_usd": pending.reserved_usd,
+                    "decided_by": decided_by,
+                    "note": note,
+                    "attestation": attestation,
+                    "evidence": record.to_dict(),
+                },
+            )
+            self._recover_operation(operation)
             return ActionOutcome(
                 action,
                 original_decision,
@@ -505,24 +544,37 @@ class Harness:
         return outcome
 
     def reconcile_expired_approvals(self) -> list[ActionOutcome]:
+        self.recover_operation()
         self.state_integrity.require_safe()
         outcomes: list[ActionOutcome] = []
-        for approval in self.approvals.expire_due():
+        for approval in self.approvals.due():
             try:
                 action = approval.held_action()
                 request = approval.held_request()
                 decision = approval.held_decision()
             except ApprovalError:
-                # Legacy/unresumable records remain expired and inert.
+                # Legacy/unresumable records remain non-actionable and unchanged.
                 continue
-            self._release_reservation(approval)
-            record = self._record(
+            reserved = money(approval.reserved_usd)
+            record = self._make_record(
                 action,
                 request,
                 decision,
                 ResultStatus.EXPIRED,
                 detail=f"approval expired at {approval.expires_at}",
+                budget_remaining_usd=self.budget.balance_usd + reserved,
             )
+            operation = self.operation_journal.prepare(
+                "approval_expire",
+                {
+                    "approval_id": approval.approval_id,
+                    "action_id": approval.action_id,
+                    "request_id": approval.request_id,
+                    "reserved_usd": approval.reserved_usd,
+                    "evidence": record.to_dict(),
+                },
+            )
+            self._recover_operation(operation)
             outcomes.append(
                 ActionOutcome(
                     action,
@@ -551,6 +603,7 @@ class Harness:
         same command after a crash completes the transaction without replaying
         the tool or charging twice.
         """
+        self.recover_operation()
         self.state_integrity.require_safe()
         terminal_outcomes = {
             ResultStatus.SUCCEEDED.value: "succeeded",
@@ -802,7 +855,38 @@ class Harness:
         reconciled_at: str | None = None,
         reconciliation_note: str = "",
     ) -> EvidenceRecord:
-        record = EvidenceRecord(
+        return self.evidence.append(
+            self._make_record(
+                action,
+                request,
+                decision,
+                status,
+                approved_by=approved_by,
+                result=result,
+                detail=detail,
+                reconciliation_outcome=reconciliation_outcome,
+                reconciled_by=reconciled_by,
+                reconciled_at=reconciled_at,
+                reconciliation_note=reconciliation_note,
+            )
+        )
+
+    def _make_record(
+        self,
+        action: ProposedAction,
+        request: HarnessRequest,
+        decision: GuardrailDecision,
+        status: ResultStatus,
+        approved_by: str | None = None,
+        result: ToolResult | None = None,
+        detail: str = "",
+        reconciliation_outcome: str = "",
+        reconciled_by: str = "",
+        reconciled_at: str | None = None,
+        reconciliation_note: str = "",
+        budget_remaining_usd: Decimal | None = None,
+    ) -> EvidenceRecord:
+        return EvidenceRecord(
             request_id=request.request_id,
             action_id=action.action_id,
             decision=decision.decision,
@@ -831,14 +915,76 @@ class Harness:
             output_hash=result.output_hash if result else "",
             result_summary=detail or (result.summary if result else ""),
             cost_usd=result.cost_usd if result else ZERO,
-            budget_remaining_usd=self.budget.balance_usd,
+            budget_remaining_usd=(
+                self.budget.balance_usd
+                if budget_remaining_usd is None
+                else budget_remaining_usd
+            ),
             dry_run=bool(result.dry_run) if result else self.dry_run,
             reconciliation_outcome=reconciliation_outcome,
             reconciled_by=reconciled_by,
             reconciled_at=reconciled_at,
             reconciliation_note=reconciliation_note,
         )
-        return self.evidence.append(record)
+
+    def recover_operation(self) -> JournalOperation | None:
+        operation = self.operation_journal.active()
+        if operation is not None:
+            self._recover_operation(operation)
+        return operation
+
+    def _recover_operation(self, operation: JournalOperation) -> None:
+        payload = operation.payload
+        record = EvidenceRecord(**payload["evidence"])
+        if record.record_hash or record.previous_record_hash:
+            raise ValueError("journal evidence must be an unsealed prepared record")
+        reserved = money(payload.get("reserved_usd", "0"))
+        if operation.kind == "approval_create":
+            approval = PendingApproval(**payload["approval"])
+            if reserved > ZERO:
+                self.budget.ensure_reservation(
+                    reserved, approval.request_id, approval.action_id
+                )
+            self.approvals.create_prepared(approval)
+        elif operation.kind == "approval_reject":
+            self._validate_journaled_approval(payload, reserved)
+            self.approvals.ensure_rejected(
+                payload["approval_id"],
+                payload["decided_by"],
+                payload["note"],
+                attestation=payload.get("attestation"),
+            )
+            if reserved > ZERO:
+                self.budget.ensure_release(
+                    reserved, payload["request_id"], payload["action_id"]
+                )
+        elif operation.kind == "approval_expire":
+            self._validate_journaled_approval(payload, reserved)
+            self.approvals.expire_one(payload["approval_id"])
+            if reserved > ZERO:
+                self.budget.ensure_release(
+                    reserved, payload["request_id"], payload["action_id"]
+                )
+        else:
+            raise ValueError(f"unsupported journal operation: {operation.kind}")
+        self.evidence.append_idempotent(record)
+        self.operation_journal.complete(operation.operation_id)
+
+    def _validate_journaled_approval(
+        self, payload: dict, reserved: Decimal
+    ) -> PendingApproval:
+        approval = self.approvals.get(payload["approval_id"])
+        if approval is None:
+            raise ApprovalError(f"unknown approval {payload['approval_id']}")
+        if (
+            approval.action_id != payload["action_id"]
+            or approval.request_id != payload["request_id"]
+            or money(approval.reserved_usd) != reserved
+        ):
+            raise ApprovalError(
+                f"approval {approval.approval_id} conflicts with journal bindings"
+            )
+        return approval
 
     def _context(self, request: HarnessRequest) -> dict:
         return {
@@ -909,7 +1055,9 @@ def build_harness(
         state_integrity=StateIntegrityAuditor(
             state_root, operator_trust=operator_trust
         ),
+        operation_journal=OperationJournal(state_root / "operation_journal.json"),
         dry_run=dry_run,
     )
+    harness.recover_operation()
     harness.reconcile_expired_approvals()
     return harness

@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.5.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.6.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -21,6 +21,8 @@ contains:
   currently actionable items;
 - durable operator-trust generation, mapping hash, operator/key counts, and
   verification status;
+- local-operation recovery state with only operation id, kind, and preparation
+  time when a valid journal is active;
 - budget balance, reservations, spend, and estimate drift;
 - a bounded list of recent operational events.
 
@@ -49,7 +51,9 @@ verification status. Signatures and operator notes remain excluded. The
 underlying local state directory still
 contains confidential operational data and must remain access-controlled.
 Issue output excludes targets, payload previews, reconciliation notes, and raw
-results.
+results. The `operation_journal` projection never includes its prepared
+approval, evidence, held action, operator note, or attestation. Reading a
+snapshot does not initialize, recover, complete, or clear the journal.
 
 Signed evidence exports are deliberately outside this live-state projection.
 Command Core never loads private keys, imports signed exports, or treats an

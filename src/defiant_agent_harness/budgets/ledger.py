@@ -271,6 +271,51 @@ class BudgetLedger:
                 ),
             )
 
+    def ensure_reservation(
+        self,
+        amount_usd: MoneyLike,
+        request_id: str,
+        action_id: str,
+    ) -> None:
+        """Create or recognize one exact reservation during journal recovery."""
+        amount = money(amount_usd, field_name="reservation amount")
+        if amount == ZERO or not request_id or not action_id:
+            raise BudgetError("journal reservation requires positive bound values")
+        with exclusive_file_lock(self.path):
+            data = self._validated_read()
+            existing = data["reservations"].get(action_id)
+            if existing is not None:
+                if (
+                    existing.get("request_id") == request_id
+                    and money(existing.get("amount_usd"), field_name="reservation")
+                    == amount
+                ):
+                    return
+                raise BudgetError(
+                    f"action {action_id} reservation conflicts with journal"
+                )
+            if amount > self._available(data):
+                raise BudgetError("cannot reserve more than the remaining balance")
+            data["reservations"][action_id] = {
+                "request_id": request_id,
+                "amount_usd": money_text(amount),
+                "created_at": utc_now(),
+            }
+            estimated = _finite_decimal(
+                data["total_estimated_usd"], "total_estimated_usd"
+            )
+            data["total_estimated_usd"] = _decimal_text(estimated + amount)
+            self._append(
+                data,
+                LedgerEntry(
+                    "reserve",
+                    amount,
+                    self._available(data),
+                    request_id=request_id,
+                    action_id=action_id,
+                ),
+            )
+
     def settle(
         self,
         actual_usd: MoneyLike,
@@ -302,6 +347,60 @@ class BudgetLedger:
     def release(self, request_id: str, action_id: str) -> Decimal:
         with exclusive_file_lock(self.path):
             data = self._validated_read()
+            reserved = self._pop_reservation(data, request_id, action_id)
+            estimated = _finite_decimal(
+                data["total_estimated_usd"], "total_estimated_usd"
+            )
+            data["total_estimated_usd"] = _decimal_text(estimated - reserved)
+            remaining = self._available(data)
+            self._append(
+                data,
+                LedgerEntry(
+                    "release",
+                    reserved,
+                    remaining,
+                    request_id=request_id,
+                    action_id=action_id,
+                    note="action did not execute",
+                ),
+            )
+            return remaining
+
+    def ensure_release(
+        self,
+        expected_usd: MoneyLike,
+        request_id: str,
+        action_id: str,
+    ) -> Decimal:
+        """Release or recognize one exact journaled reservation disposition."""
+        expected = money(expected_usd, field_name="expected reservation")
+        if expected == ZERO:
+            return self.balance_usd
+        with exclusive_file_lock(self.path):
+            data = self._validated_read()
+            reservation = data["reservations"].get(action_id)
+            if reservation is None:
+                matching = [
+                    entry
+                    for entry in data["entries"]
+                    if entry.get("kind") == "release"
+                    and entry.get("request_id") == request_id
+                    and entry.get("action_id") == action_id
+                    and money(entry.get("amount_usd"), field_name="release") == expected
+                ]
+                if matching:
+                    return self._available(data)
+                raise BudgetError(
+                    f"action {action_id} has no reservation or matching release"
+                )
+            if (
+                reservation.get("request_id") != request_id
+                or money(reservation.get("amount_usd"), field_name="reservation")
+                != expected
+            ):
+                raise BudgetError(
+                    f"action {action_id} reservation conflicts with journal"
+                )
             reserved = self._pop_reservation(data, request_id, action_id)
             estimated = _finite_decimal(
                 data["total_estimated_usd"], "total_estimated_usd"
