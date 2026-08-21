@@ -304,7 +304,9 @@ class StateIntegrityAuditor:
             "state": "ready" if valid else "invalid",
             "approval_count": len(approvals),
             "operator_identity_policy": (
-                "signed_required" if self.operator_trust is not None else "not_configured"
+                "signed_required"
+                if self.operator_trust is not None
+                else "not_configured"
             ),
         }
         return approvals
@@ -322,17 +324,17 @@ class StateIntegrityAuditor:
                 action_id=approval.action_id,
                 approval_id=approval.approval_id,
             )
-        if (
-            self.operator_trust is not None
-            and approval.status in {"approved", "executing", "consumed", "rejected"}
-        ):
+        if self.operator_trust is not None and approval.status in {
+            "approved",
+            "executing",
+            "consumed",
+            "rejected",
+        }:
             status = self.operator_trust.assess(
                 approval.decision_attestation,
                 approval,
                 purpose=DECISION_PURPOSE,
-                outcome=(
-                    "rejected" if approval.status == "rejected" else "approved"
-                ),
+                outcome=("rejected" if approval.status == "rejected" else "approved"),
                 operator=approval.decided_by or "",
                 note=approval.note,
             )

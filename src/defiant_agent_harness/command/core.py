@@ -267,9 +267,7 @@ class CommandCore:
             "actionable": actionable,
         }
 
-    def _operator_identity(
-        self, approval: PendingApproval
-    ) -> OperatorIdentityStatus:
+    def _operator_identity(self, approval: PendingApproval) -> OperatorIdentityStatus:
         if approval.status == "pending":
             return OperatorIdentityStatus(
                 True,
@@ -308,9 +306,7 @@ class CommandCore:
                 "attestation present; no operator trust pins configured",
                 operator=approval.reconciled_by,
                 key_id=str(approval.reconciliation_attestation.get("key_id", "")),
-                signed_at=str(
-                    approval.reconciliation_attestation.get("signed_at", "")
-                ),
+                signed_at=str(approval.reconciliation_attestation.get("signed_at", "")),
             )
         return self.operator_trust.assess(
             approval.reconciliation_attestation,

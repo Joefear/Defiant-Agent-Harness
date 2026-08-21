@@ -423,9 +423,7 @@ def cmd_command(args) -> int:
 def cmd_doctor(args) -> int:
     try:
         trust = _operator_trust(args)
-        report = StateIntegrityAuditor(
-            args.workdir, operator_trust=trust
-        ).audit()
+        report = StateIntegrityAuditor(args.workdir, operator_trust=trust).audit()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.safe_to_execute else 1
     except (OperatorIdentityError, EvidenceSigningError) as exc:
@@ -581,9 +579,7 @@ def _operator_attestation(
         raise OperatorIdentityError("cannot sign an unknown approval")
     _validate_trusted_operator_paths(args)
     _require_external_secret(args.workdir, private_key, "operator private key")
-    _require_external_secret(
-        args.workdir, passphrase_file, "operator passphrase file"
-    )
+    _require_external_secret(args.workdir, passphrase_file, "operator passphrase file")
     return sign_operator_action(
         approval,
         private_key,

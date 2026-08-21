@@ -616,9 +616,7 @@ class ApprovalStore:
                 "reconciliation attestation is present but no trust pins were configured",
                 operator=approval.reconciled_by,
                 key_id=str(approval.reconciliation_attestation.get("key_id", "")),
-                signed_at=str(
-                    approval.reconciliation_attestation.get("signed_at", "")
-                ),
+                signed_at=str(approval.reconciliation_attestation.get("signed_at", "")),
             )
         return self.operator_trust.assess(
             approval.reconciliation_attestation,
@@ -634,7 +632,9 @@ class ApprovalStore:
             return
         status = self.decision_identity(approval)
         if not status.ok:
-            raise ApprovalError(f"operator identity verification failed: {status.detail}")
+            raise ApprovalError(
+                f"operator identity verification failed: {status.detail}"
+            )
 
     def mark_reconciled(
         self,

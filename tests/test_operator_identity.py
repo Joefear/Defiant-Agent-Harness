@@ -80,9 +80,9 @@ def test_trusted_operator_decision_survives_restart_and_authorizes(tmp_path):
     reopened = ApprovalStore(path, operator_trust=trust)
 
     assert reopened.decision_identity(decided).assurance == "signed_trusted"
-    assert reopened.begin_execution(pending.approval_id, pending.held_action()).status == (
-        "executing"
-    )
+    assert reopened.begin_execution(
+        pending.approval_id, pending.held_action()
+    ).status == ("executing")
 
 
 def test_strict_policy_refuses_unsigned_and_wrong_identity_keys(tmp_path):
@@ -129,9 +129,7 @@ def test_runtime_refuses_a_trust_root_inside_mutable_harness_state(tmp_path):
         ("signature", "base64:" + "A" * 88, "signature"),
     ],
 )
-def test_tampered_operator_statements_are_rejected(
-    tmp_path, field, value, message
-):
+def test_tampered_operator_statements_are_rejected(tmp_path, field, value, message):
     private, _, _, trust = _keys(tmp_path, "alice")
     store = ApprovalStore(tmp_path / "state" / "approvals.json", operator_trust=trust)
     pending = _pending(store)
@@ -304,9 +302,7 @@ def test_command_core_exposes_assurance_without_signature_or_note(tmp_path):
         True,
         "alice",
         "sensitive operator rationale",
-        attestation=_decision(
-            pending, private, note="sensitive operator rationale"
-        ),
+        attestation=_decision(pending, private, note="sensitive operator rationale"),
     )
 
     snapshot = CommandCore(state, trusted_operator_keys=[spec]).snapshot()
@@ -398,9 +394,7 @@ def test_signed_reconciliation_charges_worst_case_only_after_verification(tmp_pa
         True,
         "alice",
         "approved exact spend",
-        attestation=_decision(
-            pending, private, note="approved exact spend"
-        ),
+        attestation=_decision(pending, private, note="approved exact spend"),
     )
     executing = harness.approvals.begin_execution(held.approval_id, held.action)
     reconciliation = sign_operator_action(
@@ -437,8 +431,8 @@ def test_signed_reconciliation_charges_worst_case_only_after_verification(tmp_pa
     assert reconciled.status is ResultStatus.FAILED
     assert harness.budget.summary()["total_spent_usd"] == "250"
     assert harness.budget.reservation_for(held.action.action_id) == 0
-    assert ApprovalStore(
-        state / "approvals.json", operator_trust=trust
-    ).reconciliation_identity(
-        harness.approvals.get(held.approval_id)
-    ).ok
+    assert (
+        ApprovalStore(state / "approvals.json", operator_trust=trust)
+        .reconciliation_identity(harness.approvals.get(held.approval_id))
+        .ok
+    )

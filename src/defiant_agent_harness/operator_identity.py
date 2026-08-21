@@ -108,7 +108,9 @@ class OperatorTrustPolicy:
     def key_count(self) -> int:
         return sum(len(value) for value in self._keys.values())
 
-    def verify(self, attestation: dict[str, Any], approval: "PendingApproval") -> OperatorIdentityStatus:
+    def verify(
+        self, attestation: dict[str, Any], approval: "PendingApproval"
+    ) -> OperatorIdentityStatus:
         try:
             _validate_attestation(attestation)
             operator = attestation["operator"]
@@ -121,12 +123,16 @@ class OperatorTrustPolicy:
             _validate_binding(attestation, approval)
             signature = _decode_signature(attestation["signature"])
             statement = {
-                name: value for name, value in attestation.items() if name != "signature"
+                name: value
+                for name, value in attestation.items()
+                if name != "signature"
             }
             try:
                 key.verify(signature, _statement_bytes(statement))
             except InvalidSignature as exc:
-                raise OperatorIdentityError("operator attestation signature is invalid") from exc
+                raise OperatorIdentityError(
+                    "operator attestation signature is invalid"
+                ) from exc
             return OperatorIdentityStatus(
                 True,
                 "signed_trusted",
@@ -284,7 +290,9 @@ def _validate_binding(attestation: dict[str, Any], approval: "PendingApproval") 
     if attestation["purpose"] == DECISION_PURPOSE and approval.expires_at:
         expires_at = _parsed_timestamp(approval.expires_at, "approval expires_at")
         if signed_at >= expires_at:
-            raise OperatorIdentityError("operator decision was signed after approval expiry")
+            raise OperatorIdentityError(
+                "operator decision was signed after approval expiry"
+            )
     if attestation["purpose"] == RECONCILIATION_PURPOSE and approval.decided_at:
         decided_at = _parsed_timestamp(approval.decided_at, "approval decided_at")
         if signed_at < decided_at:
@@ -295,7 +303,9 @@ def _validate_binding(attestation: dict[str, Any], approval: "PendingApproval") 
 
 def _validate_attestation(attestation: dict[str, Any]) -> None:
     if set(attestation) != _FIELDS:
-        raise OperatorIdentityError("operator attestation fields do not match the schema")
+        raise OperatorIdentityError(
+            "operator attestation fields do not match the schema"
+        )
     if attestation.get("schema_name") != ATTESTATION_SCHEMA:
         raise OperatorIdentityError("unsupported operator attestation schema")
     if attestation.get("schema_version") != ATTESTATION_VERSION:
@@ -345,7 +355,9 @@ def _load_public_key(path: str | Path) -> Ed25519PublicKey:
     try:
         key = serialization.load_pem_public_key(_read_limited(source, "public key"))
     except (OSError, TypeError, ValueError) as exc:
-        raise OperatorIdentityError(f"cannot load operator public key {source}") from exc
+        raise OperatorIdentityError(
+            f"cannot load operator public key {source}"
+        ) from exc
     if not isinstance(key, Ed25519PublicKey):
         raise OperatorIdentityError(f"trusted operator key must be Ed25519: {source}")
     return key
