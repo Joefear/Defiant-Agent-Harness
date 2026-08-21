@@ -87,6 +87,56 @@ class EvidenceStore:
             raise EvidenceError(f"cannot append evidence safely: {exc}") from exc
         return record
 
+    def append_idempotent(self, record: EvidenceRecord) -> EvidenceRecord:
+        """Append or recognize an exact prepared record during recovery."""
+        if record.record_hash:
+            raise EvidenceError("prepared evidence record must not be sealed")
+        expected = record.to_dict()
+        try:
+            with exclusive_file_lock(self.path):
+                status = self._verify_unlocked()
+                if not status.ok:
+                    raise EvidenceError(
+                        "refusing to append to broken evidence chain: " + status.detail
+                    )
+                for raw in self._raw():
+                    if raw.get("record_id") != record.record_id:
+                        continue
+                    comparable = {
+                        key: value
+                        for key, value in raw.items()
+                        if key not in {"previous_record_hash", "record_hash"}
+                    }
+                    expected_comparable = {
+                        key: value
+                        for key, value in expected.items()
+                        if key not in {"previous_record_hash", "record_hash"}
+                    }
+                    if comparable != expected_comparable:
+                        raise EvidenceError(
+                            f"record {record.record_id} conflicts with journal"
+                        )
+                    return EvidenceRecord(**raw)
+                record.seal(self._head_hash_unchecked())
+                line = (
+                    json.dumps(
+                        record.to_dict(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ).encode("utf-8")
+                    + b"\n"
+                )
+                with open(self.path, "ab") as fh:
+                    fh.write(line)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+        except PersistenceError as exc:
+            raise EvidenceError(str(exc)) from exc
+        except (OSError, TypeError, ValueError) as exc:
+            raise EvidenceError(f"cannot append evidence safely: {exc}") from exc
+        return record
+
     # -- read --------------------------------------------------------
 
     def _raw(self) -> Iterator[dict]:

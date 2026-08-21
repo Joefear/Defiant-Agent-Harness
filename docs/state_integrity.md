@@ -2,8 +2,9 @@
 
 v0.7 adds a read-only, cross-store audit over `evidence.jsonl`,
 `approvals.json`, and `budget.json`. v0.10 extends it to durable
-`operator_trust.json`. The audit distinguishes expected crash recovery states
-from contradictions that make further authority unsafe.
+`operator_trust.json`, and v0.11 adds the deterministic local
+`operation_journal.json`. The audit distinguishes expected crash recovery
+states from contradictions that make further authority unsafe.
 
 Run it without initializing or modifying the state directory:
 
@@ -18,7 +19,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.2.0` and exits
+The command emits schema `defiant.state_integrity` version `0.3.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -31,10 +32,12 @@ targets, payload previews, reconciliation notes, or raw tool output.
 - `unsafe`: at least one critical contradiction exists. Authority-bearing
   harness operations refuse to proceed.
 
-An approval in `executing`, an in-progress reconciliation, or a live
-reservation backed by a sealed external-execution authorization is a recovery
-condition, not corruption. Defiant still refuses automatic replay. Use the
-v0.6 operator reconciliation procedure where an approval id exists.
+An approval in `executing`, an in-progress reconciliation, a valid active local
+operation journal, or a live reservation backed by a sealed external-execution
+authorization is a recovery condition, not corruption. Deterministic journaled
+local work is completed before the authority gate. Defiant still refuses
+automatic external replay. Use the v0.6 operator reconciliation procedure where
+an approval id exists.
 
 ## Critical invariants
 
@@ -48,6 +51,8 @@ The auditor verifies:
 - durable signed-mode enrollment, canonical binding hashes, contiguous
   generations, strictly additive mappings, prior-generation signers, and every
   trust-transition signature;
+- journal schema, canonical payload hash, operation-specific payload shape,
+  exact approval/reservation/evidence bindings, and unsealed prepared evidence;
 - budget structure and entry shape;
 - every live reservation belongs to an active approval or sealed unfinished
   authorization;
@@ -65,11 +70,13 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 ## Execution gate
 
-The harness audits state before a new action, approval resume, external
-completion, expiry reconciliation, or operator execution reconciliation. A
-critical issue raises `StateIntegrityError` before any new evidence, approval,
-budget, or tool mutation occurs. Diagnostic commands do not construct a
-harness and remain usable.
+The harness first recovers any valid prepared local operation, then audits state
+before a new action, approval resume, external completion, expiry
+reconciliation, or operator execution reconciliation. A critical issue raises
+`StateIntegrityError` before any new authority-bearing work occurs. Malformed,
+tampered, conflicting, or locked journal state cannot be recovered and remains
+critical. Diagnostic commands do not construct a harness and remain usable
+without completing or repairing the journal.
 
 The audit is a local point-in-time consistency check, not a database
 transaction, repair engine, or OS sandbox. A durable trust chain without

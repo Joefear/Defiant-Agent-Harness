@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.10.
+logs. A full trusted-memory/DKE system is not part of v0.11.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.10 is
+## What v0.11 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -115,6 +115,16 @@ state without enrolling or repairing it.
 Existing v0.9 work directories containing signed operator attestations must
 supply their current pins on first v0.10 authority startup; unsigned migration
 is refused.
+
+v0.11 adds a crash-safe local operation journal for deterministic mutations
+that span approvals, budget reservations, and evidence. Prepared approval
+creation, rejection, and expiry operations recover idempotently after a process
+crash without double-reserving, double-releasing, or duplicating evidence.
+Conflicting partial state fails closed. External tool outcomes are never
+inferred or replayed: approvals stranded in `executing` still require the
+explicit v0.6 operator reconciliation workflow. Command Core and Command Center
+show only sanitized recovery metadata, and Command Center remains strictly
+read-only.
 
 ## Install
 
@@ -422,17 +432,18 @@ server to a test run.
 
 ## Status
 
-v0.10 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.11 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
-reconciliation, cross-store integrity gating, offline-verifiable signed
-evidence exports, signed operator approval authority, and durable downgrade-
-resistant operator trust enrollment. Not a hosted platform.
+reconciliation, deterministic local operation recovery, cross-store integrity
+gating, offline-verifiable signed evidence exports, signed operator approval
+authority, and durable downgrade-resistant operator trust enrollment. Not a
+hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
-`docs/state_integrity.md`, `docs/evidence_signing.md`,
+`docs/operation_journal.md`, `docs/state_integrity.md`, `docs/evidence_signing.md`,
 `docs/operator_identity.md`,
 `docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
 `docs/codex_runner.md`.

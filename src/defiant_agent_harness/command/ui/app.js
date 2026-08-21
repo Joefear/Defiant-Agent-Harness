@@ -136,8 +136,11 @@ function renderStateIntegrity(integrity) {
   elements.stateIntegrityTitle.textContent = integrity.safe_to_execute
     ? "State recovery required."
     : "State integrity alert.";
+  const journal = integrity.stores.operation_journal;
   elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
-    ? `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`
+    ? journal && journal.active
+      ? `Prepared ${label(journal.kind)} operation ${shortId(journal.operation_id)} requires authority recovery. This dashboard remains read-only.`
+      : `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`
     : `${integer.format(critical)} critical ${critical === 1 ? "inconsistency" : "inconsistencies"} detected. Authority-bearing operations are blocked.`;
 }
 

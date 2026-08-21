@@ -83,6 +83,13 @@ Expected crash windows remain visible as recovery-required warnings. The doctor,
 Command Core, and Command Center paths are read-only and remain available for
 sanitized diagnosis.
 
+v0.11 journals deterministic approval creation, rejection, and expiry before
+their first cross-store mutation. Restart recovery recognizes or applies the
+exact reservation, approval transition, and evidence record once; conflicting
+partial state or a forged payload fails closed and leaves the journal intact.
+The journal never claims an external tool outcome. Unknown or stranded external
+execution remains on the explicit operator reconciliation path.
+
 ### 9. Signed-mode downgrade or unauthorized trust replacement
 
 A process restarts without operator trust pins, or with a different mapping,

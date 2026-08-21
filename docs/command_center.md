@@ -87,6 +87,12 @@ If a snapshot cannot be built because of an unexpected read failure outside the
 audited stores, the API returns `503` and the interface shows an availability
 error while retaining the last valid view already in the browser.
 
+A valid active v0.11 local operation journal appears as recovery required with
+only its operation id, kind, and preparation time. Its payload, held action,
+operator note, and attestation never enter the browser snapshot. The dashboard
+does not recover, retry, complete, delete, or force-clear an operation; normal
+authority startup performs deterministic recovery before its integrity gate.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote
@@ -96,7 +102,7 @@ directory still contains confidential operational material and must remain
 access-controlled.
 
 v0.8 evidence signing remains an operator CLI and offline-verification workflow.
-v0.10 may give Command Center operator public-key pins at startup so its
+v0.10 and later may give Command Center operator public-key pins at startup so its
 read-only snapshot can verify persisted approval attestations and the durable
 trust-generation chain. If pins are missing or mismatched, it remains available
 as a non-authoritative diagnostic view. Command Center never enrolls or rotates

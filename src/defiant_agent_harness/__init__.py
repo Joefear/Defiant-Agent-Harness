@@ -33,6 +33,11 @@ from .operator_trust_state import (
     OperatorTrustStateError,
     OperatorTrustStateStore,
 )
+from .operation_journal import (
+    JournalOperation,
+    OperationJournal,
+    OperationJournalError,
+)
 from .state_integrity import (
     IntegrityIssue,
     StateIntegrityAuditor,
@@ -40,7 +45,7 @@ from .state_integrity import (
     StateIntegrityReport,
 )
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -55,6 +60,9 @@ __all__ = [
     "OperatorTrustState",
     "OperatorTrustStateError",
     "OperatorTrustStateStore",
+    "JournalOperation",
+    "OperationJournal",
+    "OperationJournalError",
     "ProposedAction",
     "ResultStatus",
     "Sensitivity",

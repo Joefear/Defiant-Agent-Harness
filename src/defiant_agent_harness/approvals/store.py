@@ -250,11 +250,40 @@ class ApprovalStore:
         execution_owner: str = "",
         execution_key: str = "",
     ) -> PendingApproval:
+        pending = self.prepare(
+            action,
+            decision_reason,
+            approval_scope,
+            policy_ids,
+            ttl_minutes,
+            request=request,
+            decision=decision,
+            reserved_usd=reserved_usd,
+            execution_owner=execution_owner,
+            execution_key=execution_key,
+        )
+        return self.create_prepared(pending)
+
+    def prepare(
+        self,
+        action: ProposedAction,
+        decision_reason: str,
+        approval_scope: str,
+        policy_ids: list[str],
+        ttl_minutes: int | None = None,
+        *,
+        request: HarnessRequest | None = None,
+        decision: GuardrailDecision | None = None,
+        reserved_usd: MoneyLike = ZERO,
+        execution_owner: str = "",
+        execution_key: str = "",
+    ) -> PendingApproval:
+        """Build an immutable approval snapshot without mutating the store."""
         ttl = ttl_minutes if ttl_minutes is not None else self.default_ttl_minutes
         if ttl <= 0:
             raise ApprovalError("approval TTL must be positive")
         expires = datetime.now(timezone.utc) + timedelta(minutes=ttl)
-        pending = PendingApproval(
+        return PendingApproval(
             action_id=action.action_id,
             request_id=action.request_id,
             tool_name=action.tool_name,
@@ -273,15 +302,25 @@ class ApprovalStore:
             execution_owner=execution_owner,
             execution_key=execution_key,
         )
+
+    def create_prepared(self, pending: PendingApproval) -> PendingApproval:
+        """Store one prepared approval idempotently or reject a conflict."""
         with exclusive_file_lock(self.path):
             data = self._read_all()
+            existing = data.get(pending.approval_id)
+            if existing is not None:
+                if existing == asdict(pending):
+                    return PendingApproval(**existing)
+                raise ApprovalError(
+                    f"approval {pending.approval_id} conflicts with prepared state"
+                )
             if any(
-                raw.get("action_id") == action.action_id
+                raw.get("action_id") == pending.action_id
                 and raw.get("status") in {"pending", "approved", "executing"}
                 for raw in data.values()
             ):
                 raise ApprovalError(
-                    f"action {action.action_id} already has an active approval"
+                    f"action {pending.action_id} already has an active approval"
                 )
             data[pending.approval_id] = asdict(pending)
             self._write_all(data)
@@ -292,23 +331,25 @@ class ApprovalStore:
         return PendingApproval(**raw) if raw else None
 
     def list_pending(self) -> list[PendingApproval]:
-        self.expire_due()
         return sorted(
             (
-                PendingApproval(**raw)
-                for raw in self._read_all().values()
-                if raw.get("status") == "pending"
+                approval
+                for approval in (
+                    PendingApproval(**raw) for raw in self._read_all().values()
+                )
+                if approval.status == "pending" and not approval.is_expired()
             ),
             key=lambda approval: approval.created_at,
         )
 
     def list_actionable(self) -> list[PendingApproval]:
-        self.expire_due()
         return sorted(
             (
-                PendingApproval(**raw)
+                approval
                 for raw in self._read_all().values()
-                if raw.get("status") in {"pending", "approved", "executing"}
+                if (approval := PendingApproval(**raw)).status
+                in {"pending", "approved", "executing"}
+                and (approval.status == "executing" or not approval.is_expired())
             ),
             key=lambda approval: approval.created_at,
         )
@@ -326,7 +367,6 @@ class ApprovalStore:
         """
         if not execution_owner or not execution_key:
             return None
-        self.expire_due()
         matches = [
             PendingApproval(**raw)
             for raw in self._read_all().values()
@@ -360,6 +400,74 @@ class ApprovalStore:
                 self._write_all(data)
         return expired
 
+    def due(self, now: datetime | None = None) -> list[PendingApproval]:
+        """Return due approvals without changing their state."""
+        return sorted(
+            (
+                approval
+                for approval in (
+                    PendingApproval(**raw) for raw in self._read_all().values()
+                )
+                if approval.status in {"pending", "approved"}
+                and approval.is_expired(now)
+            ),
+            key=lambda approval: approval.created_at,
+        )
+
+    def expire_one(self, approval_id: str) -> PendingApproval:
+        """Expire exactly one due approval idempotently."""
+        with exclusive_file_lock(self.path):
+            data = self._read_all()
+            raw = data.get(approval_id)
+            if raw is None:
+                raise ApprovalError(f"unknown approval {approval_id}")
+            approval = PendingApproval(**raw)
+            if approval.status == "expired":
+                return approval
+            if approval.status not in {"pending", "approved"}:
+                raise ApprovalError(
+                    f"approval {approval_id} is already {approval.status}; cannot expire"
+                )
+            if not approval.is_expired():
+                raise ApprovalError(f"approval {approval_id} is not due")
+            approval.status = "expired"
+            approval.consumed_at = utc_now()
+            data[approval_id] = asdict(approval)
+            self._write_all(data)
+            return approval
+
+    def ensure_rejected(
+        self,
+        approval_id: str,
+        decided_by: str,
+        note: str,
+        *,
+        attestation: dict[str, Any] | None = None,
+    ) -> PendingApproval:
+        """Apply or recognize one exact rejection for journal recovery."""
+        current = self.get(approval_id)
+        if current is None:
+            raise ApprovalError(f"unknown approval {approval_id}")
+        if current.status == "pending":
+            return self.decide(
+                approval_id,
+                False,
+                decided_by,
+                note,
+                attestation=attestation,
+            )
+        if (
+            current.status == "rejected"
+            and current.decided_by == decided_by.strip()
+            and current.note == note.strip()
+            and current.decision_attestation == attestation
+        ):
+            self._require_decision_identity(current)
+            return current
+        raise ApprovalError(
+            f"approval {approval_id} does not match the journaled rejection"
+        )
+
     def decide(
         self,
         approval_id: str,
@@ -369,8 +477,6 @@ class ApprovalStore:
         *,
         attestation: dict[str, Any] | None = None,
     ) -> PendingApproval:
-        if not isinstance(decided_by, str) or not decided_by.strip():
-            raise ApprovalError("decided_by must be non-empty")
         with exclusive_file_lock(self.path):
             data = self._read_all()
             raw = data.get(approval_id)
@@ -383,31 +489,12 @@ class ApprovalStore:
                     "approvals are single-use"
                 )
             if approval.is_expired():
-                approval.status = "expired"
-                approval.consumed_at = utc_now()
-                data[approval_id] = asdict(approval)
-                self._write_all(data)
                 raise ApprovalError(
                     f"approval {approval_id} expired at {approval.expires_at}"
                 )
-            decided_by = decided_by.strip()
-            note = note.strip()
-            if attestation is not None and self.operator_trust is None:
-                raise ApprovalError(
-                    "trusted operator keys are required to store an attestation"
-                )
-            if self.operator_trust is not None:
-                try:
-                    self.operator_trust.require(
-                        attestation,
-                        approval,
-                        purpose=DECISION_PURPOSE,
-                        outcome="approved" if approved else "rejected",
-                        operator=decided_by,
-                        note=note,
-                    )
-                except OperatorIdentityError as exc:
-                    raise ApprovalError(str(exc)) from exc
+            decided_by, note = self._validate_decision(
+                approval, approved, decided_by, note, attestation
+            )
             approval.status = "approved" if approved else "rejected"
             approval.decided_by = decided_by
             approval.decided_at = (
@@ -420,6 +507,62 @@ class ApprovalStore:
             data[approval_id] = asdict(approval)
             self._write_all(data)
             return approval
+
+    def validate_decision(
+        self,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        note: str = "",
+        *,
+        attestation: dict[str, Any] | None = None,
+    ) -> tuple[str, str]:
+        """Validate one decision without mutating approval state."""
+        approval = self.get(approval_id)
+        if approval is None:
+            raise ApprovalError(f"unknown approval {approval_id}")
+        if approval.status != "pending":
+            raise ApprovalError(
+                f"approval {approval_id} is already {approval.status}; "
+                "approvals are single-use"
+            )
+        if approval.is_expired():
+            raise ApprovalError(
+                f"approval {approval_id} expired at {approval.expires_at}"
+            )
+        return self._validate_decision(
+            approval, approved, decided_by, note, attestation
+        )
+
+    def _validate_decision(
+        self,
+        approval: PendingApproval,
+        approved: bool,
+        decided_by: str,
+        note: str,
+        attestation: dict[str, Any] | None,
+    ) -> tuple[str, str]:
+        if not isinstance(decided_by, str) or not decided_by.strip():
+            raise ApprovalError("decided_by must be non-empty")
+        decided_by = decided_by.strip()
+        note = note.strip()
+        if attestation is not None and self.operator_trust is None:
+            raise ApprovalError(
+                "trusted operator keys are required to store an attestation"
+            )
+        if self.operator_trust is not None:
+            try:
+                self.operator_trust.require(
+                    attestation,
+                    approval,
+                    purpose=DECISION_PURPOSE,
+                    outcome="approved" if approved else "rejected",
+                    operator=decided_by,
+                    note=note,
+                )
+            except OperatorIdentityError as exc:
+                raise ApprovalError(str(exc)) from exc
+        return decided_by, note
 
     def validate_for(
         self,

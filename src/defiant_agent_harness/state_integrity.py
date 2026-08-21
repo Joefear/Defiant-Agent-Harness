@@ -18,11 +18,12 @@ from .operator_identity import (
     RECONCILIATION_PURPOSE,
     OperatorTrustPolicy,
 )
+from .operation_journal import JournalOperation, OperationJournal
 from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.2.0"
+AUDIT_VERSION = "0.3.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -139,6 +140,7 @@ class StateIntegrityAuditor:
         report = StateIntegrityReport()
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
+        journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
         approvals = self._load_approvals(report)
@@ -151,6 +153,7 @@ class StateIntegrityAuditor:
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
+            "active_journal_operations": int(journal_operation is not None),
         }
         self._audit_cross_store(
             report,
@@ -158,6 +161,7 @@ class StateIntegrityAuditor:
             approvals,
             budget,
             evidence_trusted=evidence_trusted,
+            journal_operation=journal_operation,
         )
         report.issues.sort(
             key=lambda issue: (
@@ -176,6 +180,7 @@ class StateIntegrityAuditor:
             "approvals.json",
             "budget.json",
             "operator_trust.json",
+            "operation_journal.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
@@ -186,6 +191,56 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_operation_journal(
+        self, report: StateIntegrityReport
+    ) -> JournalOperation | None:
+        try:
+            operation = OperationJournal(
+                self.workdir / "operation_journal.json"
+            ).active()
+        except RuntimeError as exc:
+            report.stores["operation_journal"] = {
+                "state": "invalid",
+                "active": False,
+                "operation_id": None,
+                "kind": None,
+                "prepared_at": None,
+            }
+            self._issue(
+                report,
+                "operation_journal_invalid",
+                "critical",
+                "operation_journal",
+                str(exc),
+            )
+            return None
+        if operation is None:
+            report.stores["operation_journal"] = {
+                "state": "ready"
+                if (self.workdir / "operation_journal.json").exists()
+                else "not_initialized",
+                "active": False,
+                "operation_id": None,
+                "kind": None,
+                "prepared_at": None,
+            }
+            return None
+        report.stores["operation_journal"] = {
+            "state": "recovery_required",
+            "active": True,
+            "operation_id": operation.operation_id,
+            "kind": operation.kind,
+            "prepared_at": operation.prepared_at,
+        }
+        self._issue(
+            report,
+            "operation_recovery_required",
+            "warning",
+            "operation_journal",
+            f"prepared {operation.kind} operation requires authority recovery",
+        )
+        return operation
 
     def _audit_operator_trust(self, report: StateIntegrityReport) -> int:
         store = OperatorTrustStateStore(self.workdir / "operator_trust.json")
@@ -609,6 +664,7 @@ class StateIntegrityAuditor:
         budget: dict[str, Any],
         *,
         evidence_trusted: bool,
+        journal_operation: JournalOperation | None,
     ) -> None:
         records_by_id = {record["record_id"]: record for record in evidence}
         records_by_action: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -644,6 +700,17 @@ class StateIntegrityAuditor:
                     "live reservation belongs to a sealed execution authorization",
                     action_id=action_id,
                 )
+                continue
+            if self._journal_expects_unbound_reservation(
+                journal_operation, action_id, reservation
+            ):
+                continue
+            if any(
+                self._journal_expects_terminal_reservation(
+                    journal_operation, approval, reservation
+                )
+                for approval in approvals_by_action.get(action_id, [])
+            ):
                 continue
             self._issue(
                 report,
@@ -686,6 +753,10 @@ class StateIntegrityAuditor:
                         approval_id=approval.approval_id,
                     )
             if approval.status in _TERMINAL_APPROVALS and reservation is not None:
+                if self._journal_expects_terminal_reservation(
+                    journal_operation, approval, reservation
+                ):
+                    continue
                 self._issue(
                     report,
                     "terminal_approval_has_reservation",
@@ -753,6 +824,50 @@ class StateIntegrityAuditor:
                     action_id=action_id,
                     approval_id=approval.approval_id,
                 )
+
+    def _journal_expects_unbound_reservation(
+        self,
+        operation: JournalOperation | None,
+        action_id: str,
+        reservation: dict[str, Any],
+    ) -> bool:
+        if operation is None or operation.kind != "approval_create":
+            return False
+        approval = operation.payload["approval"]
+        try:
+            return (
+                approval["action_id"] == action_id
+                and approval["request_id"] == reservation.get("request_id")
+                and money(approval["reserved_usd"])
+                == money(reservation.get("amount_usd"))
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def _journal_expects_terminal_reservation(
+        self,
+        operation: JournalOperation | None,
+        approval: PendingApproval,
+        reservation: dict[str, Any],
+    ) -> bool:
+        if operation is None or operation.kind not in {
+            "approval_reject",
+            "approval_expire",
+        }:
+            return False
+        payload = operation.payload
+        try:
+            return (
+                payload["approval_id"] == approval.approval_id
+                and payload["action_id"] == approval.action_id
+                and payload["request_id"] == approval.request_id
+                and reservation.get("request_id") == approval.request_id
+                and money(payload["reserved_usd"])
+                == money(approval.reserved_usd)
+                == money(reservation.get("amount_usd"))
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
 
     def _check_reservation_binding(
         self,

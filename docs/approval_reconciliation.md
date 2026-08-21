@@ -61,6 +61,11 @@ Command Core and the local Command Center show which approvals require
 reconciliation. Those surfaces remain read-only. They intentionally exclude the
 operator note and provide no reconcile button or mutation endpoint.
 
+The v0.11 local operation journal does not replace this procedure. It recovers
+only deterministic approval, reservation, and evidence mutations whose outcome
+was known before the crash. It never replays a tool or converts an uncertain
+external execution into a terminal result.
+
 ## Security limits
 
 v0.9 can bind the operator identity, outcome, note, approval authority, and
