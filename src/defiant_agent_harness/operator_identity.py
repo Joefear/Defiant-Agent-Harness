@@ -29,6 +29,10 @@ DECISION_PURPOSE = "approval_decision"
 RECONCILIATION_PURPOSE = "execution_reconciliation"
 _PURPOSES = {DECISION_PURPOSE, RECONCILIATION_PURPOSE}
 _DOMAIN = b"Defiant Agent Harness operator authority v0.1.0\x00"
+TRUST_TRANSITION_SCHEMA = "defiant.operator.trust_transition"
+TRUST_TRANSITION_VERSION = "0.1.0"
+TRUST_TRANSITION_PURPOSE = "operator_trust_rotation"
+_TRUST_DOMAIN = b"Defiant Agent Harness operator trust transition v0.1.0\x00"
 _MAX_KEY_BYTES = 64 * 1024
 _MAX_OPERATOR_CHARS = 256
 _MAX_NOTE_CHARS = 4096
@@ -46,6 +50,21 @@ _FIELDS = {
     "action_id",
     "request_id",
     "authorization_hash",
+    "signature",
+}
+_TRUST_TRANSITION_FIELDS = {
+    "schema_name",
+    "schema_version",
+    "algorithm",
+    "purpose",
+    "key_id",
+    "signed_at",
+    "operator",
+    "note",
+    "from_generation",
+    "to_generation",
+    "from_bindings_hash",
+    "to_bindings_hash",
     "signature",
 }
 
@@ -107,6 +126,24 @@ class OperatorTrustPolicy:
     @property
     def key_count(self) -> int:
         return sum(len(value) for value in self._keys.values())
+
+    @property
+    def bindings(self) -> dict[str, list[str]]:
+        return {operator: sorted(keys) for operator, keys in sorted(self._keys.items())}
+
+    @property
+    def bindings_hash(self) -> str:
+        return sha256_of(self.bindings)
+
+    def is_additive_successor(self, newer: "OperatorTrustPolicy") -> bool:
+        current = self.bindings
+        candidate = newer.bindings
+        if current == candidate:
+            return False
+        return all(
+            operator in candidate and set(key_ids).issubset(candidate[operator])
+            for operator, key_ids in current.items()
+        )
 
     def verify(
         self, attestation: dict[str, Any], approval: "PendingApproval"
@@ -194,6 +231,62 @@ class OperatorTrustPolicy:
         except (OperatorIdentityError, TypeError, ValueError, OverflowError) as exc:
             return OperatorIdentityStatus(False, "invalid", str(exc))
 
+    def require_trust_transition(
+        self,
+        attestation: dict[str, Any] | None,
+        *,
+        from_generation: int,
+        from_bindings_hash: str,
+        to_bindings_hash: str,
+        operator: str,
+        note: str,
+    ) -> OperatorIdentityStatus:
+        if not isinstance(attestation, dict):
+            raise OperatorIdentityError("a signed trust transition is required")
+        _validate_trust_transition(attestation)
+        expected = {
+            "from_generation": from_generation,
+            "to_generation": from_generation + 1,
+            "from_bindings_hash": from_bindings_hash,
+            "to_bindings_hash": to_bindings_hash,
+            "operator": operator.strip(),
+            "note": note.strip(),
+        }
+        for field, value in expected.items():
+            supplied = attestation[field]
+            if isinstance(value, str):
+                matches = hmac.compare_digest(supplied, value)
+            else:
+                matches = supplied == value
+            if not matches:
+                raise OperatorIdentityError(
+                    f"trust transition {field} does not match the requested rotation"
+                )
+        key_id = attestation["key_id"]
+        key = self._keys.get(operator.strip(), {}).get(key_id)
+        if key is None:
+            raise OperatorIdentityError(
+                f"key {key_id} is not trusted for operator {operator.strip()!r}"
+            )
+        signature = _decode_signature(attestation["signature"])
+        statement = {
+            name: value for name, value in attestation.items() if name != "signature"
+        }
+        try:
+            key.verify(signature, _trust_statement_bytes(statement))
+        except InvalidSignature as exc:
+            raise OperatorIdentityError(
+                "trust transition signature is invalid"
+            ) from exc
+        return OperatorIdentityStatus(
+            True,
+            "signed_trusted",
+            "trust transition signature valid and operator key trusted",
+            operator=operator.strip(),
+            key_id=key_id,
+            signed_at=attestation["signed_at"],
+        )
+
 
 def sign_operator_action(
     approval: "PendingApproval",
@@ -230,6 +323,48 @@ def sign_operator_action(
         "authorization_hash": approval.authorization_hash,
     }
     signature = key.sign(_statement_bytes(statement))
+    return {
+        **statement,
+        "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
+    }
+
+
+def sign_trust_transition(
+    private_key_path: str | Path,
+    passphrase: bytes,
+    *,
+    from_generation: int,
+    from_bindings_hash: str,
+    to_bindings_hash: str,
+    operator: str,
+    note: str,
+    signed_at: str | None = None,
+) -> dict[str, Any]:
+    """Sign one additive operator trust-policy generation transition."""
+    if type(from_generation) is not int or from_generation < 1:
+        raise OperatorIdentityError("from_generation must be a positive integer")
+    if not _is_sha256(from_bindings_hash) or not _is_sha256(to_bindings_hash):
+        raise OperatorIdentityError("trust transition binding hashes are invalid")
+    if hmac.compare_digest(from_bindings_hash, to_bindings_hash):
+        raise OperatorIdentityError("trust transition must change the bindings")
+    operator = _bounded_text(operator.strip(), "operator", _MAX_OPERATOR_CHARS)
+    note = _bounded_text(note.strip(), "note", _MAX_NOTE_CHARS)
+    key = _load_private_key(private_key_path, passphrase)
+    statement = {
+        "schema_name": TRUST_TRANSITION_SCHEMA,
+        "schema_version": TRUST_TRANSITION_VERSION,
+        "algorithm": ALGORITHM,
+        "purpose": TRUST_TRANSITION_PURPOSE,
+        "key_id": public_key_id(key.public_key()),
+        "signed_at": _timestamp(signed_at or utc_now(), "signed_at"),
+        "operator": operator,
+        "note": note,
+        "from_generation": from_generation,
+        "to_generation": from_generation + 1,
+        "from_bindings_hash": from_bindings_hash,
+        "to_bindings_hash": to_bindings_hash,
+    }
+    signature = key.sign(_trust_statement_bytes(statement))
     return {
         **statement,
         "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
@@ -333,6 +468,46 @@ def _validate_attestation(attestation: dict[str, Any]) -> None:
         raise OperatorIdentityError("operator authorization hash is invalid")
 
 
+def _validate_trust_transition(attestation: dict[str, Any]) -> None:
+    if set(attestation) != _TRUST_TRANSITION_FIELDS:
+        raise OperatorIdentityError("trust transition fields do not match the schema")
+    if attestation.get("schema_name") != TRUST_TRANSITION_SCHEMA:
+        raise OperatorIdentityError("unsupported trust transition schema")
+    if attestation.get("schema_version") != TRUST_TRANSITION_VERSION:
+        raise OperatorIdentityError("unsupported trust transition version")
+    if attestation.get("algorithm") != ALGORITHM:
+        raise OperatorIdentityError("unsupported trust transition algorithm")
+    if attestation.get("purpose") != TRUST_TRANSITION_PURPOSE:
+        raise OperatorIdentityError("unsupported trust transition purpose")
+    for field in (
+        "key_id",
+        "operator",
+        "note",
+        "from_bindings_hash",
+        "to_bindings_hash",
+        "signature",
+    ):
+        _bounded_text(attestation.get(field), field, _MAX_NOTE_CHARS)
+    for field in ("from_generation", "to_generation"):
+        value = attestation.get(field)
+        if type(value) is not int or value < 1:
+            raise OperatorIdentityError(f"{field} must be a positive integer")
+    if attestation["to_generation"] != attestation["from_generation"] + 1:
+        raise OperatorIdentityError("trust transition generation is not contiguous")
+    if not _is_sha256(attestation["key_id"]):
+        raise OperatorIdentityError("trust transition key id is invalid")
+    if not _is_sha256(attestation["from_bindings_hash"]) or not _is_sha256(
+        attestation["to_bindings_hash"]
+    ):
+        raise OperatorIdentityError("trust transition binding hash is invalid")
+    signed_at = _parsed_timestamp(
+        _timestamp(attestation.get("signed_at"), "signed_at"), "signed_at"
+    )
+    if signed_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise OperatorIdentityError("trust transition time is too far in the future")
+    _decode_signature(attestation["signature"])
+
+
 def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     if not passphrase:
         raise OperatorIdentityError("private-key passphrase must be non-empty")
@@ -376,6 +551,10 @@ def _read_limited(path: Path, label: str) -> bytes:
 
 def _statement_bytes(statement: dict[str, Any]) -> bytes:
     return _DOMAIN + canonical_json(statement).encode("utf-8")
+
+
+def _trust_statement_bytes(statement: dict[str, Any]) -> bytes:
+    return _TRUST_DOMAIN + canonical_json(statement).encode("utf-8")
 
 
 def _decode_signature(value: str) -> bytes:

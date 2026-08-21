@@ -230,6 +230,28 @@ hooks receive the same pins through a JSON environment setting. Private keys
 and passphrases exist only in the operator decision process and must remain
 outside harness state. See `operator_identity.md`.
 
+## Durable operator trust boundary in v0.10
+
+Signed mode is a persistent property of a work directory after its first
+trusted authority startup. `operator_trust.json` records a canonical hash of
+the enrolled identity/key-ID mapping. Authority construction resolves this
+store before evidence, approval, budget, or tool objects can mutate state.
+Missing pins or a mapping mismatch therefore stop startup instead of falling
+back to legacy unsigned authority.
+
+Trust changes form a generation chain. Each online transition is
+domain-separated, signed by a key present in the prior generation, and binds
+the prior and next mapping hashes, operator identity, required note, and time.
+Only strict additions are accepted. Key removal and reassignment require an
+offline, separately governed compromise procedure; the runtime supplies no
+force or reset path.
+
+State integrity audits the complete mapping and signature chain. Diagnostic
+processes may read external public pins to verify it, but `dah doctor`, Command
+Core, and Command Center never enroll, rotate, repair, or receive private-key
+material. Their projection contains generation, counts, mapping hash, and
+verification status only.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -243,7 +265,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.9
+## What is deliberately absent from v0.10
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -257,8 +279,9 @@ successes. See `native_hooks.md`.
   sends, publishes, exports, deletes, and spends. Proxied upstream tools are
   real and must be classified accordingly.
 - **Remote identity administration.** Local operator actions can be bound to
-  pinned keys, but accounts, roles, remote authentication, certificate
-  identity, automatic revocation, and hosted trust distribution remain absent.
+  pinned keys and additive rotations are durably chained. Accounts, roles,
+  automatic online removal, remote authentication, certificate identity,
+  automatic revocation, and hosted trust distribution remain absent.
 - **Automatic state repair.** The auditor detects contradictions and fails
   closed. Repair requires offline investigation or restore from a known-good
   copy; the dashboard has no repair or mutation path.

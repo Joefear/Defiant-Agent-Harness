@@ -83,6 +83,20 @@ Expected crash windows remain visible as recovery-required warnings. The doctor,
 Command Core, and Command Center paths are read-only and remain available for
 sanitized diagnosis.
 
+### 9. Signed-mode downgrade or unauthorized trust replacement
+
+A process restarts without operator trust pins, or with a different mapping,
+and attempts to reinterpret signed-required state as legacy unsigned authority.
+
+v0.10 durably enrolls signed mode and the canonical identity/key-ID mapping on
+the first trusted authority startup. Every later authority startup resolves it
+before other stores can mutate. Missing or changed pins fail closed. Online
+rotation must be strictly additive, is signed by a key from the prior
+generation, and binds both generation numbers and mapping hashes. A new key
+cannot authorize itself; removal and reassignment have no online command.
+Read-only diagnostics expose unverified, mismatched, malformed, and locked
+trust state without changing it.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
@@ -139,6 +153,13 @@ reconciliation, an unsigned legacy record, or a key assigned to another
 operator fails closed. A stolen unlocked operator key remains able to authorize
 actions as its pinned identity until that key is removed from runtime trust.
 
+**Trust-state rollback or host compromise.** Durable enrollment prevents an
+accidental or configuration-only downgrade; it is not an external witness. A
+host administrator who can replace code, state, and external trust pins can
+replace the local root or restore an older internally valid generation. Protect
+the state directory, keep pins in an authenticated deployment channel, and
+retain off-box generation/hash observations when rollback detection is needed.
+
 **Side channels in real-write adapters.** A tool allowed to write into a folder
 watched by another publisher creates an indirect outward path and needs its own
 policy boundary.
@@ -161,5 +182,6 @@ policy boundary.
   operator channel and are not writable by the governed agent.
 - The local state directory is access-controlled; durable approvals retain held
   payloads there.
-- When no operator trust pins are configured, legacy `approved_by` and
-  `reconciled_by` values remain assertions. Production runtimes use signed mode.
+- In a work directory that has never enrolled operator trust, legacy
+  `approved_by` and `reconciled_by` values remain assertions. Production
+  runtimes enroll signed mode; after enrollment, missing pins fail closed.

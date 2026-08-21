@@ -265,6 +265,7 @@ def test_doctor_emits_json_exit_status_and_does_not_initialize_state(tmp_path, c
 
     assert exit_code == 0
     assert payload["schema_name"] == "defiant.state_integrity"
+    assert payload["schema_version"] == "0.2.0"
     assert payload["safe_to_execute"] is True
     assert not workdir.exists()
 

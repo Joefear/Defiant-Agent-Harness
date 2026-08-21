@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.4.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.5.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -19,6 +19,8 @@ contains:
 - exact-decimal aggregate cost and observed ruleset hashes;
 - approval status counts, reconciliation-required state, and safe metadata for
   currently actionable items;
+- durable operator-trust generation, mapping hash, operator/key counts, and
+  verification status;
 - budget balance, reservations, spend, and estimate drift;
 - a bounded list of recent operational events.
 
@@ -53,7 +55,10 @@ Signed evidence exports are deliberately outside this live-state projection.
 Command Core never loads private keys, imports signed exports, or treats an
 export signature as authority over current state. With repeatable
 `--trusted-operator-key IDENTITY=PUBLIC_KEY.pem` options it can verify approval
-attestations read-only; those public pins cannot create authority. Use the
+attestations and the enrolled trust-generation chain read-only; those public
+pins cannot create authority. If signed mode is enrolled but pins are omitted
+or mismatched, the snapshot remains available but is non-authoritative and
+reports the trust failure. Command Core never enrolls or rotates trust. Use the
 offline `dah verify-export` workflow documented in `evidence_signing.md`.
 
 ## Boundary

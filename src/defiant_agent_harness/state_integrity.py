@@ -18,10 +18,11 @@ from .operator_identity import (
     RECONCILIATION_PURPOSE,
     OperatorTrustPolicy,
 )
+from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.1.0"
+AUDIT_VERSION = "0.2.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -137,9 +138,11 @@ class StateIntegrityAuditor:
     def audit(self) -> StateIntegrityReport:
         report = StateIntegrityReport()
         self._audit_locks(report)
+        trust_generation = self._audit_operator_trust(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
         approvals = self._load_approvals(report)
+        self._audit_legacy_signed_migration(report, approvals)
         budget = self._load_budget(report)
 
         report.counts = {
@@ -147,6 +150,7 @@ class StateIntegrityAuditor:
             "approvals": len(approvals),
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
+            "operator_trust_generation": trust_generation,
         }
         self._audit_cross_store(
             report,
@@ -167,7 +171,12 @@ class StateIntegrityAuditor:
         return report
 
     def _audit_locks(self, report: StateIntegrityReport) -> None:
-        for filename in ("evidence.jsonl", "approvals.json", "budget.json"):
+        for filename in (
+            "evidence.jsonl",
+            "approvals.json",
+            "budget.json",
+            "operator_trust.json",
+        ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
                 self._issue(
@@ -177,6 +186,106 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_operator_trust(self, report: StateIntegrityReport) -> int:
+        store = OperatorTrustStateStore(self.workdir / "operator_trust.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["operator_trust"] = {
+                    "state": "not_enrolled",
+                    "mode": "legacy_unsigned",
+                    "generation": 0,
+                    "bindings_hash": None,
+                    "operator_count": 0,
+                    "key_count": 0,
+                    "verification": (
+                        "configured_not_enrolled"
+                        if self.operator_trust is not None
+                        else "not_applicable"
+                    ),
+                }
+                if self.operator_trust is not None:
+                    self._issue(
+                        report,
+                        "operator_trust_not_enrolled",
+                        "warning",
+                        "operator_trust",
+                        "trusted keys are configured for this read-only process but "
+                        "signed operator trust has not been durably enrolled",
+                    )
+                return 0
+            if self.operator_trust is None:
+                report.stores["operator_trust"] = state.projection(
+                    verification="unverified"
+                )
+                self._issue(
+                    report,
+                    "operator_trust_unverified",
+                    "critical",
+                    "operator_trust",
+                    "signed operator trust is enrolled but no trusted keys were "
+                    "provided to verify it",
+                )
+                return state.generation
+            try:
+                state.verify(self.operator_trust)
+            except RuntimeError as exc:
+                report.stores["operator_trust"] = state.projection(
+                    verification="mismatch"
+                )
+                self._issue(
+                    report,
+                    "operator_trust_mismatch",
+                    "critical",
+                    "operator_trust",
+                    str(exc),
+                )
+                return state.generation
+            report.stores["operator_trust"] = state.projection(verification="verified")
+            return state.generation
+        except RuntimeError as exc:
+            report.stores["operator_trust"] = {
+                "state": "invalid",
+                "mode": "unknown",
+                "generation": 0,
+                "bindings_hash": None,
+                "operator_count": 0,
+                "key_count": 0,
+                "verification": "invalid",
+            }
+            self._issue(
+                report,
+                "operator_trust_invalid",
+                "critical",
+                "operator_trust",
+                str(exc),
+            )
+            return 0
+
+    def _audit_legacy_signed_migration(
+        self,
+        report: StateIntegrityReport,
+        approvals: dict[str, PendingApproval],
+    ) -> None:
+        trust = report.stores.get("operator_trust", {})
+        if trust.get("state") != "not_enrolled" or self.operator_trust is not None:
+            return
+        if not any(
+            approval.decision_attestation is not None
+            or approval.reconciliation_attestation is not None
+            for approval in approvals.values()
+        ):
+            return
+        trust["verification"] = "migration_required"
+        self._issue(
+            report,
+            "operator_trust_migration_required",
+            "critical",
+            "operator_trust",
+            "signed operator attestations predate durable enrollment; trusted "
+            "operator keys are required for the first authority migration",
+        )
 
     def _load_evidence(
         self, report: StateIntegrityReport

@@ -21,7 +21,8 @@ from ..contracts import (
 )
 from ..evidence.store import EvidenceStore
 from ..money import ZERO, MoneyLike
-from ..operator_identity import OperatorTrustPolicy, validate_external_trust_specs
+from ..operator_identity import validate_external_trust_specs
+from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
 from ..state_integrity import StateIntegrityAuditor
 from ..tools.registry import ToolContractError, ToolRegistry, ToolResult
@@ -878,11 +879,9 @@ def build_harness(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
     )
-    operator_trust = (
-        OperatorTrustPolicy.from_specs(trusted_operator_keys)
-        if trusted_operator_keys
-        else None
-    )
+    operator_trust = OperatorTrustStateStore(
+        state_root / "operator_trust.json"
+    ).resolve_for_authority(trusted_operator_keys or [])
     harness = Harness(
         policy=PolicyEngine.default(
             policy_packs,

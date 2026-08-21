@@ -33,6 +33,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - actionable approval metadata without payloads or targets;
 - signed-operator assurance, operator, key id, and signing time without the
   signature or operator note;
+- durable operator-trust generation and verified, unverified, mismatched, or
+  invalid status without trust-transition signatures or notes;
 - a prominent reconciliation-required alert for approvals stranded in
   `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;
@@ -94,10 +96,12 @@ directory still contains confidential operational material and must remain
 access-controlled.
 
 v0.8 evidence signing remains an operator CLI and offline-verification workflow.
-v0.9 may give Command Center operator public-key pins at startup so its
-read-only snapshot can verify persisted approval attestations. Command Center
-never receives a private key, passphrase, signed export, key-upload endpoint,
-or trusted-key mutation path.
+v0.10 may give Command Center operator public-key pins at startup so its
+read-only snapshot can verify persisted approval attestations and the durable
+trust-generation chain. If pins are missing or mismatched, it remains available
+as a non-authoritative diagnostic view. Command Center never enrolls or rotates
+trust and never receives a private key, passphrase, signed export, key-upload
+endpoint, or trusted-key mutation path.
 
 See `command_core.md` for the JSON projection contract,
 `state_integrity.md` for the audit contract, and `architecture.md` for the
