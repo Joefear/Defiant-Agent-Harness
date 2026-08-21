@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.3.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.4.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -41,16 +41,19 @@ server error. No repair is attempted.
 
 The projection deliberately excludes evidence targets, payload previews,
 decision inputs, and raw results. Actionable approval entries expose only ids,
-tool name, status, timestamps, and whether operator reconciliation is required
-or already in progress. Operator identity and notes remain excluded. The
+tool name, status, timestamps, whether operator reconciliation is required,
+and sanitized identity assurance: operator, key id, signing time, and
+verification status. Signatures and operator notes remain excluded. The
 underlying local state directory still
 contains confidential operational data and must remain access-controlled.
 Issue output excludes targets, payload previews, reconciliation notes, and raw
 results.
 
 Signed evidence exports are deliberately outside this live-state projection.
-Command Core does not load private keys, accept trust roots, import signed
-exports, or treat an export signature as authority over current state. Use the
+Command Core never loads private keys, imports signed exports, or treats an
+export signature as authority over current state. With repeatable
+`--trusted-operator-key IDENTITY=PUBLIC_KEY.pem` options it can verify approval
+attestations read-only; those public pins cannot create authority. Use the
 offline `dah verify-export` workflow documented in `evidence_signing.md`.
 
 ## Boundary
@@ -59,4 +62,4 @@ Command Core remains a local, on-demand read model with no server, execution,
 approval, or mutation behavior of its own. The loopback-only Command Center UI
 consumes this contract without gaining an authority path into the harness. See
 `command_center.md` for that local HTTP surface. Multi-user identity, remote
-ingestion, authentication, and off-box evidence replication remain absent.
+ingestion, account authentication, and off-box evidence replication remain absent.

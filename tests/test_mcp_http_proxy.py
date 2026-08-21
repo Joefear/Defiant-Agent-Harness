@@ -390,6 +390,8 @@ def test_http_proxy_holds_then_consumes_exact_approved_retry(
                     "sam",
                     "approve",
                     approval_id,
+                    "--note",
+                    "reviewed exact HTTP MCP call",
                 ]
             )
             == 0

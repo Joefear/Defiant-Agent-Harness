@@ -236,6 +236,8 @@ def test_proxy_preserves_protocol_and_governs_real_subprocess(tmp_path, capsys):
                 "sam",
                 "approve",
                 approval_id,
+                "--note",
+                "reviewed exact MCP call",
             ]
         )
         == 0
@@ -358,6 +360,8 @@ def test_rejected_proxy_call_cannot_be_spammed_into_a_new_approval(
                     "sam",
                     "reject",
                     approval_id,
+                    "--note",
+                    "operator rejected exact MCP call",
                     "--note",
                     "wrong recipient",
                 ]

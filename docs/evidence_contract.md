@@ -27,7 +27,7 @@ Format is JSON Lines: one record per line, append-only, UTF-8. A consultant can 
 | `ruleset_hash` | string | `sha256:` over the full ruleset |
 | `decision_reason` | string | human-readable, shown to the operator verbatim |
 | `decision_inputs` | object | snapshot of exactly what the engine saw |
-| `approved_by` | string / null | who approved, when approval applied |
+| `approved_by` | string / null | operator identity copied from the verified approval when signed mode is configured |
 | `approved_at` | RFC3339 / null | when they approved |
 | `payload_hash` | string | `sha256:` over the canonical payload |
 | `authorization_hash` | string | binds the complete policy-relevant action |
@@ -40,7 +40,7 @@ Format is JSON Lines: one record per line, append-only, UTF-8. A consultant can 
 | `budget_remaining_usd` | decimal string | available balance after this action |
 | `dry_run` | bool | whether the effect was simulated |
 | `reconciliation_outcome` | string | explicit operator outcome for an uncertain execution, otherwise empty |
-| `reconciled_by` | string | asserted operator identity for reconciliation, otherwise empty |
+| `reconciled_by` | string | operator identity copied from verified reconciliation when signed mode is configured, otherwise empty |
 | `reconciled_at` | RFC3339 / null | when reconciliation intent was durably recorded |
 | `reconciliation_note` | string | required operator explanation, otherwise empty |
 | `previous_record_hash` | string | hash of the preceding record |

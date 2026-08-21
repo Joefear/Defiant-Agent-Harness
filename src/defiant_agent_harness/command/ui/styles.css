@@ -723,6 +723,11 @@ h1 em {
   text-transform: uppercase;
 }
 
+.operator-assurance {
+  max-width: 210px;
+  color: #4b514a !important;
+}
+
 .status-chip {
   display: inline-flex !important;
   width: max-content;

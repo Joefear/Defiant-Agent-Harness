@@ -214,6 +214,22 @@ provide certificate identity, trusted time, hardware-backed custody, automatic
 revocation, or proof that no later chain tail was removed. See
 `evidence_signing.md`.
 
+## Operator authority boundary in v0.9
+
+An approval string is not authority when signed mode is configured. The
+operator CLI creates a domain-separated Ed25519 attestation over the approval,
+action, request, authorization hash, explicit outcome, operator identity,
+required note, and timestamp. The approval store verifies it against an
+out-of-band identity-to-public-key mapping before changing state. Execution
+verifies the persisted decision again immediately before consuming authority.
+
+Crash reconciliation has a distinct signature purpose, so an ordinary approval
+cannot be replayed as a terminal outcome. Verification occurs before budget or
+evidence mutation. MCP proxies receive public trust pins at startup; native
+hooks receive the same pins through a JSON environment setting. Private keys
+and passphrases exist only in the operator decision process and must remain
+outside harness state. See `operator_identity.md`.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -227,7 +243,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.8
+## What is deliberately absent from v0.9
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -240,7 +256,9 @@ successes. See `native_hooks.md`.
 - **Real reference-tool side effects.** The built-ins still simulate writes,
   sends, publishes, exports, deletes, and spends. Proxied upstream tools are
   real and must be classified accordingly.
-- **Multi-user identity.** `approved_by` is a string. Real identity binding is a later arc.
+- **Remote identity administration.** Local operator actions can be bound to
+  pinned keys, but accounts, roles, remote authentication, certificate
+  identity, automatic revocation, and hosted trust distribution remain absent.
 - **Automatic state repair.** The auditor detects contradictions and fails
   closed. Repair requires offline investigation or restore from a known-good
   copy; the dashboard has no repair or mutation path.
@@ -288,6 +306,10 @@ successes. See `native_hooks.md`.
   note are cryptographically bound assertions, not authentication against an
   identity provider. Key custody and the mapping from key id to accountable
   operator remain deployment controls.
+- **Operator identity is also key-based.** v0.9 prevents a trusted key from
+  claiming an identity other than the one in the explicit trust mapping. It
+  does not prove legal identity, provide trusted time, protect an unlocked key,
+  or replace organizational key custody and revocation procedures.
 - **Signed exports are point-in-time.** They authenticate one exported payload
   and its stated full-chain head. They do not prove that the live evidence file
   was never extended or later truncated; off-box retention is still required.

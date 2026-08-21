@@ -130,6 +130,15 @@ practical, rotate after compromise, and distribute revocation through the
 organization's trust process. Defiant does not backdate-proof signatures or
 provide trusted hardware or certificate identity.
 
+**Forged operator approval or reconciliation.** In v0.9 signed mode, the
+authority statement binds the approval, action, request, authorization hash,
+purpose, outcome, identity, note, and time. The consuming runtime pins public
+keys to operator identities out of band and verifies again before execution or
+reconciliation mutation. Changed fields, another approval, a decision reused as
+reconciliation, an unsigned legacy record, or a key assigned to another
+operator fails closed. A stolen unlocked operator key remains able to authorize
+actions as its pinned identity until that key is removed from runtime trust.
+
 **Side channels in real-write adapters.** A tool allowed to write into a folder
 watched by another publisher creates an indirect outward path and needs its own
 policy boundary.
@@ -147,6 +156,10 @@ policy boundary.
 - Evidence-export private keys and passphrases are outside agent-writable and
   harness state paths; trusted public keys reach verifiers through an
   authenticated out-of-band channel.
+- Operator private keys and passphrases are outside agent-writable and harness
+  state paths. Runtime trust pins are distributed through an authenticated
+  operator channel and are not writable by the governed agent.
 - The local state directory is access-controlled; durable approvals retain held
   payloads there.
-- `approved_by` is an assertion by the CLI caller. Real identity binding is a later arc.
+- When no operator trust pins are configured, legacy `approved_by` and
+  `reconciled_by` values remain assertions. Production runtimes use signed mode.

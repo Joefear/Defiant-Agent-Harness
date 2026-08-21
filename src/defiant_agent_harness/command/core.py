@@ -16,11 +16,19 @@ from ..budgets.ledger import BudgetError, BudgetLedger
 from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..money import ZERO, money, money_text
+from ..operator_identity import (
+    DECISION_PURPOSE,
+    RECONCILIATION_PURPOSE,
+    OperatorIdentityStatus,
+    OperatorTrustPolicy,
+    unsigned_status,
+    validate_external_trust_specs,
+)
 from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.3.0"
+SNAPSHOT_VERSION = "0.4.0"
 
 
 class CommandError(RuntimeError):
@@ -30,15 +38,27 @@ class CommandError(RuntimeError):
 class CommandCore:
     """Build a read-only operational snapshot from one harness work directory."""
 
-    def __init__(self, workdir: str | Path):
+    def __init__(
+        self,
+        workdir: str | Path,
+        trusted_operator_keys: list[str] | None = None,
+    ):
         self.workdir = Path(workdir)
+        validate_external_trust_specs(trusted_operator_keys or [], self.workdir)
+        self.operator_trust = (
+            OperatorTrustPolicy.from_specs(trusted_operator_keys)
+            if trusted_operator_keys
+            else None
+        )
 
     def snapshot(self, *, limit: int = 10, request_id: str = "") -> dict[str, Any]:
         if limit < 0:
             raise CommandError("limit must not be negative")
 
         try:
-            audit = StateIntegrityAuditor(self.workdir).audit()
+            audit = StateIntegrityAuditor(
+                self.workdir, operator_trust=self.operator_trust
+            ).audit()
             audit_payload = audit.to_dict()
             if audit.stores["evidence"]["state"] == "invalid":
                 detail = _store_issue_detail(audit_payload, "evidence")
@@ -167,12 +187,19 @@ class CommandCore:
                 "actionable_count": 0,
                 "overdue_pending_count": 0,
                 "reconciliation_required_count": 0,
+                "operator_identity_policy": (
+                    "signed_required"
+                    if self.operator_trust is not None
+                    else "not_configured"
+                ),
+                "identity_assurance": {},
                 "statuses": dict(status_counts),
                 "actionable": [],
             }
 
         raw_approvals = read_json(path)
         actionable: list[dict[str, Any]] = []
+        identity_counts: Counter[str] = Counter()
         overdue = 0
         for approval_id, raw in raw_approvals.items():
             if not isinstance(raw, dict):
@@ -190,6 +217,13 @@ class CommandCore:
                 approval.status in {"pending", "approved", "executing"}
                 and not expired_pending
             ):
+                identity = self._operator_identity(approval)
+                identity_counts[identity.assurance] += 1
+                reconciliation_identity = (
+                    self._reconciliation_identity(approval)
+                    if approval.reconciliation_outcome
+                    else None
+                )
                 actionable.append(
                     {
                         "approval_id": approval.approval_id,
@@ -207,6 +241,12 @@ class CommandCore:
                             if approval.status == "executing"
                             else "none"
                         ),
+                        "operator_identity": _identity_projection(identity),
+                        "reconciliation_identity": (
+                            _identity_projection(reconciliation_identity)
+                            if reconciliation_identity is not None
+                            else None
+                        ),
                     }
                 )
 
@@ -217,9 +257,69 @@ class CommandCore:
             "actionable_count": len(actionable),
             "overdue_pending_count": overdue,
             "reconciliation_required_count": status_counts["executing"],
+            "operator_identity_policy": (
+                "signed_required"
+                if self.operator_trust is not None
+                else "not_configured"
+            ),
+            "identity_assurance": dict(identity_counts),
             "statuses": dict(status_counts),
             "actionable": actionable,
         }
+
+    def _operator_identity(
+        self, approval: PendingApproval
+    ) -> OperatorIdentityStatus:
+        if approval.status == "pending":
+            return OperatorIdentityStatus(
+                True,
+                "not_applicable",
+                "approval has not been decided",
+            )
+        if approval.decision_attestation is None:
+            return unsigned_status(approval.decided_by or "")
+        if self.operator_trust is None:
+            return OperatorIdentityStatus(
+                False,
+                "unverified",
+                "attestation present; no operator trust pins configured",
+                operator=approval.decided_by or "",
+                key_id=str(approval.decision_attestation.get("key_id", "")),
+                signed_at=str(approval.decision_attestation.get("signed_at", "")),
+            )
+        return self.operator_trust.assess(
+            approval.decision_attestation,
+            approval,
+            purpose=DECISION_PURPOSE,
+            outcome="rejected" if approval.status == "rejected" else "approved",
+            operator=approval.decided_by or "",
+            note=approval.note,
+        )
+
+    def _reconciliation_identity(
+        self, approval: PendingApproval
+    ) -> OperatorIdentityStatus:
+        if approval.reconciliation_attestation is None:
+            return unsigned_status(approval.reconciled_by)
+        if self.operator_trust is None:
+            return OperatorIdentityStatus(
+                False,
+                "unverified",
+                "attestation present; no operator trust pins configured",
+                operator=approval.reconciled_by,
+                key_id=str(approval.reconciliation_attestation.get("key_id", "")),
+                signed_at=str(
+                    approval.reconciliation_attestation.get("signed_at", "")
+                ),
+            )
+        return self.operator_trust.assess(
+            approval.reconciliation_attestation,
+            approval,
+            purpose=RECONCILIATION_PURPOSE,
+            outcome=approval.reconciliation_outcome,
+            operator=approval.reconciled_by,
+            note=approval.reconciliation_note,
+        )
 
     def _budget(self) -> dict[str, Any]:
         path = self.workdir / "budget.json"
@@ -270,8 +370,22 @@ def _unavailable_approvals() -> dict[str, Any]:
         "actionable_count": 0,
         "overdue_pending_count": 0,
         "reconciliation_required_count": 0,
+        "operator_identity_policy": "unavailable",
+        "identity_assurance": {},
         "statuses": {status: 0 for status in sorted(APPROVAL_STATUSES)},
         "actionable": [],
+    }
+
+
+def _identity_projection(status: OperatorIdentityStatus) -> dict[str, Any]:
+    """Expose assurance metadata only; signatures and operator notes stay sealed."""
+    return {
+        "ok": status.ok,
+        "assurance": status.assurance,
+        "detail": status.detail,
+        "operator": status.operator or None,
+        "key_id": status.key_id or None,
+        "signed_at": status.signed_at or None,
     }
 
 

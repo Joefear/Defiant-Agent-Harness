@@ -90,7 +90,7 @@ function time(value, includeDate = false) {
 
 function tone(value) {
   if (String(value).startsWith("reconciliation_")) return "signal";
-  if (["allow", "succeeded", "approved"].includes(value)) return "healthy";
+  if (["allow", "succeeded", "approved", "signed_trusted"].includes(value)) return "healthy";
   if (["block", "blocked", "failed", "rejected", "expired", "not_executed"].includes(value)) {
     return "danger";
   }
@@ -217,6 +217,16 @@ function renderApprovals(approvals) {
         ? `reconciliation_${approval.reconciliation_state}`
         : approval.status),
     );
+    const operatorIdentity = approval.reconciliation_identity || approval.operator_identity;
+    if (operatorIdentity && operatorIdentity.assurance !== "not_applicable") {
+      const identityLabel = document.createElement("p");
+      identityLabel.className = "operator-assurance";
+      const operator = operatorIdentity.operator || "asserted operator";
+      const key = operatorIdentity.key_id ? ` · ${shortId(operatorIdentity.key_id)}` : "";
+      identityLabel.textContent = `${label(operatorIdentity.assurance)} · ${operator}${key}`;
+      identityLabel.title = operatorIdentity.detail;
+      status.append(identityLabel);
+    }
 
     const request = document.createElement("div");
     const requestLabel = document.createElement("p");

@@ -10,6 +10,11 @@ Run it without initializing or modifying the state directory:
 dah --workdir .dah doctor
 ```
 
+In v0.9, add repeatable
+`--trusted-operator-key IDENTITY=PUBLIC_KEY.pem` options to audit operator
+decision and reconciliation attestations under the same policy used by the
+runtime.
+
 The command emits schema `defiant.state_integrity` version `0.1.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
@@ -35,6 +40,8 @@ The auditor verifies:
 - the complete evidence hash chain, record schema, and record-id uniqueness;
 - approval structure, ids, active-action uniqueness, operator identity for
   approved states, and durable action/request bindings;
+- when trust pins are configured, signed operator purpose, outcome, identity,
+  note, key assignment, signature, and approval-authority binding;
 - budget structure and entry shape;
 - every live reservation belongs to an active approval or sealed unfinished
   authorization;
@@ -59,7 +66,8 @@ budget, or tool mutation occurs. Diagnostic commands do not construct a
 harness and remain usable.
 
 The audit is a local point-in-time consistency check, not a database
-transaction, signature, repair engine, or OS sandbox. Defiant still assumes one
+transaction, repair engine, or OS sandbox. Signature verification is enabled
+only when operator trust pins are supplied. Defiant still assumes one
 logical writer per state directory, uses per-file exclusive locks, and requires
 the directory to be access-controlled. Restore corrupt state from a known-good
 copy or investigate it offline; do not edit a live store merely to clear an

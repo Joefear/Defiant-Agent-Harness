@@ -276,6 +276,7 @@ class CopilotHookGate:
         mapping_version: str = HOOK_MAPPING_VERSION,
         policy_pack: str = "copilot_hook",
         server_name: str = "vscode-agent-hook",
+        trusted_operator_keys: list[str] | None = None,
     ):
         self.workspace_root = Path(workspace_root).resolve(strict=False)
         self.state_root = Path(state_root)
@@ -314,6 +315,7 @@ class CopilotHookGate:
                 "hook_mapping_version": self.mapping_version,
                 "hook_execution_owner": self.execution_owner,
             },
+            trusted_operator_keys=trusted_operator_keys,
         )
         self.executions = HookExecutionStore(self.state_root / "hook_executions.json")
 
@@ -778,8 +780,13 @@ def run_hook(
     *,
     workspace_root: str | Path,
     state_root: str | Path,
+    trusted_operator_keys: list[str] | None = None,
 ) -> dict[str, Any]:
-    gate = CopilotHookGate(workspace_root, state_root)
+    gate = CopilotHookGate(
+        workspace_root,
+        state_root,
+        trusted_operator_keys=trusted_operator_keys,
+    )
     if phase == "pre":
         return gate.pre_tool_use(event)
     if phase == "post":
@@ -799,6 +806,7 @@ def main(argv: list[str] | None = None) -> int:
             event,
             workspace_root=workspace_root,
             state_root=state_root,
+            trusted_operator_keys=_trusted_operator_keys_from_env(),
         )
     except Exception as exc:
         reason = f"Defiant hook failed closed: {type(exc).__name__}: {exc}"
@@ -812,6 +820,23 @@ def main(argv: list[str] | None = None) -> int:
 
 def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number is not allowed: {value}")
+
+
+def _trusted_operator_keys_from_env() -> list[str]:
+    raw = os.environ.get("DAH_TRUSTED_OPERATOR_KEYS", "")
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("DAH_TRUSTED_OPERATOR_KEYS must be a JSON array") from exc
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        raise ValueError(
+            "DAH_TRUSTED_OPERATOR_KEYS must contain non-empty key specifications"
+        )
+    return value
 
 
 if __name__ == "__main__":

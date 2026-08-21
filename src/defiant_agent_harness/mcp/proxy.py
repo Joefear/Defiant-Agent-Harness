@@ -139,6 +139,7 @@ class McpStdioProxy:
         policy_packs: list[str] | None = None,
         sensitivity: Sensitivity = Sensitivity.INTERNAL,
         dry_run: bool = False,
+        trusted_operator_keys: list[str] | None = None,
     ):
         self.config = config
         self.session = session
@@ -193,6 +194,7 @@ class McpStdioProxy:
                 "mcp_server_fingerprint": self.server_fingerprint,
                 "mcp_proxy_fingerprint": self.proxy_fingerprint,
             },
+            trusted_operator_keys=trusted_operator_keys,
         )
 
     def accept_line(self, line: str) -> None:
@@ -394,6 +396,7 @@ def run_stdio_proxy(
     policy_packs: list[str] | None = None,
     sensitivity: Sensitivity = Sensitivity.INTERNAL,
     dry_run: bool = False,
+    trusted_operator_keys: list[str] | None = None,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -418,6 +421,7 @@ def run_stdio_proxy(
             policy_packs=policy_packs,
             sensitivity=sensitivity,
             dry_run=dry_run,
+            trusted_operator_keys=trusted_operator_keys,
         )
         for line in input_stream:
             if line.strip():
@@ -437,6 +441,7 @@ def run_http_upstream_proxy(
     policy_packs: list[str] | None = None,
     sensitivity: Sensitivity = Sensitivity.INTERNAL,
     dry_run: bool = False,
+    trusted_operator_keys: list[str] | None = None,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -463,6 +468,7 @@ def run_http_upstream_proxy(
             policy_packs=policy_packs,
             sensitivity=sensitivity,
             dry_run=dry_run,
+            trusted_operator_keys=trusted_operator_keys,
         )
         for line in input_stream:
             if line.strip():
