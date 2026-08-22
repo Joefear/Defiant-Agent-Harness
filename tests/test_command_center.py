@@ -113,6 +113,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"launch_envelope" in javascript
     assert b"state_storage" in javascript
     assert b"control_plane_isolation" in javascript
+    assert b"workspace_integrity" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

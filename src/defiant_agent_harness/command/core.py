@@ -33,7 +33,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.13.0"
+SNAPSHOT_VERSION = "0.14.0"
 
 
 class CommandError(RuntimeError):
@@ -47,8 +47,10 @@ class CommandCore:
         self,
         workdir: str | Path,
         trusted_operator_keys: list[str] | None = None,
+        workspace_root: str | Path | None = None,
     ):
         self.workdir = Path(workdir)
+        self.workspace_root = workspace_root
         validate_external_trust_specs(trusted_operator_keys or [], self.workdir)
         self.operator_trust = (
             OperatorTrustPolicy.from_specs(trusted_operator_keys)
@@ -62,7 +64,9 @@ class CommandCore:
 
         try:
             audit = StateIntegrityAuditor(
-                self.workdir, operator_trust=self.operator_trust
+                self.workdir,
+                operator_trust=self.operator_trust,
+                workspace_root=self.workspace_root,
             ).audit()
             audit_payload = audit.to_dict()
             journal_operation = (
@@ -106,6 +110,7 @@ class CommandCore:
                 "control_plane_isolation": audit_payload["stores"][
                     "control_plane_isolation"
                 ],
+                "workspace_integrity": audit_payload["stores"]["workspace_integrity"],
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
                 "operation_journal": audit_payload["stores"]["operation_journal"],

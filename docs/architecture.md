@@ -424,7 +424,22 @@ relationship enter the complete authority profile. A matching
 lock. Doctor and the read-only Command surfaces can report that posture but
 cannot create exceptions or change tool scope. See `control_plane_isolation.md`.
 
-## What is deliberately absent from v0.19
+## Workspace-root integrity in v0.20
+
+Authority startup binds the configured workspace's canonical path and
+device/file identity into the complete profile and records the sanitized
+observation in `workspace_integrity.json`. Final symlink/reparse and
+non-directory roots are refused. The state-integrity gate rechecks the root
+before every new authority operation, while the registry repeats the check
+immediately before any workspace-scoped handler or MCP dispatch and before the
+grant is spent.
+
+The root is the boundary, not immutable content: ordinary files and
+subdirectories remain editable. Doctor and the Command surfaces can live-check
+a supplied root without creating or repairing it and expose no paths or raw
+identity. See `workspace_root_integrity.md`.
+
+## What is deliberately absent from v0.20
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -444,6 +459,9 @@ cannot create exceptions or change tool scope. See `control_plane_isolation.md`.
 - **Automatic state repair.** The auditor detects contradictions and fails
   closed. Repair requires offline investigation or restore from a known-good
   copy; the dashboard has no repair or mutation path.
+- **Workspace-root acceptance or repair.** Root replacement requires restoring
+  the enrolled root or reviewing an explicit authority-profile transition;
+  Command Center cannot accept a new identity.
 
 ## Known limits
 

@@ -454,6 +454,7 @@ def cmd_command(args) -> int:
         snapshot = CommandCore(
             args.workdir,
             trusted_operator_keys=args.trusted_operator_key,
+            workspace_root=args.workspace_root,
         ).snapshot(
             limit=args.limit,
             request_id=args.request,
@@ -468,7 +469,11 @@ def cmd_command(args) -> int:
 def cmd_doctor(args) -> int:
     try:
         trust = _operator_trust(args, authority=False)
-        report = StateIntegrityAuditor(args.workdir, operator_trust=trust).audit()
+        report = StateIntegrityAuditor(
+            args.workdir,
+            operator_trust=trust,
+            workspace_root=args.workspace_root,
+        ).audit()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.safe_to_execute else 1
     except (OperatorIdentityError, EvidenceSigningError) as exc:
@@ -605,6 +610,7 @@ def cmd_command_center(args) -> int:
             port=args.port,
             default_limit=args.limit,
             trusted_operator_keys=args.trusted_operator_key,
+            workspace_root=args.workspace_root,
         )
     except (
         CommandCenterError,

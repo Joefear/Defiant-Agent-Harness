@@ -1451,6 +1451,10 @@ def build_harness(
         build_control_plane_isolation,
     )
     from ..tools.builtin import default_registry
+    from ..workspace_integrity import (
+        WorkspaceIntegrityStateStore,
+        prepare_workspace_root,
+    )
 
     state_storage = prepare_state_storage(workdir)
     state_root = state_storage.root
@@ -1463,8 +1467,10 @@ def build_harness(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
     )
+    workspace_integrity = prepare_workspace_root(registry.workspace_root)
+    registry._bind_workspace_root(workspace_integrity)
     control_plane_isolation = build_control_plane_isolation(
-        registry.workspace_root,
+        workspace_integrity.root,
         state_root,
     )
     registry._protect_roots(control_plane_isolation.protected_roots)
@@ -1476,7 +1482,7 @@ def build_harness(
                 spec.authority_dict()
                 for spec in sorted(registry.specs(), key=lambda item: item.name)
             ],
-            "workspace_root_hash": sha256_of(str(registry.workspace_root)),
+            "workspace_integrity": workspace_integrity.authority_dict(),
             "dry_run": dry_run,
             "adapter": authority_context or {},
             "state_storage": state_storage.authority_dict(),
@@ -1514,6 +1520,9 @@ def build_harness(
             ControlPlaneIsolationStateStore(
                 state_root / "control_plane_isolation.json"
             ).record(policy.ruleset_hash, control_plane_isolation)
+            WorkspaceIntegrityStateStore(
+                state_root / "workspace_integrity.json"
+            ).record(policy.ruleset_hash, workspace_integrity)
         if runtime_artifact_assurance is not None:
             from ..runtime_artifacts import RuntimeArtifactStateStore
 
@@ -1546,6 +1555,7 @@ def build_harness(
                 state_root,
                 operator_trust=operator_trust,
                 authority_profile_hash=audit_profile_hash,
+                workspace_root=workspace_integrity.root,
             ),
             operation_journal=OperationJournal(state_root / "operation_journal.json"),
             authority_lock=authority_lock,

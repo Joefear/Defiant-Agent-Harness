@@ -42,13 +42,16 @@ class CommandCenterServer(ThreadingHTTPServer):
         port: int = DEFAULT_PORT,
         default_limit: int = DEFAULT_LIMIT,
         trusted_operator_keys: list[str] | None = None,
+        workspace_root: str | Path | None = None,
     ):
         if not 0 <= port <= 65535:
             raise CommandCenterError("port must be between 0 and 65535")
         if not 0 <= default_limit <= MAX_LIMIT:
             raise CommandCenterError(f"default limit must be between 0 and {MAX_LIMIT}")
         self.command_core = CommandCore(
-            workdir, trusted_operator_keys=trusted_operator_keys
+            workdir,
+            trusted_operator_keys=trusted_operator_keys,
+            workspace_root=workspace_root,
         )
         self.default_limit = default_limit
         super().__init__((LOOPBACK_HOST, port), CommandCenterRequestHandler)

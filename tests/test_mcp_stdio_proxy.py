@@ -386,6 +386,8 @@ def test_rejected_proxy_call_cannot_be_spammed_into_a_new_approval(
                 [
                     "--workdir",
                     str(state),
+                    "--workspace-root",
+                    str(state.parent / "workspace"),
                     "--user",
                     "sam",
                     "reject",

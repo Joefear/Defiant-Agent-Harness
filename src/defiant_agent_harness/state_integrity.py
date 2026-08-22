@@ -35,9 +35,14 @@ from .state_storage import (
     inspect_state_storage,
     inspect_state_storage_files,
 )
+from .workspace_integrity import (
+    WorkspaceIntegrityError,
+    WorkspaceIntegrityStateStore,
+    inspect_workspace_root,
+)
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.10.0"
+AUDIT_VERSION = "0.11.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
@@ -52,6 +57,7 @@ _STATE_FILENAMES = (
     "operator_trust.json",
     "runtime_artifacts.json",
     "state_storage.json",
+    "workspace_integrity.json",
 )
 
 _TERMINAL_RESULTS = {
@@ -150,10 +156,14 @@ class StateIntegrityAuditor:
         workdir: str | Path,
         operator_trust: OperatorTrustPolicy | None = None,
         authority_profile_hash: str | None = None,
+        workspace_root: str | Path | None = None,
     ):
         self.workdir = Path(workdir)
         self.operator_trust = operator_trust
         self.authority_profile_hash = authority_profile_hash
+        self.workspace_root = (
+            Path(workspace_root) if workspace_root is not None else None
+        )
 
     def require_safe(self) -> StateIntegrityReport:
         report = self.audit()
@@ -173,6 +183,7 @@ class StateIntegrityAuditor:
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
+        workspace_root_count = self._audit_workspace_integrity(report)
         protected_root_count = self._audit_control_plane_isolation(report)
         artifact_count = self._audit_runtime_artifacts(report)
         launch_variable_count = self._audit_launch_envelope(report)
@@ -190,6 +201,7 @@ class StateIntegrityAuditor:
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
             "authority_profile_generation": profile_generation,
+            "workspace_roots": workspace_root_count,
             "protected_control_plane_roots": protected_root_count,
             "runtime_artifacts": artifact_count,
             "launch_environment_variables": launch_variable_count,
@@ -333,6 +345,7 @@ class StateIntegrityAuditor:
             "launch_envelope.json",
             "state_storage.json",
             "hook_executions.json",
+            "workspace_integrity.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
@@ -418,6 +431,95 @@ class StateIntegrityAuditor:
                 "control_plane_isolation_invalid",
                 "critical",
                 "control_plane_isolation.json",
+                str(exc),
+            )
+            return 0
+
+    def _audit_workspace_integrity(self, report: StateIntegrityReport) -> int:
+        store = WorkspaceIntegrityStateStore(self.workdir / "workspace_integrity.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["workspace_integrity"] = {
+                    "state": "not_recorded",
+                    "verification": "migration_required",
+                    "profile_hash": None,
+                    "root_hash": None,
+                    "last_verified_at": None,
+                }
+                try:
+                    profile = AuthorityProfileStore(
+                        self.workdir / "authority_profile.json"
+                    ).get()
+                except RuntimeError:
+                    profile = None
+                if profile is not None:
+                    self._issue(
+                        report,
+                        "workspace_integrity_observation_missing",
+                        "warning",
+                        "workspace_integrity.json",
+                        "workspace-root integrity has not been recorded for the "
+                        "active authority profile",
+                    )
+                return 0
+
+            verification = "profile_bound"
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is not None and profile.profile_hash != state.profile_hash:
+                verification = "profile_mismatch"
+                self._issue(
+                    report,
+                    "workspace_integrity_profile_mismatch",
+                    "critical",
+                    "workspace_integrity.json",
+                    "workspace-root assurance is not bound to the active authority profile",
+                )
+            elif self.workspace_root is not None:
+                assurance = inspect_workspace_root(self.workspace_root)
+                if assurance is None:
+                    verification = "root_missing"
+                    self._issue(
+                        report,
+                        "workspace_root_missing",
+                        "critical",
+                        "workspace_integrity.json",
+                        "the governed workspace root is missing",
+                    )
+                elif assurance.authority_dict() != state.authority_dict():
+                    verification = "root_mismatch"
+                    self._issue(
+                        report,
+                        "workspace_root_mismatch",
+                        "critical",
+                        "workspace_integrity.json",
+                        "the governed workspace root identity changed",
+                    )
+                else:
+                    verification = "verified"
+            report.stores["workspace_integrity"] = state.projection(
+                verification=verification
+            )
+            return 1
+        except WorkspaceIntegrityError as exc:
+            report.stores["workspace_integrity"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "root_hash": None,
+                "last_verified_at": None,
+            }
+            self._issue(
+                report,
+                "workspace_integrity_invalid",
+                "critical",
+                "workspace_integrity.json",
                 str(exc),
             )
             return 0
