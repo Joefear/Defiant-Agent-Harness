@@ -47,6 +47,17 @@ from ..evidence.signing import (
     write_export,
 )
 from ..evidence.store import EvidenceError, EvidenceStore
+from ..evidence_witness import (
+    EvidenceWitnessError,
+    EvidenceWitnessPolicy,
+    assess_witness,
+    build_witness_payload,
+    load_witness,
+    sign_witness,
+    validate_external_witness_paths,
+    write_witness,
+)
+from ..state_storage import StateStorageStateStore
 from ..mcp.config import McpConfigError, load_proxy_config
 from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
 from ..mcp.session import McpTransportError
@@ -111,6 +122,8 @@ def cmd_demo(args) -> int:
         dry_run=args.dry_run,
         workspace_root=args.workspace_root,
         trusted_operator_keys=getattr(args, "trusted_operator_key", None),
+        evidence_head_witness=args.evidence_head_witness,
+        trusted_evidence_witness_keys=args.trusted_evidence_key,
     )
     request = HarnessRequest(
         task=f"demo: {scenario}",
@@ -448,6 +461,62 @@ def cmd_verify_export(args) -> int:
     return 0 if status.ok else 1
 
 
+def cmd_witness_evidence_head(args) -> int:
+    try:
+        _require_external_secret(args.workdir, args.signing_key, "signing key")
+        _require_external_secret(args.workdir, args.passphrase_file, "passphrase file")
+        _require_external_secret(args.workdir, args.output, "evidence witness")
+        document = sign_witness(
+            build_witness_payload(args.workdir),
+            args.signing_key,
+            read_passphrase(args.passphrase_file),
+            signer=args.signer,
+            note=args.note,
+        )
+        write_witness(args.output, document)
+    except (EvidenceSigningError, EvidenceWitnessError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(f"wrote evidence-head witness {args.output}")
+    return 0
+
+
+def cmd_verify_evidence_head_witness(args) -> int:
+    try:
+        validate_external_witness_paths(
+            args.workdir,
+            args.witness_path,
+            args.trusted_key,
+        )
+        policy = EvidenceWitnessPolicy.from_paths(args.trusted_key)
+        profile = AuthorityProfileStore(
+            Path(args.workdir) / "authority_profile.json"
+        ).get()
+        storage = StateStorageStateStore(
+            Path(args.workdir) / "state_storage.json"
+        ).get()
+        if profile is None or storage is None:
+            raise EvidenceWitnessError(
+                "authority profile and state storage must be enrolled"
+            )
+        evidence = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
+        chain = evidence.verify()
+        if not chain.ok:
+            raise EvidenceWitnessError("cannot verify against a broken evidence chain")
+        status = assess_witness(
+            load_witness(args.witness_path),
+            policy,
+            deployment_root_hash=storage.root_hash,
+            profile=profile,
+            records=evidence.records(),
+        )
+    except EvidenceWitnessError as exc:
+        print(json.dumps({"ok": False, "detail": str(exc)}, indent=2))
+        return 1
+    print(json.dumps(status.to_dict(), indent=2, sort_keys=True))
+    return 0 if status.ok else 1
+
+
 def cmd_command(args) -> int:
     try:
         _validate_trusted_operator_paths(args)
@@ -455,11 +524,18 @@ def cmd_command(args) -> int:
             args.workdir,
             trusted_operator_keys=args.trusted_operator_key,
             workspace_root=args.workspace_root,
+            evidence_head_witness=args.evidence_head_witness,
+            trusted_evidence_witness_keys=args.trusted_evidence_key,
         ).snapshot(
             limit=args.limit,
             request_id=args.request,
         )
-    except (CommandError, OperatorIdentityError, EvidenceSigningError) as exc:
+    except (
+        CommandError,
+        OperatorIdentityError,
+        EvidenceSigningError,
+        EvidenceWitnessError,
+    ) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
     print(json.dumps(snapshot, indent=2, sort_keys=True))
@@ -473,10 +549,12 @@ def cmd_doctor(args) -> int:
             args.workdir,
             operator_trust=trust,
             workspace_root=args.workspace_root,
+            evidence_head_witness=args.evidence_head_witness,
+            trusted_evidence_witness_keys=args.trusted_evidence_key,
         ).audit()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.safe_to_execute else 1
-    except (OperatorIdentityError, EvidenceSigningError) as exc:
+    except (OperatorIdentityError, EvidenceSigningError, EvidenceWitnessError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
 
@@ -611,11 +689,14 @@ def cmd_command_center(args) -> int:
             default_limit=args.limit,
             trusted_operator_keys=args.trusted_operator_key,
             workspace_root=args.workspace_root,
+            evidence_head_witness=args.evidence_head_witness,
+            trusted_evidence_witness_keys=args.trusted_evidence_key,
         )
     except (
         CommandCenterError,
         OperatorIdentityError,
         EvidenceSigningError,
+        EvidenceWitnessError,
         OSError,
     ) as exc:
         print(f"{RED}cannot start Command Center: {exc}{RESET}", file=sys.stderr)
@@ -653,8 +734,16 @@ def cmd_mcp_proxy(args) -> int:
             sensitivity=Sensitivity(args.sensitivity),
             dry_run=args.dry_run,
             trusted_operator_keys=args.trusted_operator_key,
+            evidence_head_witness=args.evidence_head_witness,
+            trusted_evidence_witness_keys=args.trusted_evidence_key,
         )
-    except (McpConfigError, McpTransportError, OperatorIdentityError, OSError) as exc:
+    except (
+        McpConfigError,
+        McpTransportError,
+        OperatorIdentityError,
+        EvidenceWitnessError,
+        OSError,
+    ) as exc:
         print(f"MCP proxy failed: {exc}", file=sys.stderr)
         return 2
 
@@ -676,8 +765,16 @@ def cmd_mcp_http_proxy(args) -> int:
             sensitivity=Sensitivity(args.sensitivity),
             dry_run=args.dry_run,
             trusted_operator_keys=args.trusted_operator_key,
+            evidence_head_witness=args.evidence_head_witness,
+            trusted_evidence_witness_keys=args.trusted_evidence_key,
         )
-    except (McpConfigError, McpTransportError, OperatorIdentityError, OSError) as exc:
+    except (
+        McpConfigError,
+        McpTransportError,
+        OperatorIdentityError,
+        EvidenceWitnessError,
+        OSError,
+    ) as exc:
         print(f"MCP HTTP proxy failed: {exc}", file=sys.stderr)
         return 2
 
@@ -704,6 +801,8 @@ def _harness(args, *, operator_control: bool = False):
         policy_packs=policy_packs,
         workspace_root=args.workspace_root,
         trusted_operator_keys=getattr(args, "trusted_operator_key", None),
+        evidence_head_witness=args.evidence_head_witness,
+        trusted_evidence_witness_keys=args.trusted_evidence_key,
         _operator_control=operator_control,
     )
 
@@ -839,6 +938,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="only local directory read_file may access",
     )
     p.add_argument("--policy", action="append", help="extra policy pack (repeatable)")
+    p.add_argument(
+        "--evidence-head-witness",
+        help="external signed evidence-head witness required by the authority profile",
+    )
+    p.add_argument(
+        "--trusted-evidence-key",
+        action="append",
+        default=[],
+        help="trusted evidence witness public key PEM (repeatable for rotation)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     d = sub.add_parser("demo", help="run a scripted scenario")
@@ -999,6 +1108,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="trusted Ed25519 public key PEM (repeatable for rotation)",
     )
     verify_export_parser.set_defaults(fn=cmd_verify_export)
+
+    witness = sub.add_parser(
+        "witness-evidence-head",
+        help="sign the current verified evidence head for external retention",
+    )
+    witness.add_argument("--signing-key", required=True)
+    witness.add_argument("--passphrase-file", required=True)
+    witness.add_argument("--signer", required=True)
+    witness.add_argument("--note", required=True)
+    witness.add_argument("--output", required=True)
+    witness.set_defaults(fn=cmd_witness_evidence_head)
+
+    verify_witness = sub.add_parser(
+        "verify-evidence-head-witness",
+        help="verify a signed head witness against trusted keys and live evidence",
+    )
+    verify_witness.add_argument("witness_path")
+    verify_witness.add_argument(
+        "--trusted-key",
+        action="append",
+        required=True,
+        help="trusted Ed25519 witness public key PEM (repeatable for rotation)",
+    )
+    verify_witness.set_defaults(fn=cmd_verify_evidence_head_witness)
 
     doctor = sub.add_parser(
         "doctor",

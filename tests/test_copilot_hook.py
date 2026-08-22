@@ -8,7 +8,10 @@ import pytest
 from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.evidence.store import EvidenceStore
-from defiant_agent_harness.hooks.copilot import CopilotHookGate
+from defiant_agent_harness.hooks.copilot import (
+    CopilotHookGate,
+    _evidence_witness_from_env,
+)
 from defiant_agent_harness.hooks.state import HookStateError
 
 ROOT = Path(__file__).parents[1]
@@ -437,3 +440,20 @@ def test_workspace_hook_profile_uses_repository_launcher():
         r"python scripts\defiant_hook.py post"
     )
     assert (ROOT / "scripts" / "defiant_hook.py").is_file()
+
+
+def test_hook_evidence_witness_environment_is_strict(monkeypatch):
+    assert _evidence_witness_from_env() == (None, [])
+
+    monkeypatch.setenv("DAH_EVIDENCE_HEAD_WITNESS", "C:/secure/head.json")
+    with pytest.raises(ValueError, match="required together"):
+        _evidence_witness_from_env()
+
+    monkeypatch.setenv(
+        "DAH_TRUSTED_EVIDENCE_KEYS",
+        json.dumps(["C:/secure/evidence-public.pem"]),
+    )
+    assert _evidence_witness_from_env() == (
+        "C:/secure/head.json",
+        ["C:/secure/evidence-public.pem"],
+    )

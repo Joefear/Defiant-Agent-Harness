@@ -15,6 +15,7 @@ from ..approvals.store import APPROVAL_STATUSES, ApprovalError, PendingApproval
 from ..budgets.ledger import BudgetError, BudgetLedger
 from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
+from ..evidence_witness import EvidenceWitnessError
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
     JournalOperation,
@@ -33,7 +34,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.15.0"
+SNAPSHOT_VERSION = "0.16.0"
 
 
 class CommandError(RuntimeError):
@@ -48,9 +49,13 @@ class CommandCore:
         workdir: str | Path,
         trusted_operator_keys: list[str] | None = None,
         workspace_root: str | Path | None = None,
+        evidence_head_witness: str | Path | None = None,
+        trusted_evidence_witness_keys: list[str] | None = None,
     ):
         self.workdir = Path(workdir)
         self.workspace_root = workspace_root
+        self.evidence_head_witness = evidence_head_witness
+        self.trusted_evidence_witness_keys = trusted_evidence_witness_keys or []
         validate_external_trust_specs(trusted_operator_keys or [], self.workdir)
         self.operator_trust = (
             OperatorTrustPolicy.from_specs(trusted_operator_keys)
@@ -67,6 +72,8 @@ class CommandCore:
                 self.workdir,
                 operator_trust=self.operator_trust,
                 workspace_root=self.workspace_root,
+                evidence_head_witness=self.evidence_head_witness,
+                trusted_evidence_witness_keys=self.trusted_evidence_witness_keys,
             ).audit()
             audit_payload = audit.to_dict()
             journal_operation = (
@@ -112,6 +119,7 @@ class CommandCore:
                 ],
                 "workspace_integrity": audit_payload["stores"]["workspace_integrity"],
                 "evidence_head": audit_payload["stores"]["evidence_head"],
+                "evidence_witness": audit_payload["stores"]["evidence_witness"],
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
                 "operation_journal": audit_payload["stores"]["operation_journal"],
@@ -135,6 +143,7 @@ class CommandCore:
             ApprovalError,
             BudgetError,
             EvidenceError,
+            EvidenceWitnessError,
             PersistenceError,
             OSError,
             OperationJournalError,

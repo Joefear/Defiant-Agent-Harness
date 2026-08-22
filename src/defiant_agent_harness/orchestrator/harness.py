@@ -27,6 +27,15 @@ from ..evidence_head import (
     assess_evidence_head,
     evidence_head_authority,
 )
+from ..evidence_witness import (
+    EvidenceWitnessError,
+    EvidenceWitnessPolicy,
+    EvidenceWitnessPolicyStore,
+    WITNESS_MODE,
+    assess_witness,
+    load_witness,
+    validate_external_witness_paths,
+)
 from ..money import ZERO, MoneyLike, money
 from ..operation_journal import (
     ExecutionCompletionSubject,
@@ -1449,6 +1458,8 @@ def build_harness(
     runtime_artifact_assurance=None,
     launch_envelope_assurance=None,
     trusted_operator_keys: list[str] | None = None,
+    evidence_head_witness: str | Path | None = None,
+    trusted_evidence_witness_keys: list[str] | None = None,
     _operator_control: bool = False,
 ) -> Harness:
     from ..control_plane_isolation import (
@@ -1464,6 +1475,39 @@ def build_harness(
     state_storage = prepare_state_storage(workdir)
     state_root = state_storage.root
     validate_external_trust_specs(trusted_operator_keys or [], state_root)
+    witness_key_paths = trusted_evidence_witness_keys or []
+    if bool(evidence_head_witness) != bool(witness_key_paths):
+        raise EvidenceWitnessError(
+            "--evidence-head-witness and at least one trusted witness key are "
+            "required together"
+        )
+    validate_external_witness_paths(
+        state_root,
+        evidence_head_witness,
+        witness_key_paths,
+    )
+    witness_policy_store = EvidenceWitnessPolicyStore(
+        state_root / "evidence_witness_policy.json"
+    )
+    enrolled_witness_policy = witness_policy_store.get()
+    if (
+        enrolled_witness_policy is not None
+        and enrolled_witness_policy.mode == WITNESS_MODE
+        and evidence_head_witness is None
+    ):
+        raise EvidenceWitnessError(
+            "this authority profile requires an external evidence-head witness"
+        )
+    witness_policy = (
+        EvidenceWitnessPolicy.from_paths(witness_key_paths)
+        if witness_key_paths
+        else None
+    )
+    witness_document = (
+        load_witness(evidence_head_witness)
+        if evidence_head_witness is not None
+        else None
+    )
     authority_lock = AuthorityTransactionLock(state_root / "authority.lock")
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
@@ -1479,24 +1523,36 @@ def build_harness(
         state_root,
     )
     registry._protect_roots(control_plane_isolation.protected_roots)
+    authority_inputs = {
+        "tool_registry": [
+            spec.authority_dict()
+            for spec in sorted(registry.specs(), key=lambda item: item.name)
+        ],
+        "workspace_integrity": workspace_integrity.authority_dict(),
+        "evidence_head": evidence_head_authority(),
+        "dry_run": dry_run,
+        "adapter": authority_context or {},
+        "state_storage": state_storage.authority_dict(),
+        "control_plane_isolation": control_plane_isolation.authority_dict(),
+    }
+    if witness_policy is not None:
+        authority_inputs["evidence_head_witness"] = witness_policy.authority_dict()
     policy = PolicyEngine.default(
         policy_packs,
         additional_known_tools=(registry.names() if tools is not None else None),
-        authority_inputs={
-            "tool_registry": [
-                spec.authority_dict()
-                for spec in sorted(registry.specs(), key=lambda item: item.name)
-            ],
-            "workspace_integrity": workspace_integrity.authority_dict(),
-            "evidence_head": evidence_head_authority(),
-            "dry_run": dry_run,
-            "adapter": authority_context or {},
-            "state_storage": state_storage.authority_dict(),
-            "control_plane_isolation": control_plane_isolation.authority_dict(),
-        },
+        authority_inputs=authority_inputs,
     )
     with authority_lock.acquire():
         require_state_storage_unchanged(state_storage)
+        enrolled_witness_policy = witness_policy_store.get()
+        if (
+            enrolled_witness_policy is not None
+            and enrolled_witness_policy.mode == WITNESS_MODE
+            and evidence_head_witness is None
+        ):
+            raise EvidenceWitnessError(
+                "this authority profile requires an external evidence-head witness"
+            )
         trust_store = OperatorTrustStateStore(state_root / "operator_trust.json")
         operator_trust = trust_store.preview_for_authority(trusted_operator_keys or [])
         trust_resolved = False
@@ -1510,6 +1566,11 @@ def build_harness(
         profile_store = AuthorityProfileStore(state_root / "authority_profile.json")
         profile_transition_activated = False
         if _operator_control:
+            if enrolled_witness_policy is None:
+                raise EvidenceWitnessError(
+                    "evidence witness policy observation is not initialized; start "
+                    "the owning authority runtime once first"
+                )
             profile_state = profile_store.get()
             if profile_state is None:
                 raise RuntimeError(
@@ -1517,10 +1578,46 @@ def build_harness(
                     "runtime once first"
                 )
             profile_state.verify(operator_trust)
+            if enrolled_witness_policy.mode == WITNESS_MODE:
+                if witness_policy is None:
+                    raise EvidenceWitnessError(
+                        "external evidence-head witness is required for operator control"
+                    )
+                if (
+                    enrolled_witness_policy.trusted_key_ids
+                    != witness_policy.trusted_key_ids
+                ):
+                    raise EvidenceWitnessError(
+                        "operator-control witness keys do not match the enrolled policy"
+                    )
+                _preflight_evidence_witness(
+                    state_root,
+                    witness_document,
+                    witness_policy,
+                    profile_state,
+                    state_storage.root_hash,
+                )
+            elif witness_policy is not None:
+                raise EvidenceWitnessError(
+                    "external evidence witnessing is not enrolled for operator control"
+                )
             audit_profile_hash = profile_state.profile_hash
         else:
             _preflight_evidence_head(state_root)
             prior_profile = profile_store.get()
+            if witness_policy is not None:
+                if prior_profile is None:
+                    raise EvidenceWitnessError(
+                        "enroll authority first, then create a witness and stage the "
+                        "witness-required profile"
+                    )
+                _preflight_evidence_witness(
+                    state_root,
+                    witness_document,
+                    witness_policy,
+                    prior_profile,
+                    state_storage.root_hash,
+                )
             resolved_profile = profile_store.resolve_for_authority(
                 policy.ruleset_hash,
                 operator_trust,
@@ -1539,6 +1636,7 @@ def build_harness(
             WorkspaceIntegrityStateStore(
                 state_root / "workspace_integrity.json"
             ).record(policy.ruleset_hash, workspace_integrity)
+            witness_policy_store.record(policy.ruleset_hash, witness_policy)
         if runtime_artifact_assurance is not None:
             from ..runtime_artifacts import RuntimeArtifactStateStore
 
@@ -1584,6 +1682,8 @@ def build_harness(
                 operator_trust=operator_trust,
                 authority_profile_hash=audit_profile_hash,
                 workspace_root=workspace_integrity.root,
+                evidence_head_witness=evidence_head_witness,
+                trusted_evidence_witness_keys=witness_key_paths,
             ),
             operation_journal=OperationJournal(state_root / "operation_journal.json"),
             authority_lock=authority_lock,
@@ -1621,4 +1721,34 @@ def _preflight_evidence_head(state_root: Path) -> None:
         raise EvidenceError(
             "refusing authority-profile activation: evidence chain diverges from "
             "its durable checkpoint"
+        )
+
+
+def _preflight_evidence_witness(
+    state_root: Path,
+    document: dict | None,
+    policy: EvidenceWitnessPolicy,
+    profile,
+    deployment_root_hash: str,
+) -> None:
+    if document is None:
+        raise EvidenceWitnessError("external evidence-head witness is required")
+    evidence_path = state_root / "evidence.jsonl"
+    evidence = EvidenceStore(evidence_path)
+    status = evidence.verify()
+    if not status.ok:
+        raise EvidenceWitnessError(
+            "refusing authority with broken evidence chain: " + status.detail
+        )
+    assessment = assess_witness(
+        document,
+        policy,
+        deployment_root_hash=deployment_root_hash,
+        profile=profile,
+        records=evidence.records(),
+    )
+    if not assessment.ok:
+        raise EvidenceWitnessError(
+            "refusing authority with untrusted evidence-head witness: "
+            + assessment.detail
         )

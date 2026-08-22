@@ -154,6 +154,8 @@ class McpStdioProxy:
         sensitivity: Sensitivity = Sensitivity.INTERNAL,
         dry_run: bool = False,
         trusted_operator_keys: list[str] | None = None,
+        evidence_head_witness: str | Path | None = None,
+        trusted_evidence_witness_keys: list[str] | None = None,
         runtime_artifact_assurance: RuntimeArtifactAssurance | None = None,
         launch_envelope_assurance: LaunchEnvelopeAssurance | None = None,
     ):
@@ -227,6 +229,8 @@ class McpStdioProxy:
             runtime_artifact_assurance=artifact_assurance,
             launch_envelope_assurance=launch_assurance,
             trusted_operator_keys=trusted_operator_keys,
+            evidence_head_witness=evidence_head_witness,
+            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
         )
 
     def accept_line(self, line: str) -> None:
@@ -429,6 +433,8 @@ def run_stdio_proxy(
     sensitivity: Sensitivity = Sensitivity.INTERNAL,
     dry_run: bool = False,
     trusted_operator_keys: list[str] | None = None,
+    evidence_head_witness: str | Path | None = None,
+    trusted_evidence_witness_keys: list[str] | None = None,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -470,6 +476,8 @@ def run_stdio_proxy(
             sensitivity=sensitivity,
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
+            evidence_head_witness=evidence_head_witness,
+            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
             runtime_artifact_assurance=assurance,
             launch_envelope_assurance=launch_assurance,
         )
@@ -501,6 +509,8 @@ def run_http_upstream_proxy(
     sensitivity: Sensitivity = Sensitivity.INTERNAL,
     dry_run: bool = False,
     trusted_operator_keys: list[str] | None = None,
+    evidence_head_witness: str | Path | None = None,
+    trusted_evidence_witness_keys: list[str] | None = None,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -528,6 +538,8 @@ def run_http_upstream_proxy(
             sensitivity=sensitivity,
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
+            evidence_head_witness=evidence_head_witness,
+            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
             runtime_artifact_assurance=remote_artifacts(),
             launch_envelope_assurance=remote_launch_envelope(),
         )

@@ -92,6 +92,15 @@ The first trusted hook startup durably enrolls that mapping. Later hook startup
 with the variable missing or changed fails closed before processing an event;
 planned changes use the operator trust rotation CLI.
 
+When signed external evidence-head witnessing is enrolled, set
+`DAH_EVIDENCE_HEAD_WITNESS` to the newest retained witness path and
+`DAH_TRUSTED_EVIDENCE_KEYS` to a JSON array of public-key paths before starting
+Copilot or Codex. Both variables are required together. The hook passes them to
+the same authority preflight used by MCP proxies and fails closed on omission,
+malformed JSON, trust mismatch, signature failure, rollback, or divergence.
+Private keys and passphrases never enter the hook environment. See
+`evidence_head_witness.md`.
+
 Current Copilot CLI camel-case payloads do not include a tool invocation ID.
 Defiant therefore derives a stable correlation key from the session, working
 directory, tool name, and complete normalized arguments. Sequential identical

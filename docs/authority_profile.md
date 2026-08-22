@@ -98,6 +98,14 @@ internally valid generation. Use access controls, immutable deployment inputs,
 and off-box generation/hash observations when host-level rollback detection is
 required.
 
+v0.22 optionally adds signed evidence-head witness mode and the sorted trusted
+Ed25519 key identifiers to the complete runtime profile. Enabling or rotating
+that trust set therefore requires the normal explicit staged profile rotation.
+The witness used during activation may bind the prior generation because that
+generation remains in the verified transition history. The external witness
+and key files are never persisted in the profile or harness state; only a
+sanitized profile-bound policy observation is recorded locally.
+
 v0.18 additionally binds the canonical state-root device/file identity and
 security posture into the profile. A copied, relocated, or replaced root needs
 an explicit profile transition. See `state_storage_integrity.md` for the
