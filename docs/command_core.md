@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.8.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.9.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -21,6 +21,9 @@ contains:
   currently actionable items;
 - durable operator-trust generation, mapping hash, operator/key counts, and
   verification status;
+- durable authority-profile generation, active and pending hashes,
+  verified/mismatched/rotation-required state, and sanitized transition
+  assurance without operator names, notes, or signatures;
 - local-operation recovery state with only operation id, kind, and preparation
   time when a valid journal is active;
 - approval-free authorization recovery counts and bounded items containing only

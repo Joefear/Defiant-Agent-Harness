@@ -27,6 +27,11 @@ from .contracts import (
     SideEffect,
     Trust,
 )
+from .authority_profile import (
+    AuthorityProfileError,
+    AuthorityProfileState,
+    AuthorityProfileStore,
+)
 from .orchestrator.harness import (
     AuthorizationReconciliationOutcome,
     Harness,
@@ -35,6 +40,7 @@ from .orchestrator.harness import (
 from .operator_identity import (
     AuthorizationReconciliationSubject,
     sign_authorization_reconciliation,
+    sign_authority_profile_transition,
 )
 from .operator_trust_state import (
     OperatorTrustState,
@@ -55,13 +61,16 @@ from .state_integrity import (
     StateIntegrityReport,
 )
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 __all__ = [
     "CapabilityGrant",
     "AuthorizationReconciliationOutcome",
     "AuthorizationReconciliationSubject",
     "AuthorityLockError",
+    "AuthorityProfileError",
+    "AuthorityProfileState",
+    "AuthorityProfileStore",
     "AuthorityTransactionLock",
     "ContentRef",
     "Decision",
@@ -88,4 +97,5 @@ __all__ = [
     "Trust",
     "build_harness",
     "sign_authorization_reconciliation",
+    "sign_authority_profile_transition",
 ]

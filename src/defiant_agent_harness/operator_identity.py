@@ -39,6 +39,12 @@ TRUST_TRANSITION_SCHEMA = "defiant.operator.trust_transition"
 TRUST_TRANSITION_VERSION = "0.1.0"
 TRUST_TRANSITION_PURPOSE = "operator_trust_rotation"
 _TRUST_DOMAIN = b"Defiant Agent Harness operator trust transition v0.1.0\x00"
+AUTHORITY_PROFILE_TRANSITION_SCHEMA = "defiant.operator.authority_profile_transition"
+AUTHORITY_PROFILE_TRANSITION_VERSION = "0.1.0"
+AUTHORITY_PROFILE_TRANSITION_PURPOSE = "authority_profile_rotation"
+_AUTHORITY_PROFILE_DOMAIN = (
+    b"Defiant Agent Harness authority profile transition v0.1.0\x00"
+)
 _MAX_KEY_BYTES = 64 * 1024
 _MAX_OPERATOR_CHARS = 256
 _MAX_NOTE_CHARS = 4096
@@ -71,6 +77,21 @@ _TRUST_TRANSITION_FIELDS = {
     "to_generation",
     "from_bindings_hash",
     "to_bindings_hash",
+    "signature",
+}
+_AUTHORITY_PROFILE_TRANSITION_FIELDS = {
+    "schema_name",
+    "schema_version",
+    "algorithm",
+    "purpose",
+    "key_id",
+    "signed_at",
+    "operator",
+    "note",
+    "from_generation",
+    "to_generation",
+    "from_profile_hash",
+    "to_profile_hash",
     "signature",
 }
 _AUTHORIZATION_RECONCILIATION_FIELDS = {
@@ -469,6 +490,66 @@ class OperatorTrustPolicy:
             signed_at=attestation["signed_at"],
         )
 
+    def require_authority_profile_transition(
+        self,
+        attestation: dict[str, Any] | None,
+        *,
+        from_generation: int,
+        from_profile_hash: str,
+        to_profile_hash: str,
+        operator: str,
+        note: str,
+    ) -> OperatorIdentityStatus:
+        """Verify a rotation statement against the currently trusted operator."""
+        if not isinstance(attestation, dict):
+            raise OperatorIdentityError(
+                "a signed authority profile transition is required"
+            )
+        _validate_authority_profile_transition(attestation)
+        expected = {
+            "from_generation": from_generation,
+            "to_generation": from_generation + 1,
+            "from_profile_hash": from_profile_hash,
+            "to_profile_hash": to_profile_hash,
+            "operator": operator.strip(),
+            "note": note.strip(),
+        }
+        for field, value in expected.items():
+            supplied = attestation[field]
+            matches = (
+                hmac.compare_digest(supplied, value)
+                if isinstance(value, str)
+                else supplied == value
+            )
+            if not matches:
+                raise OperatorIdentityError(
+                    f"authority profile transition {field} does not match"
+                )
+        key_id = attestation["key_id"]
+        key = self._keys.get(operator.strip(), {}).get(key_id)
+        if key is None:
+            raise OperatorIdentityError(
+                f"key {key_id} is not trusted for operator {operator.strip()!r}"
+            )
+        signature = _decode_signature(attestation["signature"])
+        statement = {
+            name: value for name, value in attestation.items() if name != "signature"
+        }
+        try:
+            key.verify(signature, _authority_profile_statement_bytes(statement))
+        except InvalidSignature as exc:
+            raise OperatorIdentityError(
+                "authority profile transition signature is invalid"
+            ) from exc
+        return OperatorIdentityStatus(
+            True,
+            "signed_trusted",
+            "authority profile transition signature valid and operator key trusted",
+            operator=operator.strip(),
+            key_id=key_id,
+            signed_at=attestation["signed_at"],
+        )
+
 
 def sign_operator_action(
     approval: "PendingApproval",
@@ -588,6 +669,48 @@ def sign_trust_transition(
         "to_bindings_hash": to_bindings_hash,
     }
     signature = key.sign(_trust_statement_bytes(statement))
+    return {
+        **statement,
+        "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
+    }
+
+
+def sign_authority_profile_transition(
+    private_key_path: str | Path,
+    passphrase: bytes,
+    *,
+    from_generation: int,
+    from_profile_hash: str,
+    to_profile_hash: str,
+    operator: str,
+    note: str,
+    signed_at: str | None = None,
+) -> dict[str, Any]:
+    """Sign one exact durable authority-profile generation transition."""
+    if type(from_generation) is not int or from_generation < 1:
+        raise OperatorIdentityError("from_generation must be a positive integer")
+    if not _is_sha256(from_profile_hash) or not _is_sha256(to_profile_hash):
+        raise OperatorIdentityError("authority profile hashes are invalid")
+    if hmac.compare_digest(from_profile_hash, to_profile_hash):
+        raise OperatorIdentityError("authority profile rotation must change the hash")
+    operator = _bounded_text(operator.strip(), "operator", _MAX_OPERATOR_CHARS)
+    note = _bounded_text(note.strip(), "note", _MAX_NOTE_CHARS)
+    key = _load_private_key(private_key_path, passphrase)
+    statement = {
+        "schema_name": AUTHORITY_PROFILE_TRANSITION_SCHEMA,
+        "schema_version": AUTHORITY_PROFILE_TRANSITION_VERSION,
+        "algorithm": ALGORITHM,
+        "purpose": AUTHORITY_PROFILE_TRANSITION_PURPOSE,
+        "key_id": public_key_id(key.public_key()),
+        "signed_at": _timestamp(signed_at or utc_now(), "signed_at"),
+        "operator": operator,
+        "note": note,
+        "from_generation": from_generation,
+        "to_generation": from_generation + 1,
+        "from_profile_hash": from_profile_hash,
+        "to_profile_hash": to_profile_hash,
+    }
+    signature = key.sign(_authority_profile_statement_bytes(statement))
     return {
         **statement,
         "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
@@ -770,6 +893,55 @@ def _validate_trust_transition(attestation: dict[str, Any]) -> None:
     _decode_signature(attestation["signature"])
 
 
+def _validate_authority_profile_transition(attestation: dict[str, Any]) -> None:
+    if set(attestation) != _AUTHORITY_PROFILE_TRANSITION_FIELDS:
+        raise OperatorIdentityError(
+            "authority profile transition fields do not match the schema"
+        )
+    if attestation.get("schema_name") != AUTHORITY_PROFILE_TRANSITION_SCHEMA:
+        raise OperatorIdentityError("unsupported authority profile transition schema")
+    if attestation.get("schema_version") != AUTHORITY_PROFILE_TRANSITION_VERSION:
+        raise OperatorIdentityError("unsupported authority profile transition version")
+    if attestation.get("algorithm") != ALGORITHM:
+        raise OperatorIdentityError("unsupported authority profile transition algorithm")
+    if attestation.get("purpose") != AUTHORITY_PROFILE_TRANSITION_PURPOSE:
+        raise OperatorIdentityError("unsupported authority profile transition purpose")
+    for field in (
+        "key_id",
+        "operator",
+        "note",
+        "from_profile_hash",
+        "to_profile_hash",
+        "signature",
+    ):
+        _bounded_text(attestation.get(field), field, _MAX_NOTE_CHARS)
+    for field in ("from_generation", "to_generation"):
+        value = attestation.get(field)
+        if type(value) is not int or value < 1:
+            raise OperatorIdentityError(f"{field} must be a positive integer")
+    if attestation["to_generation"] != attestation["from_generation"] + 1:
+        raise OperatorIdentityError(
+            "authority profile transition generation is not contiguous"
+        )
+    for field in ("key_id", "from_profile_hash", "to_profile_hash"):
+        if not _is_sha256(attestation[field]):
+            raise OperatorIdentityError(
+                f"authority profile transition {field} is invalid"
+            )
+    if hmac.compare_digest(
+        attestation["from_profile_hash"], attestation["to_profile_hash"]
+    ):
+        raise OperatorIdentityError("authority profile transition must change the hash")
+    signed_at = _parsed_timestamp(
+        _timestamp(attestation.get("signed_at"), "signed_at"), "signed_at"
+    )
+    if signed_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise OperatorIdentityError(
+            "authority profile transition time is too far in the future"
+        )
+    _decode_signature(attestation["signature"])
+
+
 def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     if not passphrase:
         raise OperatorIdentityError("private-key passphrase must be non-empty")
@@ -825,6 +997,10 @@ def _authorization_reconciliation_statement_bytes(
 
 def _trust_statement_bytes(statement: dict[str, Any]) -> bytes:
     return _TRUST_DOMAIN + canonical_json(statement).encode("utf-8")
+
+
+def _authority_profile_statement_bytes(statement: dict[str, Any]) -> bytes:
+    return _AUTHORITY_PROFILE_DOMAIN + canonical_json(statement).encode("utf-8")
 
 
 def _decode_signature(value: str) -> bytes:

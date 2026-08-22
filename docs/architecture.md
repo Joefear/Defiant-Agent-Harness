@@ -332,7 +332,29 @@ conservative atomic-write sentinels and retain their existing stale-lock rule.
 Read-only doctor, Command Core, and Command Center paths never acquire or mutate
 the authority lock.
 
-## What is deliberately absent from v0.14
+## Authority-profile continuity in v0.15
+
+The policy ruleset hash is also the complete runtime authority-profile hash. It
+commits to normalized rules and known tools plus the authoritative tool
+contracts, workspace-root hash, dry-run posture, and adapter/upstream authority
+inputs. `build_harness` resolves this hash under `authority.lock` before
+operational-store construction or recovery.
+
+First startup enrolls generation 1. Exact restarts proceed. Configuration drift
+fails closed unless an operator has staged the exact next hash with identity and
+a non-empty note; signed operator mode additionally requires a signature from a
+currently trusted key. The old generation remains active until the exact
+candidate starts, at which point one atomic profile write activates the next
+generation. A different candidate cannot consume that authorization.
+
+Operator rejection and uncertain-outcome reconciliation sometimes belong to an
+MCP or hook runtime whose full authority inputs cannot be reconstructed by the
+CLI. Those terminal-only commands use an execution-disabled harness that
+verifies the enrolled profile and cross-store state but cannot run, preflight,
+resume, or complete a tool action. Command Center remains a separate read-only
+projection and never acquires the authority lock.
+
+## What is deliberately absent from v0.15
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -395,6 +417,11 @@ the authority lock.
   across a state directory, while conservative per-file locks still guard each
   atomic write. Read-only diagnostics may observe a transient in-progress
   state and should refresh after the writer finishes.
+- **Authority-profile continuity is not artifact attestation.** The profile
+  binds reviewed configuration and tool contracts, not executable bytes or the
+  host. A privileged attacker can replace code and state or restore an older
+  internally valid generation unless an external witness retains the observed
+  generation and hash.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

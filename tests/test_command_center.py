@@ -98,6 +98,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"Operator queue" in body
     assert b"Operator reconciliation required" in body
     assert b"State integrity alert" in body
+    assert b"Authority profile" in body
     assert int(head_headers["Content-Length"]) == len(body)
     assert head_body == b""
     assert b".dashboard-grid" in css
@@ -107,6 +108,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"state_integrity" in javascript
     assert b"known_result_recovery" in javascript
     assert b"Automatic recovery" in javascript
+    assert b"renderAuthorityProfile" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ..adapters.base import AgentAdapter, ToolCall, ToolCallOutcome
 from ..approvals.store import ApprovalError, ApprovalStore, PendingApproval
+from ..authority_profile import AuthorityProfileStore
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
     Decision,
@@ -108,6 +109,7 @@ class Harness:
         operation_journal: OperationJournal,
         dry_run: bool = False,
         authority_lock: AuthorityTransactionLock | None = None,
+        execution_disabled: bool = False,
     ):
         self.policy = policy
         self.tools = tools
@@ -121,11 +123,13 @@ class Harness:
             operation_journal.path.parent / "authority.lock"
         )
         self.dry_run = dry_run
+        self.execution_disabled = execution_disabled
 
     # -- entry points -------------------------------------------------
 
     @_authority_entrypoint
     def run(self, request: HarnessRequest) -> list[ActionOutcome]:
+        self._require_execution_enabled()
         return [
             self.handle_call(call, request)
             for call in self.adapter.propose(request.task)
@@ -140,6 +144,7 @@ class Harness:
         execution_owner: str = "",
         execution_key: str = "",
     ) -> ActionOutcome:
+        self._require_execution_enabled()
         action = self.adapter.to_action(call, request.request_id)
         return self._handle(
             action,
@@ -166,6 +171,7 @@ class Harness:
         matching post-tool hook calls :meth:`complete_external_call` after the
         external runtime reports success.
         """
+        self._require_execution_enabled()
         action = self.adapter.to_action(call, request.request_id)
         return self._handle(
             action,
@@ -293,6 +299,7 @@ class Harness:
     @_authority_entrypoint
     def resume_external(self, approval_id: str) -> ActionOutcome:
         """Authorize an approved exact retry for execution by another runtime."""
+        self._require_execution_enabled()
         self.recover_operation()
         self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
@@ -369,6 +376,7 @@ class Harness:
         approval_id: str = "",
     ) -> ActionOutcome:
         """Seal a successful result reported by a matching post-tool hook."""
+        self._require_execution_enabled()
         self.recover_operation()
         self.state_integrity.require_safe()
         records = self.evidence.by_action(action.action_id)
@@ -455,6 +463,8 @@ class Harness:
         *,
         attestation: dict | None = None,
     ) -> ActionOutcome:
+        if approved:
+            self._require_execution_enabled()
         self.recover_operation()
         self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
@@ -1402,6 +1412,12 @@ class Harness:
             "workspace_id": request.workspace_id,
         }
 
+    def _require_execution_enabled(self) -> None:
+        if self.execution_disabled:
+            raise RuntimeError(
+                "operator-control harness cannot execute or authorize tool actions"
+            )
+
     def _spec_cost(self, action: ProposedAction) -> Decimal:
         spec = self.tools.spec(action.tool_name)
         return spec.cost_estimate_usd if spec else ZERO
@@ -1421,6 +1437,7 @@ def build_harness(
     workspace_root: str | Path | None = None,
     authority_context: dict | None = None,
     trusted_operator_keys: list[str] | None = None,
+    _operator_control: bool = False,
 ) -> Harness:
     from ..tools.builtin import default_registry
 
@@ -1435,26 +1452,51 @@ def build_harness(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
     )
+    policy = PolicyEngine.default(
+        policy_packs,
+        additional_known_tools=(registry.names() if tools is not None else None),
+        authority_inputs={
+            "tool_registry": [
+                spec.authority_dict()
+                for spec in sorted(registry.specs(), key=lambda item: item.name)
+            ],
+            "workspace_root_hash": sha256_of(str(registry.workspace_root)),
+            "dry_run": dry_run,
+            "adapter": authority_context or {},
+        },
+    )
     with authority_lock.acquire():
-        operator_trust = OperatorTrustStateStore(
-            state_root / "operator_trust.json"
-        ).resolve_for_authority(trusted_operator_keys or [])
+        trust_store = OperatorTrustStateStore(state_root / "operator_trust.json")
+        operator_trust = trust_store.preview_for_authority(
+            trusted_operator_keys or []
+        )
+        trust_resolved = False
+        if trust_store.get() is None and operator_trust is not None:
+            # Enroll signed-required mode before the first profile write. A crash
+            # between the two files must never permit an unsigned restart.
+            operator_trust = trust_store.resolve_for_authority(
+                trusted_operator_keys or []
+            )
+            trust_resolved = True
+        profile_store = AuthorityProfileStore(state_root / "authority_profile.json")
+        if _operator_control:
+            profile_state = profile_store.get()
+            if profile_state is None:
+                raise RuntimeError(
+                    "authority profile is not enrolled; start the owning authority "
+                    "runtime once first"
+                )
+            profile_state.verify(operator_trust)
+            audit_profile_hash = profile_state.profile_hash
+        else:
+            profile_store.resolve_for_authority(policy.ruleset_hash, operator_trust)
+            audit_profile_hash = policy.ruleset_hash
+        if not trust_resolved:
+            operator_trust = trust_store.resolve_for_authority(
+                trusted_operator_keys or []
+            )
         harness = Harness(
-            policy=PolicyEngine.default(
-                policy_packs,
-                additional_known_tools=(
-                    registry.names() if tools is not None else None
-                ),
-                authority_inputs={
-                    "tool_registry": [
-                        spec.authority_dict()
-                        for spec in sorted(registry.specs(), key=lambda item: item.name)
-                    ],
-                    "workspace_root_hash": sha256_of(str(registry.workspace_root)),
-                    "dry_run": dry_run,
-                    "adapter": authority_context or {},
-                },
-            ),
+            policy=policy,
             tools=registry,
             evidence=EvidenceStore(state_root / "evidence.jsonl"),
             approvals=ApprovalStore(
@@ -1466,11 +1508,14 @@ def build_harness(
             ),
             adapter=adapter,
             state_integrity=StateIntegrityAuditor(
-                state_root, operator_trust=operator_trust
+                state_root,
+                operator_trust=operator_trust,
+                authority_profile_hash=audit_profile_hash,
             ),
             operation_journal=OperationJournal(state_root / "operation_journal.json"),
             authority_lock=authority_lock,
             dry_run=dry_run,
+            execution_disabled=_operator_control,
         )
         harness.recover_operation()
         harness.reconcile_expired_approvals()

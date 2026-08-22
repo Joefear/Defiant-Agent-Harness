@@ -123,6 +123,22 @@ cannot authorize itself; removal and reassignment have no online command.
 Read-only diagnostics expose unverified, mismatched, malformed, and locked
 trust state without changing it.
 
+### 10. Unapproved authority-configuration drift
+
+A restarted process changes policy, a tool classification, workspace root,
+dry-run posture, or adapter/upstream identity while reusing an established
+state directory.
+
+v0.15 durably enrolls the canonical complete authority-profile hash before
+operational state recovery. Exact restarts proceed; every other candidate fails
+before approval, budget, evidence, journal, or tool mutation unless an operator
+staged that exact next hash with identity and a non-empty note. Signed mode
+binds the old and new generations and hashes to a currently trusted Ed25519
+key. The staged record remains visible through read-only diagnostics, and only
+the exact candidate can activate it atomically. This prevents configuration
+drift and third-profile substitution, but it does not attest executable bytes
+or defeat a privileged host attacker who can replace code and state.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

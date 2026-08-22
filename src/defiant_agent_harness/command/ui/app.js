@@ -23,6 +23,8 @@ const elements = {
   approvalDetail: document.querySelector("#approval-detail"),
   availableBudget: document.querySelector("#available-budget"),
   budgetDetail: document.querySelector("#budget-detail"),
+  profileGeneration: document.querySelector("#profile-generation"),
+  profileDetail: document.querySelector("#profile-detail"),
   evidenceFilterBadge: document.querySelector("#evidence-filter-badge"),
   decisionBars: document.querySelector("#decision-bars"),
   withheldState: document.querySelector("#withheld-state"),
@@ -326,6 +328,19 @@ function renderBudget(budget) {
   elements.budgetDrift.textContent = `${money(drift.drift_usd)} · ${drift.drift_pct}%`;
 }
 
+function renderAuthorityProfile(profile) {
+  if (!profile || profile.state === "not_enrolled") {
+    elements.profileGeneration.textContent = "—";
+    elements.profileDetail.textContent = "Not enrolled";
+    return;
+  }
+  elements.profileGeneration.textContent = `g${profile.generation}`;
+  const hash = shortId(profile.profile_hash);
+  elements.profileDetail.textContent = profile.rotation_required
+    ? `Rotation required · ${label(profile.pending_assurance)} · ${shortId(profile.pending_profile_hash)}`
+    : `${label(profile.verification)} · ${hash}`;
+}
+
 function renderActivity(activity) {
   elements.activityBody.replaceChildren();
   elements.activityCount.textContent = `${integer.format(activity.length)} records`;
@@ -364,6 +379,7 @@ function renderSnapshot(snapshot) {
     snapshot.authorization_reconciliation,
   );
   renderBudget(snapshot.budget);
+  renderAuthorityProfile(snapshot.authority_profile);
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;
 }
