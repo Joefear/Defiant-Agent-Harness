@@ -169,9 +169,19 @@ def default_registry(
     dry_run: bool = False,
     workspace_root: str | Path = "workspace",
 ) -> ToolRegistry:
-    root = Path(workspace_root).resolve(strict=False)
+    root = Path(workspace_root).absolute()
     registry = ToolRegistry(dry_run=dry_run, workspace_root=root)
     for spec, handler in BUILTIN_SPECS:
-        fn = partial(_read_file, root) if handler == "read" else handler
+        fn = (
+            partial(_read_file_for_registry, registry) if handler == "read" else handler
+        )
         registry.register(spec, fn)  # type: ignore[arg-type]
     return registry
+
+
+def _read_file_for_registry(
+    registry: ToolRegistry,
+    action: ProposedAction,
+) -> ToolResult:
+    """Read from the canonical root installed after workspace assurance."""
+    return _read_file(registry.workspace_root, action)
