@@ -17,6 +17,11 @@ from .control_plane_isolation import (
     ControlPlaneIsolationStateStore,
 )
 from .evidence.store import GENESIS
+from .evidence_head import (
+    EvidenceHeadError,
+    EvidenceHeadStateStore,
+    assess_evidence_head,
+)
 from .money import ZERO, money, money_text
 from .operator_identity import (
     AuthorizationReconciliationSubject,
@@ -42,7 +47,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.11.0"
+AUDIT_VERSION = "0.12.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
@@ -51,6 +56,7 @@ _STATE_FILENAMES = (
     "budget.json",
     "control_plane_isolation.json",
     "evidence.jsonl",
+    "evidence_head.json",
     "hook_executions.json",
     "launch_envelope.json",
     "operation_journal.json",
@@ -190,12 +196,18 @@ class StateIntegrityAuditor:
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
+        checkpointed_evidence_count = self._audit_evidence_head(
+            report,
+            evidence,
+            evidence_trusted=evidence_trusted,
+        )
         approvals = self._load_approvals(report, journal_operation)
         self._audit_legacy_signed_migration(report, approvals)
         budget = self._load_budget(report)
 
         report.counts = {
             "evidence_records": len(evidence),
+            "checkpointed_evidence_records": checkpointed_evidence_count,
             "approvals": len(approvals),
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
@@ -335,6 +347,7 @@ class StateIntegrityAuditor:
     def _audit_locks(self, report: StateIntegrityReport) -> None:
         for filename in (
             "evidence.jsonl",
+            "evidence_head.json",
             "approvals.json",
             "budget.json",
             "control_plane_isolation.json",
@@ -1018,6 +1031,105 @@ class StateIntegrityAuditor:
             ),
         }
         return approvals
+
+    def _audit_evidence_head(
+        self,
+        report: StateIntegrityReport,
+        evidence: list[dict[str, Any]],
+        *,
+        evidence_trusted: bool,
+    ) -> int:
+        store = EvidenceHeadStateStore(self.workdir / "evidence_head.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["evidence_head"] = {
+                    "state": "not_recorded",
+                    "verification": "migration_required",
+                    "profile_hash": None,
+                    "record_count": 0,
+                    "head_hash": None,
+                    "last_checkpointed_at": None,
+                }
+                try:
+                    profile = AuthorityProfileStore(
+                        self.workdir / "authority_profile.json"
+                    ).get()
+                except RuntimeError:
+                    profile = None
+                if profile is not None:
+                    self._issue(
+                        report,
+                        "evidence_head_observation_missing",
+                        "warning",
+                        "evidence_head.json",
+                        "evidence head has not been checkpointed for the active "
+                        "authority profile",
+                    )
+                return 0
+
+            verification = "not_evaluated"
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is not None and profile.profile_hash != state.profile_hash:
+                verification = "profile_mismatch"
+                self._issue(
+                    report,
+                    "evidence_head_profile_mismatch",
+                    "critical",
+                    "evidence_head.json",
+                    "evidence head is not bound to the active authority profile",
+                )
+            elif evidence_trusted:
+                verification = assess_evidence_head(state, evidence)
+                if verification == "forward_recovery":
+                    self._issue(
+                        report,
+                        "evidence_head_checkpoint_behind",
+                        "warning",
+                        "evidence_head.json",
+                        "the valid evidence chain extends its durable checkpoint",
+                    )
+                elif verification == "rollback":
+                    self._issue(
+                        report,
+                        "evidence_tail_rollback",
+                        "critical",
+                        "evidence_head.json",
+                        "the evidence chain is behind its durable checkpoint",
+                    )
+                elif verification == "diverged":
+                    self._issue(
+                        report,
+                        "evidence_head_divergence",
+                        "critical",
+                        "evidence_head.json",
+                        "the evidence chain diverges from its durable checkpoint",
+                    )
+            report.stores["evidence_head"] = state.projection(verification=verification)
+            return state.record_count
+        except EvidenceHeadError as exc:
+            report.stores["evidence_head"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "record_count": 0,
+                "head_hash": None,
+                "last_checkpointed_at": None,
+            }
+            self._issue(
+                report,
+                "evidence_head_invalid",
+                "critical",
+                "evidence_head.json",
+                str(exc),
+            )
+            return 0
 
     def _audit_approval_shape(
         self,

@@ -236,13 +236,35 @@ and state together, manipulating storage after the final check, or giving an
 upstream a broader mount. OS containment and off-box witnessing remain separate
 deployment controls.
 
+### 16. Valid evidence-tail truncation or partial restore
+
+Removing the final records from a hash chain leaves the retained prefix
+internally valid. Likewise, restoring `evidence.jsonl` without its matching
+newer state can erase terminal findings without creating an in-chain hash
+failure.
+
+v0.21 checkpoints the fsynced evidence count and head hash in a separate,
+profile-bound durable state file. A valid extension beyond an older checkpoint
+is recognized as an append crash only when the checkpoint hash is the exact
+retained prefix. A shorter chain or any divergent prefix is critical and blocks
+authority without automatic repair. Operator-only auxiliary paths cannot
+downgrade to uncheckpointed evidence.
+
+This is not an external witness. An attacker able to replace both files with an
+older matched pair, or a privileged host able to replace code and complete
+state, can evade the local comparison. Off-box signed exports or head
+observations remain required for that threat.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
 
 **A compromised host.** Anyone with root on the machine can edit the evidence file, replace the policy pack, or patch the registry. The chain makes tampering detectable to someone who has an off-box copy of a later hash; it does not make it impossible. Off-box replication belongs to Command.
 
-**Truncation of the tail.** Deleting the last N records leaves a valid chain. Only an external witness — a periodic hash pushed off-box — detects it.
+**Matched evidence/checkpoint rollback.** v0.21 detects truncating evidence
+alone, but restoring both the chain and its local checkpoint to an older
+internally matched pair requires an external witness—a periodic signed head or
+export retained off-box.
 
 **Paraphrase around deterministic phrase rules.** `merchant_services.yaml` catches the listed phrasings and nothing else. This is a floor, deliberately auditable, not a claim of completeness. A model-based reviewer layered above it is future work; it must never replace the floor.
 

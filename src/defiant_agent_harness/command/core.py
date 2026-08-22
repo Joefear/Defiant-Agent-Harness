@@ -33,7 +33,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.14.0"
+SNAPSHOT_VERSION = "0.15.0"
 
 
 class CommandError(RuntimeError):
@@ -111,6 +111,7 @@ class CommandCore:
                     "control_plane_isolation"
                 ],
                 "workspace_integrity": audit_payload["stores"]["workspace_integrity"],
+                "evidence_head": audit_payload["stores"]["evidence_head"],
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
                 "operation_journal": audit_payload["stores"]["operation_journal"],

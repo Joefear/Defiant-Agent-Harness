@@ -20,6 +20,8 @@ v0.19 validates `control_plane_isolation.json`, its strict sanitized contract,
 and its binding to the active authority profile.
 v0.20 validates `workspace_integrity.json`, its profile binding, and, when the
 caller supplies the configured workspace root, its current filesystem identity.
+v0.21 validates `evidence_head.json`, its active-profile binding, and the exact
+retained evidence prefix represented by its record count and head hash.
 
 Run it without initializing or modifying the state directory:
 
@@ -34,7 +36,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.11.0` and exits
+The command emits schema `defiant.state_integrity` version `0.12.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -61,6 +63,8 @@ evidence exists.
 The auditor verifies:
 
 - the complete evidence hash chain, record schema, and record-id uniqueness;
+- the profile-bound evidence checkpoint, distinguishing a provable forward
+  append crash from critical tail rollback or chain divergence;
 - approval structure, ids, active-action uniqueness, operator identity for
   approved states, and durable action/request bindings;
 - when trust pins are configured, signed operator purpose, outcome, identity,
@@ -119,6 +123,11 @@ A missing or replaced configured workspace root is critical. Read-only callers
 without a workspace argument report the durable observation as `profile_bound`;
 they do not create a directory or claim a live check. Use `--workspace-root`
 with Doctor and Command surfaces when live verification is required.
+
+A valid chain extending its checkpoint is `recovery_required`; the next owning
+authority startup advances the checkpoint without replaying a tool. A chain
+behind or divergent from the checkpoint is `unsafe` and is never repaired.
+Read-only diagnostics do not create, advance, or rebind the checkpoint.
 
 The audit is a local point-in-time consistency check, not a database
 transaction, repair engine, or OS sandbox. A durable trust chain without

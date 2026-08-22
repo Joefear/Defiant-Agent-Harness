@@ -439,7 +439,21 @@ subdirectories remain editable. Doctor and the Command surfaces can live-check
 a supplied root without creating or repairing it and expose no paths or raw
 identity. See `workspace_root_integrity.md`.
 
-## What is deliberately absent from v0.20
+## Evidence-head integrity in v0.21
+
+Every authority-bound evidence append fsyncs the JSONL record before atomically
+advancing a profile-bound count and head hash in `evidence_head.json`. Startup
+and the read-only state auditor require the current valid chain to equal or
+provably extend that checkpoint. A forward extension is a recoverable append
+crash; a shorter or divergent chain is rollback evidence and blocks authority.
+
+Only activation of an explicitly authorized authority-profile transition may
+rebind a matching checkpoint to a new profile. Operator-only auxiliary paths
+cannot initialize a missing checkpoint. Command surfaces expose sanitized
+posture and never advance, accept, or repair it. See
+`evidence_head_integrity.md`.
+
+## What is deliberately absent from v0.21
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity

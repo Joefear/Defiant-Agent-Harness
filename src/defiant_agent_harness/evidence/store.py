@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..contracts import EvidenceRecord, sha256_of, utc_now
+from ..evidence_head import EvidenceHeadError, EvidenceHeadStateStore
 from ..persistence import (
     PersistenceError,
     exclusive_file_lock,
@@ -43,8 +44,22 @@ class ChainStatus:
 
 
 class EvidenceStore:
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        head_store: EvidenceHeadStateStore | None = None,
+        profile_hash: str | None = None,
+        allow_head_profile_rebind: bool = False,
+    ):
         self.path = Path(path)
+        if (head_store is None) != (profile_hash is None):
+            raise EvidenceError(
+                "evidence head store and authority profile must be configured together"
+            )
+        self.head_store = head_store
+        self.profile_hash = profile_hash
+        self.allow_head_profile_rebind = allow_head_profile_rebind
         try:
             root = prepare_storage_root(self.path.parent)
             if inspect_state_file(self.path) is None:
@@ -58,6 +73,8 @@ class EvidenceStore:
             raise EvidenceError(
                 f"cannot initialize evidence store {self.path}: {exc}"
             ) from exc
+        if self.head_store is not None:
+            self._reconcile_head()
 
     # -- write -------------------------------------------------------
 
@@ -83,7 +100,9 @@ class EvidenceStore:
                     raise EvidenceError(
                         "refusing to append to broken evidence chain: " + status.detail
                     )
-                record.seal(self._head_hash_unchecked())
+                self._reconcile_head_unlocked()
+                previous_head = self._head_hash_unchecked()
+                record.seal(previous_head)
                 line = (
                     json.dumps(
                         record.to_dict(),
@@ -97,6 +116,9 @@ class EvidenceStore:
                     fh.write(line)
                     fh.flush()
                     os.fsync(fh.fileno())
+                self._advance_head(status.count, previous_head, record.record_hash)
+        except EvidenceHeadError as exc:
+            raise EvidenceError(str(exc)) from exc
         except PersistenceError as exc:
             raise EvidenceError(str(exc)) from exc
         except (OSError, TypeError, ValueError) as exc:
@@ -115,6 +137,7 @@ class EvidenceStore:
                     raise EvidenceError(
                         "refusing to append to broken evidence chain: " + status.detail
                     )
+                self._reconcile_head_unlocked()
                 for raw in self._raw():
                     if raw.get("record_id") != record.record_id:
                         continue
@@ -133,7 +156,8 @@ class EvidenceStore:
                             f"record {record.record_id} conflicts with journal"
                         )
                     return EvidenceRecord(**raw)
-                record.seal(self._head_hash_unchecked())
+                previous_head = self._head_hash_unchecked()
+                record.seal(previous_head)
                 line = (
                     json.dumps(
                         record.to_dict(),
@@ -147,11 +171,51 @@ class EvidenceStore:
                     fh.write(line)
                     fh.flush()
                     os.fsync(fh.fileno())
+                self._advance_head(status.count, previous_head, record.record_hash)
+        except EvidenceHeadError as exc:
+            raise EvidenceError(str(exc)) from exc
         except PersistenceError as exc:
             raise EvidenceError(str(exc)) from exc
         except (OSError, TypeError, ValueError) as exc:
             raise EvidenceError(f"cannot append evidence safely: {exc}") from exc
         return record
+
+    def _reconcile_head(self) -> None:
+        try:
+            with exclusive_file_lock(self.path):
+                status = self._verify_unlocked()
+                if not status.ok:
+                    raise EvidenceError(
+                        "refusing evidence head reconciliation with broken evidence "
+                        "chain: " + status.detail
+                    )
+                self._reconcile_head_unlocked()
+        except EvidenceHeadError as exc:
+            raise EvidenceError(str(exc)) from exc
+
+    def _reconcile_head_unlocked(self) -> None:
+        if self.head_store is not None:
+            self.head_store.reconcile_for_authority(
+                self.profile_hash or "",
+                list(self._raw()),
+                allow_profile_rebind=self.allow_head_profile_rebind,
+            )
+            self.allow_head_profile_rebind = False
+
+    def _advance_head(
+        self,
+        previous_count: int,
+        previous_head: str,
+        head_hash: str,
+    ) -> None:
+        if self.head_store is not None:
+            self.head_store.advance(
+                self.profile_hash or "",
+                previous_count=previous_count,
+                previous_head=previous_head,
+                record_count=previous_count + 1,
+                head_hash=head_hash,
+            )
 
     # -- read --------------------------------------------------------
 

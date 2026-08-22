@@ -92,8 +92,13 @@ from .workspace_integrity import (
     WorkspaceIntegrityStateStore,
     WorkspaceRootAssurance,
 )
+from .evidence_head import (
+    EvidenceHeadError,
+    EvidenceHeadState,
+    EvidenceHeadStateStore,
+)
 
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -111,6 +116,9 @@ __all__ = [
     "ControlPlaneIsolationStateStore",
     "Decision",
     "EvidenceRecord",
+    "EvidenceHeadError",
+    "EvidenceHeadState",
+    "EvidenceHeadStateStore",
     "ExecutionCompletionSubject",
     "GrantError",
     "GuardrailDecision",

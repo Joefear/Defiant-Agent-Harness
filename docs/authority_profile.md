@@ -115,3 +115,9 @@ identity through a sanitized mode and root hash. The first v0.20 start against
 v0.19 state requires an explicit profile transition derived against the real
 workspace root. A copied, replaced, relocated, symlinked, or reparse-point root
 is not accepted automatically. See `workspace_root_integrity.md`.
+
+v0.21 additionally binds the durable evidence-head checkpoint contract. The
+first v0.21 start against v0.20 state requires an explicit profile transition.
+An activated transition may rebind the checkpoint only if the retained chain
+still equals or validly extends its old position. See
+`evidence_head_integrity.md`.
