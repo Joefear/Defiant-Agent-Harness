@@ -118,3 +118,6 @@ state and pins. Code signing, read-only images, OS policy, trusted boot, and an
 external generation/hash witness are separate deployment controls.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.17 complements file verification with a restricted, authority-bound process
+environment and working directory. See `launch_envelope_integrity.md`.

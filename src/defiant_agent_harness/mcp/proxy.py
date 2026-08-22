@@ -23,6 +23,12 @@ from ..contracts import (
 )
 from ..money import money
 from ..orchestrator.harness import ActionOutcome, build_harness
+from ..launch_envelope import (
+    LaunchEnvelopeAssurance,
+    build_launch_envelope,
+    remote_launch_envelope,
+    require_launch_target_unchanged,
+)
 from ..runtime_artifacts import (
     RuntimeArtifactAssurance,
     remote_artifacts,
@@ -149,6 +155,7 @@ class McpStdioProxy:
         dry_run: bool = False,
         trusted_operator_keys: list[str] | None = None,
         runtime_artifact_assurance: RuntimeArtifactAssurance | None = None,
+        launch_envelope_assurance: LaunchEnvelopeAssurance | None = None,
     ):
         self.config = config
         self.session = session
@@ -157,6 +164,13 @@ class McpStdioProxy:
         self.sensitivity = sensitivity
         artifact_assurance = runtime_artifact_assurance or (
             remote_artifacts() if config.url else unverified_artifacts(config.command)
+        )
+        launch_assurance = launch_envelope_assurance or (
+            remote_launch_envelope()
+            if config.url
+            else build_launch_envelope(
+                config.launch_environment, cwd=config.cwd, workdir=workdir
+            )
         )
         self.server_fingerprint = sha256_of(
             {
@@ -167,6 +181,7 @@ class McpStdioProxy:
                 "header_env": config.header_env,
                 "cwd": str(config.cwd) if config.cwd else "",
                 "runtime_artifacts": artifact_assurance.authority_dict(),
+                "launch_envelope": launch_assurance.authority_dict(),
             }
         )
         self.proxy_fingerprint = sha256_of(
@@ -207,8 +222,10 @@ class McpStdioProxy:
                 "mcp_server_fingerprint": self.server_fingerprint,
                 "mcp_proxy_fingerprint": self.proxy_fingerprint,
                 "runtime_artifacts": artifact_assurance.authority_dict(),
+                "launch_envelope": launch_assurance.authority_dict(),
             },
             runtime_artifact_assurance=artifact_assurance,
+            launch_envelope_assurance=launch_assurance,
             trusted_operator_keys=trusted_operator_keys,
         )
 
@@ -425,12 +442,20 @@ def run_stdio_proxy(
         workdir=workdir,
         cwd=config.cwd,
     )
-    effective_config = replace(config, command=assurance.command)
+    launch_assurance = build_launch_envelope(
+        config.launch_environment,
+        cwd=config.cwd,
+        workdir=workdir,
+    )
+    effective_config = replace(
+        config, command=assurance.command, cwd=launch_assurance.cwd
+    )
     session = UpstreamSession(
         effective_config.command,
         output_stream,
         cwd=effective_config.cwd,
         timeout_seconds=effective_config.upstream_timeout_seconds,
+        environment=launch_assurance.environment,
         start=False,
     )
     try:
@@ -446,6 +471,7 @@ def run_stdio_proxy(
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
             runtime_artifact_assurance=assurance,
+            launch_envelope_assurance=launch_assurance,
         )
         reverified = verify_runtime_artifacts(
             effective_config.command,
@@ -454,6 +480,7 @@ def run_stdio_proxy(
             cwd=effective_config.cwd,
         )
         require_same_artifact_bundle(assurance, reverified)
+        require_launch_target_unchanged(launch_assurance)
         session.start()
         for line in input_stream:
             if line.strip():
@@ -502,6 +529,7 @@ def run_http_upstream_proxy(
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
             runtime_artifact_assurance=remote_artifacts(),
+            launch_envelope_assurance=remote_launch_envelope(),
         )
         for line in input_stream:
             if line.strip():

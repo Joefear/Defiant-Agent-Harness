@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.16.
+logs. A full trusted-memory/DKE system is not part of v0.17.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.16 is
+## What v0.17 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -174,6 +174,18 @@ closed; a reviewed artifact update requires the normal explicit profile
 rotation. Doctor, Command Core, and Command Center show only sanitized pinned,
 unverified, mismatched, or invalid assurance and never expose paths or add a
 dashboard mutation endpoint.
+
+v0.17 adds launch-envelope integrity around those verified local processes. A
+strict stdio MCP configuration starts from an empty child environment, passes
+only explicit literal, inherited, or secret variables, requires an explicit
+canonical working directory outside harness state, and refuses loader or path
+injection variables unless each name is acknowledged. Nonsecret effective
+values and the working directory are hashed into the v0.15 authority profile;
+secret values are required at launch but deliberately excluded from persisted
+hashes so credential rotation neither leaks values nor silently changes launch
+policy. Legacy inheritance remains available but is visibly unrestricted.
+Doctor, Command Core, and Command Center expose only sanitized counts, hashes,
+mode, and profile binding. Command Center remains strictly read-only.
 
 ## Install
 
@@ -338,6 +350,10 @@ artifact are verified before launch. See
 `docs/runtime_artifact_integrity.md` for the schema, rotation procedure, and
 limits. Configurations without a manifest remain explicitly `unverified` in
 read-only diagnostics.
+Also configure `server.launch_environment` with an explicit `server.cwd` to
+remove ambient child-environment authority. See
+`docs/launch_envelope_integrity.md`; omitted launch settings remain visibly
+`inherited_unrestricted` for compatibility.
 
 v0.3 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
 downgraded during `initialize` so an upstream server cannot advertise the
@@ -506,7 +522,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.16 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.17 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -514,6 +530,7 @@ known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
 content-addressed local runtime artifact assurance,
+restricted and authority-bound local process launch envelopes,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -524,6 +541,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
 `docs/runtime_artifact_integrity.md`,
+`docs/launch_envelope_integrity.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,
