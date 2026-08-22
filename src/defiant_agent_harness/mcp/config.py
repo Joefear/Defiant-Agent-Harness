@@ -13,7 +13,12 @@ import yaml
 from ..contracts import SideEffect, Trust
 from ..launch_envelope import LaunchEnvironmentConfig, LaunchEnvelopeError
 from ..money import ZERO, money
-from ..runtime_artifacts import RuntimeArtifactError, RuntimeArtifactPin
+from ..runtime_artifacts import (
+    RuntimeArtifactError,
+    RuntimeArtifactPin,
+    RuntimeDependencyFilePin,
+    RuntimeDependencyRoot,
+)
 from ..tools.registry import ToolSpec
 
 
@@ -104,6 +109,7 @@ class McpToolConfig:
 class McpArtifactIntegrityConfig:
     required: bool = False
     artifacts: tuple[RuntimeArtifactPin, ...] = ()
+    dependency_roots: tuple[RuntimeDependencyRoot, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.required) is not bool:
@@ -115,6 +121,10 @@ class McpArtifactIntegrityConfig:
         if not self.required and self.artifacts:
             raise McpConfigError(
                 "artifact pins require server.artifact_integrity.required: true"
+            )
+        if not self.required and self.dependency_roots:
+            raise McpConfigError(
+                "dependency roots require server.artifact_integrity.required: true"
             )
         roles = [item.role for item in self.artifacts]
         if len(set(roles)) != len(roles):
@@ -207,8 +217,10 @@ _SERVER_KEYS = {
     "artifact_integrity",
     "launch_environment",
 }
-_ARTIFACT_INTEGRITY_KEYS = {"required", "artifacts"}
+_ARTIFACT_INTEGRITY_KEYS = {"required", "artifacts", "dependency_roots"}
 _ARTIFACT_KEYS = {"role", "path", "sha256"}
+_DEPENDENCY_ROOT_KEYS = {"path", "files"}
+_DEPENDENCY_FILE_KEYS = {"path", "sha256"}
 _LAUNCH_ENVIRONMENT_KEYS = {"inherit", "secret_env", "set", "allow_unsafe"}
 _TOOL_KEYS = {
     "side_effect",
@@ -221,6 +233,53 @@ _TOOL_KEYS = {
     "supports_dry_run",
     "target_scope",
 }
+
+
+def _load_dependency_roots(
+    raw: Any,
+    *,
+    source: Path,
+) -> tuple[RuntimeDependencyRoot, ...]:
+    if not isinstance(raw, list):
+        raise McpConfigError(
+            "server.artifact_integrity.dependency_roots must be a list"
+        )
+    roots: list[RuntimeDependencyRoot] = []
+    for root_index, value in enumerate(raw):
+        label = f"server.artifact_integrity.dependency_roots[{root_index}]"
+        item = _mapping(value, label)
+        _reject_unknown(item, _DEPENDENCY_ROOT_KEYS, label)
+        if set(item) != _DEPENDENCY_ROOT_KEYS:
+            raise McpConfigError(f"{label} requires path and files")
+        if not isinstance(item["path"], str) or not item["path"].strip():
+            raise McpConfigError(f"{label}.path must be non-empty")
+        files_raw = item["files"]
+        if not isinstance(files_raw, list):
+            raise McpConfigError(f"{label}.files must be a list")
+        files: list[RuntimeDependencyFilePin] = []
+        for file_index, file_value in enumerate(files_raw):
+            file_label = f"{label}.files[{file_index}]"
+            file_item = _mapping(file_value, file_label)
+            _reject_unknown(file_item, _DEPENDENCY_FILE_KEYS, file_label)
+            if set(file_item) != _DEPENDENCY_FILE_KEYS:
+                raise McpConfigError(f"{file_label} requires path and sha256")
+            try:
+                files.append(
+                    RuntimeDependencyFilePin(
+                        path=file_item["path"],
+                        sha256=file_item["sha256"],
+                    )
+                )
+            except RuntimeArtifactError as exc:
+                raise McpConfigError(f"invalid {file_label}: {exc}") from exc
+        root_path = Path(item["path"])
+        if not root_path.is_absolute():
+            root_path = source.parent / root_path
+        try:
+            roots.append(RuntimeDependencyRoot(root_path, tuple(files)))
+        except RuntimeArtifactError as exc:
+            raise McpConfigError(f"invalid {label}: {exc}") from exc
+    return tuple(roots)
 
 
 def load_proxy_config(
@@ -340,6 +399,10 @@ def load_proxy_config(
         artifact_integrity = McpArtifactIntegrityConfig(
             required=required,
             artifacts=tuple(pins),
+            dependency_roots=_load_dependency_roots(
+                artifact_mapping.get("dependency_roots", []),
+                source=source,
+            ),
         )
 
     launch_raw = server.get("launch_environment")

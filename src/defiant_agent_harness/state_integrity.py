@@ -56,7 +56,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.13.0"
+AUDIT_VERSION = "0.14.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
@@ -581,6 +581,8 @@ class StateIntegrityAuditor:
                     "bundle_hash": None,
                     "artifact_count": 0,
                     "executable_pinned": False,
+                    "dependency_root_count": 0,
+                    "dependency_file_count": 0,
                     "last_verified_at": None,
                 }
                 return 0
@@ -616,6 +618,8 @@ class StateIntegrityAuditor:
                 "bundle_hash": None,
                 "artifact_count": 0,
                 "executable_pinned": False,
+                "dependency_root_count": 0,
+                "dependency_file_count": 0,
                 "last_verified_at": None,
             }
             self._issue(

@@ -269,6 +269,25 @@ it. Supplying a stale valid witness leaves later records outside its rollback
 floor. Replacing code, external configuration, trusted keys, and witness storage
 remains a privileged-host compromise outside this boundary.
 
+### 18. Undeclared dependency substitution inside a runtime tree
+
+Pinning an interpreter and selected entrypoint does not detect replacement of
+an imported module, plugin, native extension, or configuration file omitted
+from the selected list. It also does not detect a newly injected file that wins
+runtime discovery order.
+
+v0.23 can close operator-declared dependency roots. Every regular file must
+appear in a strict relative manifest, every digest must match, and the observed
+set must contain no additions or omissions. Links, reparse points, special
+entries, overlapping roots, and overlap with mutable harness state fail closed.
+The deterministic closure is authority-profile input and is verified again
+immediately before process creation.
+
+This control cannot prove that the declared roots are complete. A runtime can
+still load code from an unlisted search path, the network, process memory, or a
+broader host mount. Restricting those sources requires loader configuration,
+least-privilege mounts, immutable images, and OS containment.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

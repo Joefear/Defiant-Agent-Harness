@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.16.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.17.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -96,6 +96,11 @@ When external head witnessing is enrolled, Command Core must receive global
 verifies them without mutation. Missing, mismatched, rolled-back, or divergent
 input makes the snapshot non-authoritative while preserving the sanitized
 diagnostic. See `evidence_head_witness.md`.
+
+v0.23 runtime-artifact projections distinguish selected-file `pinned` mode
+from declared-root `closed` mode. Closed mode adds only dependency-root and
+dependency-file counts; paths, relative filenames, and individual hashes are
+withheld.
 
 ## Boundary
 

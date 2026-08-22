@@ -173,6 +173,11 @@ directory still contains confidential operational material and must remain
 access-controlled.
 
 v0.8 evidence signing remains an operator CLI and offline-verification workflow.
+v0.23 renders declared runtime dependency closure as a sanitized root count,
+file count, and shortened bundle hash. It receives no filesystem paths,
+relative filenames, or individual file digests. The dashboard cannot generate
+or edit a manifest, accept drift, rotate authority, or launch an upstream.
+
 v0.10 and later may give Command Center operator public-key pins at startup so its
 read-only snapshot can verify persisted approval attestations and the durable
 trust-generation chain. If pins are missing or mismatched, it remains available

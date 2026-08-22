@@ -354,7 +354,7 @@ verifies the enrolled profile and cross-store state but cannot run, preflight,
 resume, or complete a tool action. Command Center remains a separate read-only
 projection and never acquires the authority lock.
 
-## Runtime artifact assurance in v0.16
+## Runtime artifact assurance in v0.16 and v0.23
 
 Required local MCP manifests bind one exact executable plus operator-declared
 supporting files to SHA-256 digests. Verification happens before authority
@@ -372,6 +372,20 @@ edit a manifest, accept a digest, rotate authority, or launch a process.
 
 See `runtime_artifact_integrity.md` for the strict configuration schema,
 startup ordering, and limits.
+
+v0.23 extends this boundary with optional complete manifests for declared
+dependency roots. The verifier recursively inventories each root without
+following links, requires exact file-set equality, hashes every regular file,
+and binds the root identities and deterministic observations into the runtime
+bundle. Added, removed, modified, linked/reparse, special, overlapping, and
+state-overlapping content fails before launch. The same inventory runs again
+immediately before the upstream process starts.
+
+The `closed` projection exposes only bundle hash and counts. Command Core and
+Command Center do not receive roots, relative filenames, or per-file hashes and
+remain unable to mutate configuration or start the process. Closure is limited
+to operator-declared roots; OS loader policy and containment remain deployment
+boundaries.
 
 ## Launch-envelope integrity in v0.17
 
