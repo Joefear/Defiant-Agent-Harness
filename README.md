@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.15.
+logs. A full trusted-memory/DKE system is not part of v0.16.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.15 is
+## What v0.16 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -162,6 +162,18 @@ and exact next hash; signed mode binds it to a trusted Ed25519 key. Rotation is
 staged atomically and activates only when that exact candidate runtime starts.
 Doctor, Command Core, and the strictly read-only Command Center expose only
 sanitized verified, mismatched, invalid, or rotation-required state.
+
+v0.16 adds content-addressed runtime artifact assurance for local stdio MCP
+upstreams. Production configurations can require an operator-authored SHA-256
+manifest containing the executable and declared supporting artifacts. Defiant
+resolves and hashes every file before authority-profile resolution, launches
+the verified executable by its absolute path, re-verifies the bundle immediately
+before spawning, and binds the canonical bundle hash into the durable v0.15
+profile. Missing, replaced, forged, symlinked, or state-directory artifacts fail
+closed; a reviewed artifact update requires the normal explicit profile
+rotation. Doctor, Command Core, and Command Center show only sanitized pinned,
+unverified, mismatched, or invalid assurance and never expose paths or add a
+dashboard mutation endpoint.
 
 ## Install
 
@@ -320,6 +332,12 @@ approval.
 
 The upstream command is always an argument vector and is launched without a
 shell. Stdout remains protocol-only; server diagnostics inherit stderr.
+For production local upstreams, add a required `server.artifact_integrity`
+manifest so the executable and each declared entrypoint, lockfile, or package
+artifact are verified before launch. See
+`docs/runtime_artifact_integrity.md` for the schema, rotation procedure, and
+limits. Configurations without a manifest remain explicitly `unverified` in
+read-only diagnostics.
 
 v0.3 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
 downgraded during `initialize` so an upstream server cannot advertise the
@@ -488,13 +506,14 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.15 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.16 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
 known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
+content-addressed local runtime artifact assurance,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -504,6 +523,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/authorization_reconciliation.md`, `docs/operation_journal.md`,
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
+`docs/runtime_artifact_integrity.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

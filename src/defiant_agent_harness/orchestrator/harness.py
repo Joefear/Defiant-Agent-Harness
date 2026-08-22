@@ -1436,6 +1436,7 @@ def build_harness(
     tools: ToolRegistry | None = None,
     workspace_root: str | Path | None = None,
     authority_context: dict | None = None,
+    runtime_artifact_assurance=None,
     trusted_operator_keys: list[str] | None = None,
     _operator_control: bool = False,
 ) -> Harness:
@@ -1489,6 +1490,12 @@ def build_harness(
         else:
             profile_store.resolve_for_authority(policy.ruleset_hash, operator_trust)
             audit_profile_hash = policy.ruleset_hash
+        if runtime_artifact_assurance is not None:
+            from ..runtime_artifacts import RuntimeArtifactStateStore
+
+            RuntimeArtifactStateStore(state_root / "runtime_artifacts.json").record(
+                policy.ruleset_hash, runtime_artifact_assurance
+            )
         if not trust_resolved:
             operator_trust = trust_store.resolve_for_authority(
                 trusted_operator_keys or []

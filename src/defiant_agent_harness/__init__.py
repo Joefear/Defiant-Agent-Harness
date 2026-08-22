@@ -60,8 +60,15 @@ from .state_integrity import (
     StateIntegrityError,
     StateIntegrityReport,
 )
+from .runtime_artifacts import (
+    RuntimeArtifactAssurance,
+    RuntimeArtifactError,
+    RuntimeArtifactPin,
+    RuntimeArtifactState,
+    RuntimeArtifactStateStore,
+)
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -89,6 +96,11 @@ __all__ = [
     "OperationJournalError",
     "ProposedAction",
     "ResultStatus",
+    "RuntimeArtifactAssurance",
+    "RuntimeArtifactError",
+    "RuntimeArtifactPin",
+    "RuntimeArtifactState",
+    "RuntimeArtifactStateStore",
     "Sensitivity",
     "SideEffect",
     "StateIntegrityAuditor",

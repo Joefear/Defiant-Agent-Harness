@@ -328,7 +328,7 @@ function renderBudget(budget) {
   elements.budgetDrift.textContent = `${money(drift.drift_usd)} · ${drift.drift_pct}%`;
 }
 
-function renderAuthorityProfile(profile) {
+function renderAuthorityProfile(profile, artifacts) {
   if (!profile || profile.state === "not_enrolled") {
     elements.profileGeneration.textContent = "—";
     elements.profileDetail.textContent = "Not enrolled";
@@ -336,9 +336,15 @@ function renderAuthorityProfile(profile) {
   }
   elements.profileGeneration.textContent = `g${profile.generation}`;
   const hash = shortId(profile.profile_hash);
-  elements.profileDetail.textContent = profile.rotation_required
+  const profileDetail = profile.rotation_required
     ? `Rotation required · ${label(profile.pending_assurance)} · ${shortId(profile.pending_profile_hash)}`
     : `${label(profile.verification)} · ${hash}`;
+  const artifactDetail = artifacts && artifacts.state === "pinned"
+    ? `${integer.format(artifacts.artifact_count)} pinned · ${shortId(artifacts.bundle_hash)}`
+    : artifacts
+      ? label(artifacts.state)
+      : "Not recorded";
+  elements.profileDetail.textContent = `${profileDetail} · Artifacts ${artifactDetail}`;
 }
 
 function renderActivity(activity) {
@@ -379,7 +385,7 @@ function renderSnapshot(snapshot) {
     snapshot.authorization_reconciliation,
   );
   renderBudget(snapshot.budget);
-  renderAuthorityProfile(snapshot.authority_profile);
+  renderAuthorityProfile(snapshot.authority_profile, snapshot.runtime_artifacts);
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;
 }

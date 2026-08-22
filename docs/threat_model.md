@@ -136,8 +136,28 @@ staged that exact next hash with identity and a non-empty note. Signed mode
 binds the old and new generations and hashes to a currently trusted Ed25519
 key. The staged record remains visible through read-only diagnostics, and only
 the exact candidate can activate it atomically. This prevents configuration
-drift and third-profile substitution, but it does not attest executable bytes
-or defeat a privileged host attacker who can replace code and state.
+drift and third-profile substitution. v0.16 additionally binds a verified
+operator-declared local artifact bundle when required, but neither control
+defeats a privileged host attacker who can replace code and state together.
+
+### 11. Local runtime artifact substitution
+
+The configured MCP command still names the same executable or entrypoint, but
+an update, package-manager action, path alias, or attacker has replaced its
+bytes before startup.
+
+v0.16 required artifact mode resolves the command to one exact pinned
+executable, verifies its SHA-256 digest and every operator-declared support
+artifact, canonicalizes the manifest independent of input order, and binds the
+bundle hash into the durable authority profile. A mismatch fails before state
+enrollment or process creation. A reviewed replacement changes the profile and
+must use explicit staged rotation. Defiant verifies the same bundle again
+immediately before spawn and records only sanitized assurance for read-only
+diagnostics.
+
+This does not discover dependencies or provide code signing, immutable storage,
+trusted boot, or a complete answer to time-of-check/time-of-use races. A
+privileged host attacker remains outside the boundary.
 
 ## What we do not defend against
 
@@ -167,11 +187,12 @@ documented fail-open hook-timeout path still require OS/network containment.
 configuration. If a mutating tool is classified as `none`, the registry has no
 independent way to discover the lie. Tool-map review is a deployment control.
 
-**Upstream binary substitution.** The proxy binds approvals to the configured
-command vector, but does not hash or attest the executable and its dependency
-tree. A package name and version are stronger than `latest`, but a production
-install still needs a reviewed lockfile, immutable image digest, or equivalent
-artifact verification.
+**Undeclared upstream dependency substitution.** Required v0.16 manifests hash
+the executable and declared support files, but Defiant does not discover the
+complete runtime dependency tree. An interpreter or executable can still load
+undeclared libraries, native extensions, configuration, plugins, or remote
+code. Production still needs reviewed lockfiles, locked installations,
+immutable image digests, and OS policy.
 
 **Evidence export forgery or alteration.** v0.8 signs the canonical request
 export with Ed25519 only after the complete live chain verifies. Verification
