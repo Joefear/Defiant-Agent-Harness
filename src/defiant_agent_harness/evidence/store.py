@@ -13,6 +13,14 @@ from ..persistence import PersistenceError, exclusive_file_lock
 from .signing import EXPORT_SCHEMA, EXPORT_VERSION
 
 GENESIS = "sha256:" + "0" * 64
+_TERMINAL_RESULTS = {
+    "succeeded",
+    "failed",
+    "blocked",
+    "rejected",
+    "expired",
+    "not_executed",
+}
 
 
 class EvidenceError(RuntimeError):
@@ -159,6 +167,31 @@ class EvidenceStore:
 
     def records(self) -> list[dict]:
         return list(self._raw())
+
+    def open_authorizations(self) -> list[dict]:
+        """Return sealed authorizations with no matching terminal evidence."""
+        records = self.records()
+        terminal_hashes = {
+            record.get("authorization_hash")
+            for record in records
+            if record.get("result_status") in _TERMINAL_RESULTS
+        }
+        return [
+            record
+            for record in records
+            if record.get("result_status") == "skipped"
+            and record.get("authorization_hash") not in terminal_hashes
+        ]
+
+    def open_authorization(self, record_id: str) -> dict | None:
+        return next(
+            (
+                record
+                for record in self.open_authorizations()
+                if record.get("record_id") == record_id
+            ),
+            None,
+        )
 
     def by_request(self, request_id: str) -> list[dict]:
         return [

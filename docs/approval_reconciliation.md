@@ -66,6 +66,11 @@ only deterministic approval, reservation, and evidence mutations whose outcome
 was known before the crash. It never replays a tool or converts an uncertain
 external execution into a terminal result.
 
+Approval-free executions have no approval id and must use
+`dah reconcile-authorization <evidence_record_id>`. That v0.12 path is bound to
+the sealed authorization evidence record and deliberately refuses actions owned
+by an approval. See `authorization_reconciliation.md`.
+
 ## Security limits
 
 v0.9 can bind the operator identity, outcome, note, approval authority, and

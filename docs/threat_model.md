@@ -90,6 +90,12 @@ partial state or a forged payload fails closed and leaves the journal intact.
 The journal never claims an external tool outcome. Unknown or stranded external
 execution remains on the explicit operator reconciliation path.
 
+v0.12 extends that explicit path to sealed approval-free authorizations. The
+operator outcome, identity, note, sealed record id and hash, action, request,
+authorization hash, budget exposure, optional signature, and terminal evidence
+must agree. Exact retries cannot double charge or duplicate evidence; tampered
+markers, signatures, estimates, or terminal records fail closed.
+
 ### 9. Signed-mode downgrade or unauthorized trust replacement
 
 A process restarts without operator trust pins, or with a different mapping,
@@ -159,6 +165,9 @@ reconciliation mutation. Changed fields, another approval, a decision reused as
 reconciliation, an unsigned legacy record, or a key assigned to another
 operator fails closed. A stolen unlocked operator key remains able to authorize
 actions as its pinned identity until that key is removed from runtime trust.
+Approval decisions, approval reconciliation, and approval-free authorization
+reconciliation use separate schemas, purposes, and signing domains, so a valid
+attestation for one cannot be replayed as another.
 
 **Trust-state rollback or host compromise.** Durable enrollment prevents an
 accidental or configuration-only downgrade; it is not an external witness. A

@@ -5,6 +5,7 @@ dah pending               list actions waiting on a human
 dah approve <id>          approve one held action
 dah reject <id>           reject one held action
 dah reconcile <id>        resolve one crash-stranded executing approval
+dah reconcile-authorization <record_id> resolve an approval-free authorization
 dah history               show the evidence trail
 dah show <record_id>      show one evidence record in full
 dah verify                verify the evidence hash chain
@@ -49,10 +50,12 @@ from ..mcp.proxy import run_http_upstream_proxy, run_stdio_proxy
 from ..mcp.session import McpTransportError
 from ..orchestrator.harness import build_harness
 from ..operator_identity import (
+    AuthorizationReconciliationSubject,
     DECISION_PURPOSE,
     RECONCILIATION_PURPOSE,
     OperatorIdentityError,
     OperatorTrustPolicy,
+    sign_authorization_reconciliation,
     sign_operator_action,
     sign_trust_transition,
 )
@@ -265,6 +268,41 @@ def cmd_reconcile(args) -> int:
         return 1
     print(
         f"{args.approval_id} -> {_c(reconciled.status.value)} "
+        f"reconciled by {args.operator}"
+    )
+    print(f"evidence {reconciled.evidence_record_id}")
+    print(f"detail   {reconciled.detail}")
+    return 0
+
+
+def cmd_reconcile_authorization(args) -> int:
+    try:
+        harness = _harness(args)
+        record = harness.evidence.get(args.authority_record_id)
+        if record is None:
+            raise OperatorIdentityError(
+                f"unknown evidence record {args.authority_record_id}"
+            )
+        subject = AuthorizationReconciliationSubject.from_record(record)
+        attestation = _authorization_reconciliation_attestation(
+            args,
+            subject,
+            outcome=args.outcome,
+            operator=args.operator,
+            note=args.note,
+        )
+        reconciled = harness.reconcile_authorization(
+            args.authority_record_id,
+            args.outcome,
+            args.operator,
+            args.note,
+            attestation=attestation,
+        )
+    except Exception as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(
+        f"{args.authority_record_id} -> {_c(reconciled.status.value)} "
         f"reconciled by {args.operator}"
     )
     print(f"evidence {reconciled.evidence_record_id}")
@@ -649,6 +687,38 @@ def _operator_attestation(
     )
 
 
+def _authorization_reconciliation_attestation(
+    args,
+    subject: AuthorizationReconciliationSubject,
+    *,
+    outcome: str,
+    operator: str,
+    note: str,
+) -> dict | None:
+    specs = getattr(args, "trusted_operator_key", None) or []
+    private_key = getattr(args, "operator_key", None)
+    passphrase_file = getattr(args, "operator_passphrase_file", None)
+    configured = bool(specs or private_key or passphrase_file)
+    if not configured:
+        return None
+    if not specs or not private_key or not passphrase_file:
+        raise OperatorIdentityError(
+            "signed operator actions require --operator-key, "
+            "--operator-passphrase-file, and --trusted-operator-key"
+        )
+    _validate_trusted_operator_paths(args)
+    _require_external_secret(args.workdir, private_key, "operator private key")
+    _require_external_secret(args.workdir, passphrase_file, "operator passphrase file")
+    return sign_authorization_reconciliation(
+        subject,
+        private_key,
+        read_passphrase(passphrase_file),
+        outcome=outcome,
+        operator=operator,
+        note=note,
+    )
+
+
 def _indent(text: str, pad: str = "    ") -> str:
     return "\n".join(pad + line for line in text.splitlines())
 
@@ -740,6 +810,21 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("--note", required=True)
     _add_operator_signing(reconcile)
     reconcile.set_defaults(fn=cmd_reconcile)
+
+    reconcile_authorization = sub.add_parser(
+        "reconcile-authorization",
+        help="terminally resolve a sealed approval-free authorization",
+    )
+    reconcile_authorization.add_argument("authority_record_id")
+    reconcile_authorization.add_argument(
+        "--outcome",
+        required=True,
+        choices=["succeeded", "failed", "not_executed"],
+    )
+    reconcile_authorization.add_argument("--operator", required=True)
+    reconcile_authorization.add_argument("--note", required=True)
+    _add_operator_signing(reconcile_authorization)
+    reconcile_authorization.set_defaults(fn=cmd_reconcile_authorization)
 
     h = sub.add_parser("history")
     h.add_argument("--limit", type=int, default=25)

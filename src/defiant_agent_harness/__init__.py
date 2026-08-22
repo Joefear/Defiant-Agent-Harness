@@ -27,7 +27,15 @@ from .contracts import (
     SideEffect,
     Trust,
 )
-from .orchestrator.harness import Harness, build_harness
+from .orchestrator.harness import (
+    AuthorizationReconciliationOutcome,
+    Harness,
+    build_harness,
+)
+from .operator_identity import (
+    AuthorizationReconciliationSubject,
+    sign_authorization_reconciliation,
+)
 from .operator_trust_state import (
     OperatorTrustState,
     OperatorTrustStateError,
@@ -45,10 +53,12 @@ from .state_integrity import (
     StateIntegrityReport,
 )
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 __all__ = [
     "CapabilityGrant",
+    "AuthorizationReconciliationOutcome",
+    "AuthorizationReconciliationSubject",
     "ContentRef",
     "Decision",
     "EvidenceRecord",
@@ -72,4 +82,5 @@ __all__ = [
     "StateIntegrityReport",
     "Trust",
     "build_harness",
+    "sign_authorization_reconciliation",
 ]

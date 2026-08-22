@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.11.
+logs. A full trusted-memory/DKE system is not part of v0.12.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.11 is
+## What v0.12 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -126,6 +126,15 @@ explicit v0.6 operator reconciliation workflow. Command Core and Command Center
 show only sanitized recovery metadata, and Command Center remains strictly
 read-only.
 
+v0.12 closes the remaining operator-path gap for approval-free execution
+authorizations. A sealed authorization with no terminal outcome can now be
+resolved by evidence record id only after the operator supplies `succeeded`,
+`failed`, or `not_executed`, a non-empty identity, and a non-empty note. Signed
+mode binds the statement to the exact sealed authorization under a distinct
+Ed25519 purpose. Budget disposition and terminal evidence recover idempotently
+through the operation journal, while Command Core and the strictly read-only
+Command Center expose only sanitized recovery metadata.
+
 ## Install
 
 ```bash
@@ -178,6 +187,20 @@ dah --workdir .dah reconcile apr_... \
 ```
 
 See `docs/approval_reconciliation.md` before using `succeeded` or `failed`.
+
+If `dah doctor` instead reports an approval-free authorization requiring
+reconciliation, use its sealed evidence record id:
+
+```bash
+dah --workdir .dah reconcile-authorization evd_... \
+  --outcome failed \
+  --operator operator-7 \
+  --note "provider accepted the request but returned no result"
+```
+
+See `docs/authorization_reconciliation.md` for its signature, crash, and
+conservative budget rules. Command Center displays both queues but remains
+strictly read-only.
 
 Then look at what happened:
 
@@ -432,18 +455,19 @@ server to a test run.
 
 ## Status
 
-v0.11 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.12 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
-reconciliation, deterministic local operation recovery, cross-store integrity
-gating, offline-verifiable signed evidence exports, signed operator approval
-authority, and durable downgrade-resistant operator trust enrollment. Not a
-hosted platform.
+reconciliation for approval-backed and approval-free uncertain executions,
+deterministic local operation recovery, cross-store integrity gating,
+offline-verifiable signed evidence exports, signed operator authority, and
+durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
-`docs/operation_journal.md`, `docs/state_integrity.md`, `docs/evidence_signing.md`,
+`docs/authorization_reconciliation.md`, `docs/operation_journal.md`,
+`docs/state_integrity.md`, `docs/evidence_signing.md`,
 `docs/operator_identity.md`,
 `docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
 `docs/codex_runner.md`.

@@ -14,6 +14,7 @@ from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
 from .evidence.store import GENESIS
 from .money import ZERO, money, money_text
 from .operator_identity import (
+    AuthorizationReconciliationSubject,
     DECISION_PURPOSE,
     RECONCILIATION_PURPOSE,
     OperatorTrustPolicy,
@@ -23,7 +24,7 @@ from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.3.0"
+AUDIT_VERSION = "0.4.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -154,6 +155,7 @@ class StateIntegrityAuditor:
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
             "active_journal_operations": int(journal_operation is not None),
+            "authorization_reconciliations_required": 0,
         }
         self._audit_cross_store(
             report,
@@ -678,6 +680,10 @@ class StateIntegrityAuditor:
         reservations = budget.get("reservations", {})
         reconciliations = budget.get("reconciliations", {})
         entries = budget.get("entries", [])
+        open_authorizations = self._open_authorizations(evidence)
+        open_authorization_ids = {
+            record.get("record_id") for record in open_authorizations
+        }
 
         for action_id, reservation in reservations.items():
             matching = [
@@ -692,14 +698,6 @@ class StateIntegrityAuditor:
             if evidence_trusted and self._has_open_authorization(
                 records_by_action.get(action_id, []), reservation.get("request_id", "")
             ):
-                self._issue(
-                    report,
-                    "unbound_execution_recovery_required",
-                    "warning",
-                    "budget",
-                    "live reservation belongs to a sealed execution authorization",
-                    action_id=action_id,
-                )
                 continue
             if self._journal_expects_unbound_reservation(
                 journal_operation, action_id, reservation
@@ -720,6 +718,33 @@ class StateIntegrityAuditor:
                 "live reservation has no active approval or sealed authorization",
                 action_id=action_id,
             )
+
+        if evidence_trusted:
+            for authorization in open_authorizations:
+                action_id = authorization.get("action_id", "")
+                if approvals_by_action.get(action_id):
+                    continue
+                if authorization.get("decision") != "allow":
+                    self._issue(
+                        report,
+                        "approval_authorization_missing",
+                        "critical",
+                        "cross_store",
+                        "sealed approval-required authorization has no approval record",
+                        action_id=action_id,
+                        record_id=authorization.get("record_id", ""),
+                    )
+                    continue
+                report.counts["authorization_reconciliations_required"] += 1
+                self._issue(
+                    report,
+                    "authorization_reconciliation_required",
+                    "warning",
+                    "evidence",
+                    "sealed approval-free authorization has no terminal outcome",
+                    action_id=action_id,
+                    record_id=authorization.get("record_id", ""),
+                )
 
         for approval in approvals.values():
             reservation = reservations.get(approval.action_id)
@@ -783,6 +808,24 @@ class StateIntegrityAuditor:
                     approval_id=approval.approval_id,
                 )
 
+        if evidence_trusted:
+            for record in evidence:
+                action_id = record.get("action_id", "")
+                if (
+                    record.get("reconciliation_outcome")
+                    and action_id not in reconciliations
+                    and not approvals_by_action.get(action_id)
+                ):
+                    self._issue(
+                        report,
+                        "authorization_reconciliation_budget_missing",
+                        "critical",
+                        "cross_store",
+                        "terminal authorization reconciliation has no budget marker",
+                        action_id=action_id,
+                        record_id=record.get("record_id", ""),
+                    )
+
         for action_id, reconciliation in reconciliations.items():
             if action_id in reservations:
                 self._issue(
@@ -798,6 +841,18 @@ class StateIntegrityAuditor:
                 (item for item in candidates if item.reconciliation_outcome), None
             )
             if approval is None:
+                if reconciliation.get("authority_type") == "authorization":
+                    self._audit_authorization_reconciliation_marker(
+                        report,
+                        action_id,
+                        reconciliation,
+                        records_by_id,
+                        records_by_action.get(action_id, []),
+                        entries,
+                        journal_operation,
+                        open_authorization_ids,
+                    )
+                    continue
                 self._issue(
                     report,
                     "orphan_budget_reconciliation",
@@ -824,6 +879,190 @@ class StateIntegrityAuditor:
                     action_id=action_id,
                     approval_id=approval.approval_id,
                 )
+
+    def _audit_authorization_reconciliation_marker(
+        self,
+        report: StateIntegrityReport,
+        action_id: str,
+        reconciliation: dict[str, Any],
+        records_by_id: dict[str, dict[str, Any]],
+        action_records: list[dict[str, Any]],
+        entries: list[dict[str, Any]],
+        journal_operation: JournalOperation | None,
+        open_authorization_ids: set[Any],
+    ) -> None:
+        authority_id = reconciliation.get("authority_record_id", "")
+        authority = records_by_id.get(authority_id)
+        if authority is None:
+            self._issue(
+                report,
+                "authorization_reconciliation_authority_missing",
+                "critical",
+                "budget",
+                "authorization reconciliation has no sealed authority record",
+                action_id=action_id,
+                record_id=authority_id,
+            )
+            return
+        try:
+            subject = AuthorizationReconciliationSubject.from_record(authority)
+        except RuntimeError as exc:
+            self._issue(
+                report,
+                "authorization_reconciliation_authority_invalid",
+                "critical",
+                "evidence",
+                str(exc),
+                action_id=action_id,
+                record_id=authority_id,
+            )
+            return
+        expected = {
+            "request_id": subject.request_id,
+            "authority_record_hash": subject.authority_record_hash,
+        }
+        if action_id != subject.action_id or any(
+            reconciliation.get(field) != value for field, value in expected.items()
+        ):
+            self._issue(
+                report,
+                "authorization_reconciliation_binding_mismatch",
+                "critical",
+                "cross_store",
+                "budget reconciliation differs from its sealed authorization",
+                action_id=action_id,
+                record_id=authority_id,
+            )
+            return
+        reserve_entries = [
+            entry
+            for entry in entries
+            if entry.get("kind") == "reserve"
+            and entry.get("request_id") == subject.request_id
+            and entry.get("action_id") == subject.action_id
+        ]
+        durable_expected = (
+            money(reserve_entries[-1].get("amount_usd"), field_name="reserve entry")
+            if reserve_entries
+            else ZERO
+        )
+        if (
+            money(
+                reconciliation.get("expected_usd", "0"),
+                field_name="authorization reconciliation expected_usd",
+            )
+            != durable_expected
+        ):
+            self._issue(
+                report,
+                "authorization_reconciliation_estimate_mismatch",
+                "critical",
+                "budget",
+                "reconciliation estimate differs from durable authorization exposure",
+                action_id=action_id,
+                record_id=authority_id,
+            )
+            return
+        if self.operator_trust is not None:
+            identity = self.operator_trust.assess_authorization_reconciliation(
+                reconciliation.get("attestation"),
+                subject,
+                outcome=reconciliation.get("outcome", ""),
+                operator=reconciliation.get("reconciled_by", ""),
+                note=reconciliation.get("note", ""),
+            )
+            if not identity.ok:
+                self._issue(
+                    report,
+                    "authorization_reconciliation_identity_invalid",
+                    "critical",
+                    "budget",
+                    identity.detail,
+                    action_id=action_id,
+                    record_id=authority_id,
+                )
+                return
+        terminal = next(
+            (
+                record
+                for record in reversed(action_records)
+                if record.get("authorization_hash") == subject.authorization_hash
+                and record.get("result_status") in _TERMINAL_RESULTS
+            ),
+            None,
+        )
+        if terminal is None:
+            journal_matches = (
+                journal_operation is not None
+                and journal_operation.kind == "authorization_reconcile"
+                and journal_operation.payload.get("authority", {}).get(
+                    "authority_record_id"
+                )
+                == authority_id
+                and authority_id in open_authorization_ids
+            )
+            if not journal_matches:
+                self._issue(
+                    report,
+                    "authorization_reconciliation_evidence_missing",
+                    "critical",
+                    "cross_store",
+                    "budget reconciliation has no matching terminal evidence",
+                    action_id=action_id,
+                    record_id=authority_id,
+                )
+            return
+        observed_outcome = {
+            ResultStatus.SUCCEEDED.value: "succeeded",
+            ResultStatus.FAILED.value: "failed",
+            ResultStatus.NOT_EXECUTED.value: "not_executed",
+        }.get(terminal.get("result_status"))
+        debit_entries = [
+            entry
+            for entry in entries
+            if entry.get("kind") == "debit"
+            and entry.get("request_id") == subject.request_id
+            and entry.get("action_id") == subject.action_id
+        ]
+        if debit_entries:
+            expected_cost = money(
+                debit_entries[-1].get("amount_usd"), field_name="debit entry"
+            )
+        elif observed_outcome == "not_executed":
+            expected_cost = ZERO
+        else:
+            expected_cost = durable_expected
+        if (
+            observed_outcome != reconciliation.get("outcome")
+            or terminal.get("reconciliation_outcome") != observed_outcome
+            or terminal.get("reconciled_by") != reconciliation.get("reconciled_by")
+            or terminal.get("reconciliation_note") != reconciliation.get("note")
+            or money(terminal.get("cost_usd", "0"), field_name="terminal cost")
+            != expected_cost
+        ):
+            self._issue(
+                report,
+                "authorization_reconciliation_evidence_mismatch",
+                "critical",
+                "cross_store",
+                "terminal evidence differs from operator reconciliation",
+                action_id=action_id,
+                record_id=terminal.get("record_id", ""),
+            )
+
+    @staticmethod
+    def _open_authorizations(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        terminal_hashes = {
+            record.get("authorization_hash")
+            for record in evidence
+            if record.get("result_status") in _TERMINAL_RESULTS
+        }
+        return [
+            record
+            for record in evidence
+            if record.get("result_status") == ResultStatus.SKIPPED.value
+            and record.get("authorization_hash") not in terminal_hashes
+        ]
 
     def _journal_expects_unbound_reservation(
         self,

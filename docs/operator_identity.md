@@ -89,6 +89,25 @@ the reservation only when the operator has established that dispatch did not
 occur. Exact retries remain idempotent; a conflicting outcome, identity, or
 note is refused.
 
+Approval-free executions use the sealed authorization evidence record instead
+of an approval id:
+
+```powershell
+dah --workdir .dah reconcile-authorization evd_... `
+  --outcome not_executed `
+  --operator alice `
+  --note "Provider confirms that dispatch never occurred" `
+  --operator-key C:\DefiantKeys\alice-private.pem `
+  --operator-passphrase-file C:\DefiantKeys\alice.passphrase `
+  --trusted-operator-key alice=C:\DefiantKeys\alice-public.pem
+```
+
+This path uses a distinct authorization-reconciliation schema, purpose, and
+signing domain. Its signature binds the sealed record id and hash, action,
+request, authorization hash, explicit outcome, operator, note, and timestamp.
+Approval decision and approval-reconciliation attestations cannot be replayed
+on it. See `authorization_reconciliation.md` for the crash and budget rules.
+
 ## Long-running proxies and native hooks
 
 The process that consumes an approval must use the same trust pins:

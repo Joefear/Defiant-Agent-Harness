@@ -330,6 +330,13 @@ class ApprovalStore:
         raw = self._read_all().get(approval_id)
         return PendingApproval(**raw) if raw else None
 
+    def for_action(self, action_id: str) -> list[PendingApproval]:
+        return [
+            PendingApproval(**raw)
+            for raw in self._read_all().values()
+            if raw.get("action_id") == action_id
+        ]
+
     def list_pending(self) -> list[PendingApproval]:
         return sorted(
             (

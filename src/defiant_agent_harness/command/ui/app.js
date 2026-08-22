@@ -181,10 +181,13 @@ function renderEvidence(evidence) {
   elements.latestEvent.textContent = time(evidence.latest_event_at, true);
 }
 
-function renderApprovals(approvals, operatorTrust) {
-  elements.approvalCount.textContent = compact.format(approvals.actionable_count);
-  elements.approvalBadge.textContent = integer.format(approvals.actionable_count);
-  const reconciliationCount = approvals.reconciliation_required_count || 0;
+function renderApprovals(approvals, operatorTrust, authorizationReconciliation) {
+  const authorizationCount = authorizationReconciliation.required_count || 0;
+  const queueCount = approvals.actionable_count + authorizationCount;
+  elements.approvalCount.textContent = compact.format(queueCount);
+  elements.approvalBadge.textContent = integer.format(queueCount);
+  const approvalReconciliationCount = approvals.reconciliation_required_count || 0;
+  const reconciliationCount = approvalReconciliationCount + authorizationCount;
   const trustDetail = operatorTrust.state === "ready"
     ? operatorTrust.verification === "verified"
       ? `Signed trust g${operatorTrust.generation}`
@@ -198,10 +201,10 @@ function renderApprovals(approvals, operatorTrust) {
   elements.approvalDetail.textContent = `${approvalDetail} · ${trustDetail}`;
   elements.reconciliationBanner.hidden = reconciliationCount === 0;
   elements.reconciliationDetail.textContent = reconciliationCount
-    ? `${integer.format(reconciliationCount)} executing approval${reconciliationCount === 1 ? "" : "s"} must be reconciled from the operator CLI. Command Center remains visibility-only.`
+    ? `${integer.format(reconciliationCount)} uncertain execution${reconciliationCount === 1 ? "" : "s"} (${integer.format(approvalReconciliationCount)} approval, ${integer.format(authorizationCount)} approval-free) must be reconciled from the operator CLI. Command Center remains visibility-only.`
     : "";
   elements.approvalList.replaceChildren();
-  elements.approvalsEmpty.hidden = approvals.actionable.length > 0;
+  elements.approvalsEmpty.hidden = queueCount > 0;
 
   for (const approval of approvals.actionable) {
     const item = document.createElement("article");
@@ -254,6 +257,44 @@ function renderApprovals(approvals, operatorTrust) {
     expiry.append(expiryLabel, expiryValue);
 
     item.append(identity, status, request, expiry);
+    elements.approvalList.append(item);
+  }
+
+  for (const authorization of authorizationReconciliation.items || []) {
+    const item = document.createElement("article");
+    item.className = "approval-item is-reconciliation-required";
+
+    const identity = document.createElement("div");
+    const tool = document.createElement("strong");
+    tool.textContent = authorization.tool_name || "Unknown tool";
+    const id = document.createElement("p");
+    id.textContent = shortId(authorization.authority_record_id);
+    id.title = authorization.authority_record_id;
+    identity.append(tool, id);
+
+    const status = document.createElement("div");
+    const statusLabel = document.createElement("p");
+    statusLabel.className = "approval-item-label";
+    statusLabel.textContent = "Operator action";
+    status.append(statusLabel, statusChip("reconciliation_required"));
+
+    const request = document.createElement("div");
+    const requestLabel = document.createElement("p");
+    requestLabel.className = "approval-item-label";
+    requestLabel.textContent = "Request / action";
+    const requestValue = document.createElement("strong");
+    requestValue.textContent = `${shortId(authorization.request_id)} / ${shortId(authorization.action_id)}`;
+    request.append(requestLabel, requestValue);
+
+    const authorized = document.createElement("div");
+    const authorizedLabel = document.createElement("p");
+    authorizedLabel.className = "approval-item-label";
+    authorizedLabel.textContent = "Authorized";
+    const authorizedValue = document.createElement("strong");
+    authorizedValue.textContent = time(authorization.authorized_at, true);
+    authorized.append(authorizedLabel, authorizedValue);
+
+    item.append(identity, status, request, authorized);
     elements.approvalList.append(item);
   }
 }
@@ -310,7 +351,11 @@ function renderSnapshot(snapshot) {
   renderIntegrity(snapshot);
   renderStateIntegrity(snapshot.state_integrity);
   renderEvidence(snapshot.evidence);
-  renderApprovals(snapshot.approvals, snapshot.operator_trust);
+  renderApprovals(
+    snapshot.approvals,
+    snapshot.operator_trust,
+    snapshot.authorization_reconciliation,
+  );
   renderBudget(snapshot.budget);
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;
