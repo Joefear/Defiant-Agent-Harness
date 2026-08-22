@@ -22,6 +22,11 @@ from ..contracts import (
     utc_now,
 )
 from ..evidence.store import EvidenceError, EvidenceStore
+from ..evidence_head import (
+    EvidenceHeadStateStore,
+    assess_evidence_head,
+    evidence_head_authority,
+)
 from ..money import ZERO, MoneyLike, money
 from ..operation_journal import (
     ExecutionCompletionSubject,
@@ -1483,6 +1488,7 @@ def build_harness(
                 for spec in sorted(registry.specs(), key=lambda item: item.name)
             ],
             "workspace_integrity": workspace_integrity.authority_dict(),
+            "evidence_head": evidence_head_authority(),
             "dry_run": dry_run,
             "adapter": authority_context or {},
             "state_storage": state_storage.authority_dict(),
@@ -1502,6 +1508,7 @@ def build_harness(
             )
             trust_resolved = True
         profile_store = AuthorityProfileStore(state_root / "authority_profile.json")
+        profile_transition_activated = False
         if _operator_control:
             profile_state = profile_store.get()
             if profile_state is None:
@@ -1512,7 +1519,16 @@ def build_harness(
             profile_state.verify(operator_trust)
             audit_profile_hash = profile_state.profile_hash
         else:
-            profile_store.resolve_for_authority(policy.ruleset_hash, operator_trust)
+            _preflight_evidence_head(state_root)
+            prior_profile = profile_store.get()
+            resolved_profile = profile_store.resolve_for_authority(
+                policy.ruleset_hash,
+                operator_trust,
+            )
+            profile_transition_activated = (
+                prior_profile is not None
+                and prior_profile.profile_hash != resolved_profile.profile_hash
+            )
             audit_profile_hash = policy.ruleset_hash
             StateStorageStateStore(state_root / "state_storage.json").record(
                 policy.ruleset_hash, state_storage
@@ -1539,10 +1555,22 @@ def build_harness(
             operator_trust = trust_store.resolve_for_authority(
                 trusted_operator_keys or []
             )
+        evidence_head_store = EvidenceHeadStateStore(state_root / "evidence_head.json")
+        if _operator_control and evidence_head_store.get() is None:
+            raise EvidenceError(
+                "evidence head is not initialized; start the owning authority "
+                "runtime once before operator reconciliation"
+            )
+        evidence = EvidenceStore(
+            state_root / "evidence.jsonl",
+            head_store=evidence_head_store,
+            profile_hash=audit_profile_hash,
+            allow_head_profile_rebind=profile_transition_activated,
+        )
         harness = Harness(
             policy=policy,
             tools=registry,
-            evidence=EvidenceStore(state_root / "evidence.jsonl"),
+            evidence=evidence,
             approvals=ApprovalStore(
                 state_root / "approvals.json", operator_trust=operator_trust
             ),
@@ -1565,3 +1593,32 @@ def build_harness(
         harness.recover_operation()
         harness.reconcile_expired_approvals()
     return harness
+
+
+def _preflight_evidence_head(state_root: Path) -> None:
+    checkpoint = EvidenceHeadStateStore(state_root / "evidence_head.json").get()
+    if checkpoint is None:
+        return
+    evidence_path = state_root / "evidence.jsonl"
+    if evidence_path.exists():
+        evidence = EvidenceStore(evidence_path)
+        status = evidence.verify()
+        if not status.ok:
+            raise EvidenceError(
+                "refusing authority-profile activation with broken evidence chain: "
+                + status.detail
+            )
+        records = evidence.records()
+    else:
+        records = []
+    verification = assess_evidence_head(checkpoint, records)
+    if verification == "rollback":
+        raise EvidenceError(
+            "refusing authority-profile activation: evidence chain is behind its "
+            "durable checkpoint"
+        )
+    if verification == "diverged":
+        raise EvidenceError(
+            "refusing authority-profile activation: evidence chain diverges from "
+            "its durable checkpoint"
+        )

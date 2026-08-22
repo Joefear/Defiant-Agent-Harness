@@ -149,6 +149,12 @@ verification state to the authority metric. The server receives the configured
 root only to perform read-only inspection. It cannot create, accept, relink,
 move, repair, rotate, approve, or dispatch anything.
 
+v0.21 adds sanitized evidence-head mode, verification, and checkpointed record
+count to the authority metric. A behind checkpoint is shown as recovery
+required; rollback or divergence makes the snapshot non-authoritative. The
+dashboard cannot advance, reset, accept, repair, or delete a checkpoint and
+cannot append evidence.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

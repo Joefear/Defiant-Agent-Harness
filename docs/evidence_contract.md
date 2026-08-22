@@ -71,11 +71,15 @@ It proves that no record was altered in place, deleted from the middle, or
 reordered without detection. `verify()` reports the failing index. The writer
 refuses to append if the existing file is malformed or the chain is broken.
 
-It does not prevent truncation of the tail by someone with write access to the
-file. Off-box replication answers truncation, and belongs to Command. v0.8 can
-prove that the holder of an explicitly trusted Ed25519 key signed one exact
-point-in-time request export; it does not turn the mutable local file into
-immutable off-box storage.
+Beginning in v0.21, a separate profile-bound checkpoint detects when the local
+file is shorter than or diverges from its last durable count and head hash. A
+valid extension beyond the checkpoint is a recoverable append crash. This does
+not prevent a writer from replacing both evidence and checkpoint with an older
+matched pair. Off-box replication answers that stronger truncation threat and
+belongs to Command. v0.8 can prove that the holder of an explicitly trusted
+Ed25519 key signed one exact point-in-time request export; it does not turn the
+mutable local files into immutable off-box storage. See
+`evidence_head_integrity.md`.
 
 ## Export and attestation contract
 
