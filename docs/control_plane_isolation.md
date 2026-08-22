@@ -74,3 +74,8 @@ privileged attacker able to patch the running harness remains outside this
 boundary.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.20 additionally protects the workspace boundary itself from root replacement;
+see `workspace_root_integrity.md`. The two controls are complementary: this
+document governs targets relative to the root, while v0.20 verifies that the
+root is still the enrolled directory.

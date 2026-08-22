@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.13.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.14.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -33,6 +33,8 @@ contains:
 - sanitized control-plane isolation mode, contract/workspace hashes,
   protected-root count, overlap relationship, profile binding, and last
   verification time, without canonical paths or exception controls;
+- sanitized workspace-root mode, root hash, profile binding, and live or
+  profile-only verification state, without canonical path or filesystem ids;
 - sanitized launch-envelope mode, environment and working-directory hashes,
   variable, secret, and explicitly acknowledged unsafe counts, last
   verification time, and profile binding, without environment names or values;

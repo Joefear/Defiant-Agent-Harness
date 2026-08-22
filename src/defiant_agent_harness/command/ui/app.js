@@ -334,6 +334,7 @@ function renderAuthorityProfile(
   launchEnvelope,
   stateStorage,
   controlPlaneIsolation,
+  workspaceIntegrity,
 ) {
   if (!profile || profile.state === "not_enrolled") {
     elements.profileGeneration.textContent = "—";
@@ -359,7 +360,10 @@ function renderAuthorityProfile(
   const isolationDetail = controlPlaneIsolation
     ? `${label(controlPlaneIsolation.state)} · ${integer.format(controlPlaneIsolation.protected_root_count || 0)} roots · ${label(controlPlaneIsolation.relationship)}`
     : "Not recorded";
-  elements.profileDetail.textContent = `${profileDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
+  const workspaceDetail = workspaceIntegrity
+    ? `${label(workspaceIntegrity.state)} · ${label(workspaceIntegrity.verification)} · ${shortId(workspaceIntegrity.root_hash)}`
+    : "Not recorded";
+  elements.profileDetail.textContent = `${profileDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }
 
 function renderActivity(activity) {
@@ -406,6 +410,7 @@ function renderSnapshot(snapshot) {
     snapshot.launch_envelope,
     snapshot.state_storage,
     snapshot.control_plane_isolation,
+    snapshot.workspace_integrity,
   );
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;

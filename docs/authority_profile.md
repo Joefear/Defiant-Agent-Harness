@@ -109,3 +109,9 @@ contract hash. The first v0.19 start against v0.18 state therefore requires an
 explicit profile transition. Derive the candidate against the real workspace
 and state root, then follow the existing staged rotation procedure. See
 `control_plane_isolation.md`.
+
+v0.20 additionally binds the workspace root's canonical path and filesystem
+identity through a sanitized mode and root hash. The first v0.20 start against
+v0.19 state requires an explicit profile transition derived against the real
+workspace root. A copied, replaced, relocated, symlinked, or reparse-point root
+is not accepted automatically. See `workspace_root_integrity.md`.

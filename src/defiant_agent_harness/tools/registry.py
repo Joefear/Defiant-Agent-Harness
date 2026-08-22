@@ -31,6 +31,11 @@ from ..contracts import (
     sha256_of,
 )
 from ..money import ZERO, money
+from ..workspace_integrity import (
+    WorkspaceIntegrityError,
+    WorkspaceRootAssurance,
+    require_workspace_root_unchanged,
+)
 
 
 class ToolContractError(RuntimeError):
@@ -100,7 +105,10 @@ class ToolRegistry:
     ):
         self._tools: dict[str, tuple[ToolSpec, Callable[..., ToolResult]]] = {}
         self.dry_run = dry_run
-        self.workspace_root = Path(workspace_root).resolve(strict=False)
+        # Preserve the configured final path component until authority startup
+        # has rejected symlink/reparse indirection. Binding canonicalizes it.
+        self.workspace_root = Path(workspace_root).absolute()
+        self._workspace_assurance: WorkspaceRootAssurance | None = None
         self._protected_roots: tuple[Path, ...] = ()
         self._grant_key = secrets.token_bytes(32)
 
@@ -139,6 +147,21 @@ class ToolRegistry:
             )
         self._protected_roots = resolved
 
+    def _bind_workspace_root(self, assurance: WorkspaceRootAssurance) -> None:
+        if assurance.root != self.workspace_root.resolve(strict=True):
+            raise ToolContractError(
+                "workspace assurance does not match the tool registry root"
+            )
+        if (
+            self._workspace_assurance is not None
+            and self._workspace_assurance != assurance
+        ):
+            raise ToolContractError(
+                "tool registry is already bound to a different workspace root"
+            )
+        self._workspace_assurance = assurance
+        self.workspace_root = assurance.root
+
     # -- authoritative contract --------------------------------------
 
     def validate_action(self, action: ProposedAction) -> None:
@@ -153,9 +176,11 @@ class ToolRegistry:
                 f"'{spec.side_effect_level.value}'"
             )
         if spec.target_scope == "workspace":
+            self._require_workspace_unchanged()
             target = resolve_workspace_target(action.target, self.workspace_root)
             self._require_unprotected(target)
         elif spec.target_scope == "workspace_path":
+            self._require_workspace_unchanged()
             target = resolve_workspace_target(
                 action.target,
                 self.workspace_root,
@@ -173,6 +198,14 @@ class ToolRegistry:
                 raise ToolContractError(
                     "workspace target overlaps a protected control-plane path"
                 )
+
+    def _require_workspace_unchanged(self) -> None:
+        if self._workspace_assurance is None:
+            return
+        try:
+            require_workspace_root_unchanged(self._workspace_assurance)
+        except WorkspaceIntegrityError as exc:
+            raise ToolContractError(str(exc)) from exc
 
     # -- signed authority --------------------------------------------
 

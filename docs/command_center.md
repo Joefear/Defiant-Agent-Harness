@@ -10,7 +10,7 @@ It is deliberately an observation surface, not an authority surface.
 ## Run it
 
 ```bash
-dah --workdir .dah command-center
+dah --workdir .dah --workspace-root workspace command-center
 ```
 
 The command prints the exact local URL, which defaults to
@@ -143,6 +143,11 @@ and workspace/state relationship to the same authority metric. The snapshot
 contains bounded contract and workspace hashes but no paths. Command Center
 cannot exempt a path, change a tool scope, move state, authorize a profile
 transition, or dispatch a tool.
+
+v0.20 adds sanitized workspace-root mode, shortened root hash, and live
+verification state to the authority metric. The server receives the configured
+root only to perform read-only inspection. It cannot create, accept, relink,
+move, repair, rotate, approve, or dispatch anything.
 
 ## Security scope
 

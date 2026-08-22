@@ -86,8 +86,14 @@ from .control_plane_isolation import (
     ControlPlaneIsolationState,
     ControlPlaneIsolationStateStore,
 )
+from .workspace_integrity import (
+    WorkspaceIntegrityError,
+    WorkspaceIntegrityState,
+    WorkspaceIntegrityStateStore,
+    WorkspaceRootAssurance,
+)
 
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -139,6 +145,10 @@ __all__ = [
     "StateStorageState",
     "StateStorageStateStore",
     "Trust",
+    "WorkspaceIntegrityError",
+    "WorkspaceIntegrityState",
+    "WorkspaceIntegrityStateStore",
+    "WorkspaceRootAssurance",
     "build_harness",
     "sign_authorization_reconciliation",
     "sign_authority_profile_transition",

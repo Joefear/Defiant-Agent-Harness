@@ -217,6 +217,25 @@ sandbox an upstream process that ignores its declared argument or accesses a
 broader host mount. Least-privilege filesystem mounts and OS containment remain
 deployment controls.
 
+### 15. Workspace-root replacement after authorization
+
+An attacker or broken deployment renames the governed workspace and creates a
+different directory at the same path after policy authorization. Path
+containment alone would then dispatch an otherwise valid grant into a new
+filesystem object.
+
+v0.20 binds the real root's canonical path and device/file identity into the
+authority profile and `workspace_integrity.json`. The harness checks it before
+new authority work, and the registry checks again immediately before each
+workspace-scoped handler or MCP dispatch. Missing, replaced, symlinked,
+reparse-point, or non-directory roots fail closed before the grant is spent.
+Content beneath the root remains mutable by design.
+
+This does not stop a privileged host from patching the harness, replacing code
+and state together, manipulating storage after the final check, or giving an
+upstream a broader mount. OS containment and off-box witnessing remain separate
+deployment controls.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

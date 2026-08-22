@@ -18,6 +18,8 @@ store contents, then checks `state_storage.json` against both the current root
 identity and active authority profile.
 v0.19 validates `control_plane_isolation.json`, its strict sanitized contract,
 and its binding to the active authority profile.
+v0.20 validates `workspace_integrity.json`, its profile binding, and, when the
+caller supplies the configured workspace root, its current filesystem identity.
 
 Run it without initializing or modifying the state directory:
 
@@ -32,7 +34,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.10.0` and exits
+The command emits schema `defiant.state_integrity` version `0.11.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -73,6 +75,8 @@ The auditor verifies:
   active authority-profile hash;
 - sanitized launch-envelope structure, bounded counts and hashes, and exact
   binding to the active authority-profile hash;
+- sanitized workspace-root structure, active-profile binding, and live root
+  identity when the configured root is supplied;
 - canonical state-root structure and identity, regular single-link state files,
   private POSIX ownership/modes, orphan atomic temporaries, and exact storage
   observation binding to the active authority-profile hash;
@@ -110,6 +114,11 @@ reconciliation, or operator execution reconciliation. A critical issue raises
 tampered, conflicting, or locked journal state cannot be recovered and remains
 critical. Diagnostic commands do not construct a harness and remain usable
 without completing or repairing the journal.
+
+A missing or replaced configured workspace root is critical. Read-only callers
+without a workspace argument report the durable observation as `profile_bound`;
+they do not create a directory or claim a live check. Use `--workspace-root`
+with Doctor and Command surfaces when live verification is required.
 
 The audit is a local point-in-time consistency check, not a database
 transaction, repair engine, or OS sandbox. A durable trust chain without

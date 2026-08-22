@@ -12,6 +12,7 @@ venv/
 .DS_Store
 /work/
 /outputs/
+/workspace/
 .coverage
 htmlcov/
 .mypy_cache/
