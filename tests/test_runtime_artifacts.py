@@ -569,6 +569,7 @@ def test_v1_artifact_state_remains_readable_and_upgrades_on_write(tmp_path):
         ),
         encoding="utf-8",
     )
+    path.chmod(0o600)
     store = RuntimeArtifactStateStore(path)
 
     previous = store.get()
