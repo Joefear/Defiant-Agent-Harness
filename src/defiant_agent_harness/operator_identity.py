@@ -903,7 +903,9 @@ def _validate_authority_profile_transition(attestation: dict[str, Any]) -> None:
     if attestation.get("schema_version") != AUTHORITY_PROFILE_TRANSITION_VERSION:
         raise OperatorIdentityError("unsupported authority profile transition version")
     if attestation.get("algorithm") != ALGORITHM:
-        raise OperatorIdentityError("unsupported authority profile transition algorithm")
+        raise OperatorIdentityError(
+            "unsupported authority profile transition algorithm"
+        )
     if attestation.get("purpose") != AUTHORITY_PROFILE_TRANSITION_PURPOSE:
         raise OperatorIdentityError("unsupported authority profile transition purpose")
     for field in (

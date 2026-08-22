@@ -1467,9 +1467,7 @@ def build_harness(
     )
     with authority_lock.acquire():
         trust_store = OperatorTrustStateStore(state_root / "operator_trust.json")
-        operator_trust = trust_store.preview_for_authority(
-            trusted_operator_keys or []
-        )
+        operator_trust = trust_store.preview_for_authority(trusted_operator_keys or [])
         trust_resolved = False
         if trust_store.get() is None and operator_trust is not None:
             # Enroll signed-required mode before the first profile write. A crash

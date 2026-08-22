@@ -90,9 +90,7 @@ class AuthorityProfileState:
             raise AuthorityProfileError(
                 "authority profile updated_at precedes enrollment"
             )
-        initial_hash = _hash(
-            raw.get("initial_profile_hash"), "initial_profile_hash"
-        )
+        initial_hash = _hash(raw.get("initial_profile_hash"), "initial_profile_hash")
         current_hash = _hash(raw.get("profile_hash"), "profile_hash")
         transitions = raw.get("transitions")
         if not isinstance(transitions, list):
@@ -116,9 +114,7 @@ class AuthorityProfileState:
                 raise AuthorityProfileError(
                     f"authority profile transition {index} is not contiguous"
                 )
-            if not hmac.compare_digest(
-                transition["from_profile_hash"], previous_hash
-            ):
+            if not hmac.compare_digest(transition["from_profile_hash"], previous_hash):
                 raise AuthorityProfileError(
                     f"authority profile transition {index} does not bind its predecessor"
                 )
@@ -152,9 +148,7 @@ class AuthorityProfileState:
             if (
                 pending["from_generation"] != generation
                 or pending["to_generation"] != generation + 1
-                or not hmac.compare_digest(
-                    pending["from_profile_hash"], current_hash
-                )
+                or not hmac.compare_digest(pending["from_profile_hash"], current_hash)
             ):
                 raise AuthorityProfileError(
                     "pending authority profile rotation does not bind current generation"
@@ -224,9 +218,7 @@ class AuthorityProfileState:
 
     def projection(self, *, verification: str) -> dict[str, Any]:
         pending = self.pending_rotation
-        signed = sum(
-            1 for item in self.transitions if item["attestation"] is not None
-        )
+        signed = sum(1 for item in self.transitions if item["attestation"] is not None)
         unsigned = len(self.transitions) - signed
         return {
             "state": "rotation_required" if pending else "ready",
@@ -459,7 +451,10 @@ def _transition(value: Any, field: str) -> dict[str, Any]:
             "note": note,
             "signed_at": requested_at,
         }
-        if any(attestation.get(key) != expected_value for key, expected_value in expected.items()):
+        if any(
+            attestation.get(key) != expected_value
+            for key, expected_value in expected.items()
+        ):
             raise AuthorityProfileError(f"{field} attestation does not bind its fields")
     return {
         "from_generation": from_generation,

@@ -532,9 +532,7 @@ def cmd_authority_profile_rotate(args) -> int:
             trust_store = OperatorTrustStateStore(
                 Path(args.workdir) / "operator_trust.json"
             )
-            trust = trust_store.preview_for_authority(
-                args.trusted_operator_key or []
-            )
+            trust = trust_store.preview_for_authority(args.trusted_operator_key or [])
             profile_store = AuthorityProfileStore(
                 Path(args.workdir) / "authority_profile.json"
             )
@@ -591,7 +589,9 @@ def cmd_authority_profile_rotate(args) -> int:
         print(f"authority profile already active at generation {updated.generation}")
         print(f"profile {updated.profile_hash}")
     else:
-        print(f"authority profile rotation staged for generation {pending['to_generation']}")
+        print(
+            f"authority profile rotation staged for generation {pending['to_generation']}"
+        )
         print(f"profile {pending['to_profile_hash']}")
         print("activation occurs only when that exact runtime profile starts")
     return 0

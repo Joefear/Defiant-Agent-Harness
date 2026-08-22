@@ -164,9 +164,7 @@ def test_signed_rotation_is_bound_to_old_generation_identity_and_note(tmp_path):
     assert staged.pending_rotation["attestation"]["note"] == "approved rollout"
     activated = store.resolve_for_authority(_hash("two"), trust)
     assert activated.generation == 2
-    assert activated.projection(verification="verified")[
-        "signed_transition_count"
-    ] == 1
+    assert activated.projection(verification="verified")["signed_transition_count"] == 1
 
 
 def test_enrolled_signed_mode_cannot_be_downgraded_by_direct_unsigned_rotation(
@@ -349,8 +347,7 @@ def test_invalid_profile_state_and_lock_are_critical_read_only_findings(tmp_path
     )
     locked = StateIntegrityAuditor(state).audit()
     assert any(
-        issue.code == "state_lock_present"
-        and issue.store == "authority_profile.json"
+        issue.code == "state_lock_present" and issue.store == "authority_profile.json"
         for issue in locked.issues
     )
 
