@@ -294,7 +294,7 @@ def build_proxy(
         workdir=state,
         user_id="sam",
         workspace_id="http-test",
-        workspace_root=state / "workspace",
+        workspace_root=state.parent / "workspace",
     )
     return proxy, session
 

@@ -102,3 +102,10 @@ v0.18 additionally binds the canonical state-root device/file identity and
 security posture into the profile. A copied, relocated, or replaced root needs
 an explicit profile transition. See `state_storage_integrity.md` for the
 filesystem contract and upgrade procedure.
+
+v0.19 additionally binds the protected control-plane path contract: sanitized
+workspace hash, protected-root count, workspace/state relationship, and
+contract hash. The first v0.19 start against v0.18 state therefore requires an
+explicit profile transition. Derive the candidate against the real workspace
+and state root, then follow the existing staged rotation procedure. See
+`control_plane_isolation.md`.

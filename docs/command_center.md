@@ -138,6 +138,12 @@ and last verification time. It never exposes the canonical state path, device,
 inode/file identifier, file contents, or ACL entries. Command Center has no
 chmod, relink, move, delete, restore, acceptance, or repair endpoint.
 
+v0.19 adds the sanitized control-plane isolation mode, protected-root count,
+and workspace/state relationship to the same authority metric. The snapshot
+contains bounded contract and workspace hashes but no paths. Command Center
+cannot exempt a path, change a tool scope, move state, authorize a profile
+transition, or dispatch a tool.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote
