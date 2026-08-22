@@ -22,6 +22,15 @@ from .evidence_head import (
     EvidenceHeadStateStore,
     assess_evidence_head,
 )
+from .evidence_witness import (
+    EvidenceWitnessError,
+    EvidenceWitnessPolicy,
+    EvidenceWitnessPolicyStore,
+    WITNESS_NOT_CONFIGURED,
+    assess_witness,
+    load_witness,
+    validate_external_witness_paths,
+)
 from .money import ZERO, money, money_text
 from .operator_identity import (
     AuthorizationReconciliationSubject,
@@ -47,7 +56,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.12.0"
+AUDIT_VERSION = "0.13.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
@@ -57,6 +66,7 @@ _STATE_FILENAMES = (
     "control_plane_isolation.json",
     "evidence.jsonl",
     "evidence_head.json",
+    "evidence_witness_policy.json",
     "hook_executions.json",
     "launch_envelope.json",
     "operation_journal.json",
@@ -163,12 +173,27 @@ class StateIntegrityAuditor:
         operator_trust: OperatorTrustPolicy | None = None,
         authority_profile_hash: str | None = None,
         workspace_root: str | Path | None = None,
+        evidence_head_witness: str | Path | None = None,
+        trusted_evidence_witness_keys: list[str] | None = None,
     ):
         self.workdir = Path(workdir)
         self.operator_trust = operator_trust
         self.authority_profile_hash = authority_profile_hash
         self.workspace_root = (
             Path(workspace_root) if workspace_root is not None else None
+        )
+        self.evidence_head_witness = (
+            Path(evidence_head_witness) if evidence_head_witness is not None else None
+        )
+        self.trusted_evidence_witness_keys = trusted_evidence_witness_keys or []
+        if bool(self.evidence_head_witness) != bool(self.trusted_evidence_witness_keys):
+            raise EvidenceWitnessError(
+                "external witness and trusted witness keys are required together"
+            )
+        validate_external_witness_paths(
+            self.workdir,
+            self.evidence_head_witness,
+            self.trusted_evidence_witness_keys,
         )
 
     def require_safe(self) -> StateIntegrityReport:
@@ -201,6 +226,11 @@ class StateIntegrityAuditor:
             evidence,
             evidence_trusted=evidence_trusted,
         )
+        witnessed_evidence_count = self._audit_evidence_witness(
+            report,
+            evidence,
+            evidence_trusted=evidence_trusted,
+        )
         approvals = self._load_approvals(report, journal_operation)
         self._audit_legacy_signed_migration(report, approvals)
         budget = self._load_budget(report)
@@ -208,6 +238,7 @@ class StateIntegrityAuditor:
         report.counts = {
             "evidence_records": len(evidence),
             "checkpointed_evidence_records": checkpointed_evidence_count,
+            "witnessed_evidence_records": witnessed_evidence_count,
             "approvals": len(approvals),
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
@@ -348,6 +379,7 @@ class StateIntegrityAuditor:
         for filename in (
             "evidence.jsonl",
             "evidence_head.json",
+            "evidence_witness_policy.json",
             "approvals.json",
             "budget.json",
             "control_plane_isolation.json",
@@ -1127,6 +1159,175 @@ class StateIntegrityAuditor:
                 "evidence_head_invalid",
                 "critical",
                 "evidence_head.json",
+                str(exc),
+            )
+            return 0
+
+    def _audit_evidence_witness(
+        self,
+        report: StateIntegrityReport,
+        evidence: list[dict[str, Any]],
+        *,
+        evidence_trusted: bool,
+    ) -> int:
+        store = EvidenceWitnessPolicyStore(
+            self.workdir / "evidence_witness_policy.json"
+        )
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["evidence_witness"] = {
+                    "state": "not_configured",
+                    "verification": "not_required",
+                    "profile_hash": None,
+                    "trusted_key_count": 0,
+                    "witnessed_record_count": 0,
+                    "witnessed_head_hash": None,
+                    "witnessed_profile_generation": 0,
+                    "witnessed_profile_hash": None,
+                    "key_id": None,
+                    "signer": None,
+                    "signed_at": None,
+                }
+                if self.evidence_head_witness is not None:
+                    self._issue(
+                        report,
+                        "evidence_witness_policy_not_enrolled",
+                        "critical",
+                        "evidence_witness_policy.json",
+                        "external witness input was supplied but no witness policy "
+                        "is enrolled",
+                    )
+                else:
+                    try:
+                        enrolled_profile = AuthorityProfileStore(
+                            self.workdir / "authority_profile.json"
+                        ).get()
+                    except RuntimeError:
+                        enrolled_profile = None
+                    if enrolled_profile is not None:
+                        self._issue(
+                            report,
+                            "evidence_witness_policy_observation_missing",
+                            "warning",
+                            "evidence_witness_policy.json",
+                            "evidence witness policy posture has not been recorded for "
+                            "this authority profile",
+                        )
+                return 0
+
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is None or profile.profile_hash != state.profile_hash:
+                report.stores["evidence_witness"] = state.projection(
+                    verification="profile_mismatch"
+                )
+                self._issue(
+                    report,
+                    "evidence_witness_profile_mismatch",
+                    "critical",
+                    "evidence_witness_policy.json",
+                    "evidence witness policy is not bound to the active authority "
+                    "profile",
+                )
+                return 0
+            if state.mode == WITNESS_NOT_CONFIGURED:
+                report.stores["evidence_witness"] = state.projection(
+                    verification="not_required"
+                )
+                if self.evidence_head_witness is not None:
+                    self._issue(
+                        report,
+                        "evidence_witness_policy_not_enrolled",
+                        "critical",
+                        "evidence_witness_policy.json",
+                        "external witness input was supplied but the active profile "
+                        "does not require it",
+                    )
+                return 0
+            if self.evidence_head_witness is None:
+                report.stores["evidence_witness"] = state.projection(
+                    verification="external_input_required"
+                )
+                self._issue(
+                    report,
+                    "external_evidence_witness_required",
+                    "critical",
+                    "evidence_witness_policy.json",
+                    "the enrolled authority profile requires its external evidence-"
+                    "head witness and trusted keys",
+                )
+                return 0
+
+            policy = EvidenceWitnessPolicy.from_paths(
+                self.trusted_evidence_witness_keys
+            )
+            if policy.trusted_key_ids != state.trusted_key_ids:
+                report.stores["evidence_witness"] = state.projection(
+                    verification="trust_mismatch"
+                )
+                self._issue(
+                    report,
+                    "evidence_witness_trust_mismatch",
+                    "critical",
+                    "evidence_witness_policy.json",
+                    "supplied witness keys do not match the enrolled authority policy",
+                )
+                return 0
+            storage = StateStorageStateStore(self.workdir / "state_storage.json").get()
+            if storage is None:
+                raise EvidenceWitnessError(
+                    "state storage observation is required for witness verification"
+                )
+            if not evidence_trusted:
+                raise EvidenceWitnessError(
+                    "evidence chain must be trusted before witness verification"
+                )
+            assessment = assess_witness(
+                load_witness(self.evidence_head_witness),
+                policy,
+                deployment_root_hash=storage.root_hash,
+                profile=profile,
+                records=evidence,
+            )
+            report.stores["evidence_witness"] = state.projection(
+                verification=assessment.verification,
+                assessment=assessment if assessment.ok else None,
+            )
+            if not assessment.ok:
+                self._issue(
+                    report,
+                    "evidence_witness_invalid",
+                    "critical",
+                    "external evidence witness",
+                    assessment.detail,
+                )
+                return 0
+            return assessment.record_count
+        except (EvidenceWitnessError, StateStorageError, RuntimeError) as exc:
+            report.stores["evidence_witness"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "trusted_key_count": 0,
+                "witnessed_record_count": 0,
+                "witnessed_head_hash": None,
+                "witnessed_profile_generation": 0,
+                "witnessed_profile_hash": None,
+                "key_id": None,
+                "signer": None,
+                "signed_at": None,
+            }
+            self._issue(
+                report,
+                "evidence_witness_invalid",
+                "critical",
+                "evidence_witness_policy.json",
                 str(exc),
             )
             return 0

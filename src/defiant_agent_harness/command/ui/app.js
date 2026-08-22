@@ -336,6 +336,7 @@ function renderAuthorityProfile(
   controlPlaneIsolation,
   workspaceIntegrity,
   evidenceHead,
+  evidenceWitness,
 ) {
   if (!profile || profile.state === "not_enrolled") {
     elements.profileGeneration.textContent = "—";
@@ -367,7 +368,10 @@ function renderAuthorityProfile(
   const evidenceHeadDetail = evidenceHead
     ? `${label(evidenceHead.state)} · ${label(evidenceHead.verification)} · ${integer.format(evidenceHead.record_count || 0)} records`
     : "Not recorded";
-  elements.profileDetail.textContent = `${profileDetail} · Evidence head ${evidenceHeadDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
+  const evidenceWitnessDetail = evidenceWitness
+    ? `${label(evidenceWitness.state)} · ${label(evidenceWitness.verification)} · ${integer.format(evidenceWitness.witnessed_record_count || 0)} records`
+    : "Not configured";
+  elements.profileDetail.textContent = `${profileDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }
 
 function renderActivity(activity) {
@@ -416,6 +420,7 @@ function renderSnapshot(snapshot) {
     snapshot.control_plane_isolation,
     snapshot.workspace_integrity,
     snapshot.evidence_head,
+    snapshot.evidence_witness,
   );
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;

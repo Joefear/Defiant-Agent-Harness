@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.15.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.16.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -37,6 +37,9 @@ contains:
   profile-only verification state, without canonical path or filesystem ids;
 - sanitized evidence-head checkpoint mode, record count, head/profile hashes,
   verification state, and checkpoint time without evidence bodies or paths;
+- sanitized external-witness mode, verification, witnessed count/head and
+  profile generation, key id, signer, and signing time without paths,
+  signatures, or operator notes;
 - sanitized launch-envelope mode, environment and working-directory hashes,
   variable, secret, and explicitly acknowledged unsafe counts, last
   verification time, and profile binding, without environment names or values;
@@ -87,6 +90,12 @@ pins cannot create authority. If signed mode is enrolled but pins are omitted
 or mismatched, the snapshot remains available but is non-authoritative and
 reports the trust failure. Command Core never enrolls or rotates trust. Use the
 offline `dah verify-export` workflow documented in `evidence_signing.md`.
+
+When external head witnessing is enrolled, Command Core must receive global
+`--evidence-head-witness` and repeatable `--trusted-evidence-key` inputs. It
+verifies them without mutation. Missing, mismatched, rolled-back, or divergent
+input makes the snapshot non-authoritative while preserving the sanitized
+diagnostic. See `evidence_head_witness.md`.
 
 ## Boundary
 

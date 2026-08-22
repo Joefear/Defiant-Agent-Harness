@@ -100,6 +100,13 @@ Signing refuses a broken chain, empty request, cross-request record, malformed
 hash or timestamp, inconsistent count, unsupported schema, or non-canonical
 JSON value. See `evidence_signing.md` for the operator and rotation procedures.
 
+v0.22's separate signed head witness covers the complete chain position rather
+than one request export. It binds the deployment root and an authority-profile
+generation so the newest independently retained document can detect restoring
+`evidence.jsonl` together with its local checkpoint. It does not add fields to
+evidence records or make Command Center an import/signing authority. See
+`evidence_head_witness.md`.
+
 ## Data handling
 
 Evidence records carry hashes of payload and output bodies rather than the

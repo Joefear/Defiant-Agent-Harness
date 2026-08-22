@@ -97,8 +97,15 @@ from .evidence_head import (
     EvidenceHeadState,
     EvidenceHeadStateStore,
 )
+from .evidence_witness import (
+    EvidenceWitnessAssessment,
+    EvidenceWitnessError,
+    EvidenceWitnessPolicy,
+    EvidenceWitnessPolicyState,
+    EvidenceWitnessPolicyStore,
+)
 
-__version__ = "0.21.0"
+__version__ = "0.22.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -119,6 +126,11 @@ __all__ = [
     "EvidenceHeadError",
     "EvidenceHeadState",
     "EvidenceHeadStateStore",
+    "EvidenceWitnessAssessment",
+    "EvidenceWitnessError",
+    "EvidenceWitnessPolicy",
+    "EvidenceWitnessPolicyState",
+    "EvidenceWitnessPolicyStore",
     "ExecutionCompletionSubject",
     "GrantError",
     "GuardrailDecision",

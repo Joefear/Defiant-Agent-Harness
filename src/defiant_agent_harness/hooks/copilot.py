@@ -277,6 +277,8 @@ class CopilotHookGate:
         policy_pack: str = "copilot_hook",
         server_name: str = "vscode-agent-hook",
         trusted_operator_keys: list[str] | None = None,
+        evidence_head_witness: str | Path | None = None,
+        trusted_evidence_witness_keys: list[str] | None = None,
     ):
         self.workspace_root = Path(workspace_root).resolve(strict=False)
         self.state_root = Path(state_root)
@@ -316,6 +318,8 @@ class CopilotHookGate:
                 "hook_execution_owner": self.execution_owner,
             },
             trusted_operator_keys=trusted_operator_keys,
+            evidence_head_witness=evidence_head_witness,
+            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
         )
         self.executions = HookExecutionStore(self.state_root / "hook_executions.json")
 
@@ -781,11 +785,15 @@ def run_hook(
     workspace_root: str | Path,
     state_root: str | Path,
     trusted_operator_keys: list[str] | None = None,
+    evidence_head_witness: str | Path | None = None,
+    trusted_evidence_witness_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     gate = CopilotHookGate(
         workspace_root,
         state_root,
         trusted_operator_keys=trusted_operator_keys,
+        evidence_head_witness=evidence_head_witness,
+        trusted_evidence_witness_keys=trusted_evidence_witness_keys,
     )
     if phase == "pre":
         return gate.pre_tool_use(event)
@@ -801,12 +809,15 @@ def main(argv: list[str] | None = None) -> int:
         event = json.load(sys.stdin, parse_constant=_reject_constant)
         workspace_root = Path.cwd()
         state_root = Path(os.environ.get("DAH_HOOK_WORKDIR", ".dah-hooks"))
+        witness_path, witness_keys = _evidence_witness_from_env()
         response = run_hook(
             phase,
             event,
             workspace_root=workspace_root,
             state_root=state_root,
             trusted_operator_keys=_trusted_operator_keys_from_env(),
+            evidence_head_witness=witness_path,
+            trusted_evidence_witness_keys=witness_keys,
         )
     except Exception as exc:
         reason = f"Defiant hook failed closed: {type(exc).__name__}: {exc}"
@@ -837,6 +848,31 @@ def _trusted_operator_keys_from_env() -> list[str]:
             "DAH_TRUSTED_OPERATOR_KEYS must contain non-empty key specifications"
         )
     return value
+
+
+def _evidence_witness_from_env() -> tuple[str | None, list[str]]:
+    witness = os.environ.get("DAH_EVIDENCE_HEAD_WITNESS", "").strip()
+    raw_keys = os.environ.get("DAH_TRUSTED_EVIDENCE_KEYS", "")
+    if bool(witness) != bool(raw_keys):
+        raise ValueError(
+            "DAH_EVIDENCE_HEAD_WITNESS and DAH_TRUSTED_EVIDENCE_KEYS are "
+            "required together"
+        )
+    if not raw_keys:
+        return None, []
+    try:
+        keys = json.loads(raw_keys)
+    except json.JSONDecodeError as exc:
+        raise ValueError("DAH_TRUSTED_EVIDENCE_KEYS must be a JSON array") from exc
+    if not isinstance(keys, list) or any(
+        not isinstance(item, str) or not item.strip() for item in keys
+    ):
+        raise ValueError(
+            "DAH_TRUSTED_EVIDENCE_KEYS must contain non-empty path strings"
+        )
+    if not keys:
+        raise ValueError("DAH_TRUSTED_EVIDENCE_KEYS must contain at least one key")
+    return witness, keys
 
 
 if __name__ == "__main__":

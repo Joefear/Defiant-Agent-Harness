@@ -37,6 +37,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   invalid status without trust-transition signatures or notes;
 - durable authority-profile generation, active/pending hash, verification, and
   rotation-required status without operator identity, note, or signature;
+- signed external evidence-head witness posture, witnessed count, and sanitized
+  signer/key/time assurance without paths, signature, or note;
 - a prominent reconciliation-required alert for approvals stranded in
   `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;
@@ -154,6 +156,13 @@ count to the authority metric. A behind checkpoint is shown as recovery
 required; rollback or divergence makes the snapshot non-authoritative. The
 dashboard cannot advance, reset, accept, repair, or delete a checkpoint and
 cannot append evidence.
+
+v0.22 adds sanitized external witness mode, verification, and witnessed record
+count to the same metric. The server may receive an external witness and public
+trust keys only as read-only startup inputs. It cannot create, upload, copy,
+rotate, replace, accept, or repair them, and never receives a private key or
+passphrase. Missing or invalid required input makes the snapshot
+non-authoritative.
 
 ## Security scope
 

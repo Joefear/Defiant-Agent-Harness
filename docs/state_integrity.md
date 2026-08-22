@@ -22,6 +22,9 @@ v0.20 validates `workspace_integrity.json`, its profile binding, and, when the
 caller supplies the configured workspace root, its current filesystem identity.
 v0.21 validates `evidence_head.json`, its active-profile binding, and the exact
 retained evidence prefix represented by its record count and head hash.
+v0.22 validates the local `evidence_witness_policy.json` posture and, when
+required, a caller-supplied external signed witness and trust keys against the
+state-root identity, authority-profile history, and live evidence chain.
 
 Run it without initializing or modifying the state directory:
 
@@ -36,7 +39,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.12.0` and exits
+The command emits schema `defiant.state_integrity` version `0.13.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -65,6 +68,8 @@ The auditor verifies:
 - the complete evidence hash chain, record schema, and record-id uniqueness;
 - the profile-bound evidence checkpoint, distinguishing a provable forward
   append crash from critical tail rollback or chain divergence;
+- the profile-bound external-witness policy and, in required mode, its exact
+  trusted key set, signature, deployment/profile bindings, and witnessed prefix;
 - approval structure, ids, active-action uniqueness, operator identity for
   approved states, and durable action/request bindings;
 - when trust pins are configured, signed operator purpose, outcome, identity,
@@ -128,6 +133,12 @@ A valid chain extending its checkpoint is `recovery_required`; the next owning
 authority startup advances the checkpoint without replaying a tool. A chain
 behind or divergent from the checkpoint is `unsafe` and is never repaired.
 Read-only diagnostics do not create, advance, or rebind the checkpoint.
+
+An enrolled external witness policy without its caller-supplied witness and
+trust keys is `unsafe`. An exact or forward-extending trusted witness is safe; a
+shorter or divergent chain is critical. A missing local policy observation on
+an existing profile is a migration warning, and only owning authority startup
+may record it. Diagnostics never copy or mutate external witness material.
 
 The audit is a local point-in-time consistency check, not a database
 transaction, repair engine, or OS sandbox. A durable trust chain without

@@ -255,16 +255,30 @@ older matched pair, or a privileged host able to replace code and complete
 state, can evade the local comparison. Off-box signed exports or head
 observations remain required for that threat.
 
+### 17. Matched evidence/checkpoint rollback with an external witness
+
+v0.22 can require an Ed25519-signed count and head retained outside `.dah`.
+Required mode and trusted key ids are authority-profile inputs. Before profile
+activation, Defiant verifies the signature, state-root identity, exact enrolled
+profile generation, and witnessed prefix. Restoring an older internally matched
+evidence/checkpoint pair is therefore rejected when the newer external witness
+is supplied.
+
+The witness is only as current and independent as deployment operations make
+it. Supplying a stale valid witness leaves later records outside its rollback
+floor. Replacing code, external configuration, trusted keys, and witness storage
+remains a privileged-host compromise outside this boundary.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
 
 **A compromised host.** Anyone with root on the machine can edit the evidence file, replace the policy pack, or patch the registry. The chain makes tampering detectable to someone who has an off-box copy of a later hash; it does not make it impossible. Off-box replication belongs to Command.
 
-**Matched evidence/checkpoint rollback.** v0.21 detects truncating evidence
-alone, but restoring both the chain and its local checkpoint to an older
-internally matched pair requires an external witness—a periodic signed head or
-export retained off-box.
+**Rollback after the supplied witness.** v0.22 detects matched local rollback
+only through the newest independently retained witness supplied at startup. An
+older valid witness cannot prove that later records existed. Automatic off-box
+transport and freshness enforcement remain deployment responsibilities.
 
 **Paraphrase around deterministic phrase rules.** `merchant_services.yaml` catches the listed phrasings and nothing else. This is a floor, deliberately auditable, not a claim of completeness. A model-based reviewer layered above it is future work; it must never replace the floor.
 

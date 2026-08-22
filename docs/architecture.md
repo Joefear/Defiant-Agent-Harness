@@ -453,9 +453,25 @@ cannot initialize a missing checkpoint. Command surfaces expose sanitized
 posture and never advance, accept, or repair it. See
 `evidence_head_integrity.md`.
 
-## What is deliberately absent from v0.21
+## External evidence-head witnessing in v0.22
 
-- **Remote or multi-user Command.** Command Center is a local loopback view, not
+An optional signed witness moves the rollback comparison point outside local
+harness state. Its trusted key ids and required mode enter the complete
+authority profile. Before any candidate profile activates, Defiant verifies the
+strict Ed25519 document, its state-root hash, its exact historical profile
+generation, and its count/head position in the current valid evidence chain.
+A shorter or divergent chain blocks authority; a valid extension is allowed.
+
+The external document and public keys are runtime inputs, never copied into
+`.dah`. A small profile-bound local policy observation records only mode and key
+ids so omission blocks later owning and operator-control paths. Diagnostic
+surfaces verify read-only and withhold paths, signatures, and notes. See
+`evidence_head_witness.md`.
+
+## What is deliberately absent from v0.22
+
+- **Automatic witness transport or remote/multi-user Command.** Command Center
+  is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
   system and must not be exposed as one.
 - **DKE / the knowledge engine.** `memory_sources_used` exists in the evidence contract as an empty field so the schema does not change when DKE arrives.
