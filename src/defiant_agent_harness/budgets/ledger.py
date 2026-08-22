@@ -9,7 +9,12 @@ from typing import Any
 
 from ..contracts import utc_now
 from ..money import ZERO, MoneyLike, money, money_text
-from ..persistence import atomic_write_json, exclusive_file_lock, read_json
+from ..persistence import (
+    atomic_write_json,
+    exclusive_file_lock,
+    prepare_storage_root,
+    read_json,
+)
 
 
 class BudgetError(RuntimeError):
@@ -49,7 +54,7 @@ class BudgetCheck:
 class BudgetLedger:
     def __init__(self, path: str | Path, starting_balance_usd: MoneyLike = ZERO):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prepare_storage_root(self.path.parent)
         starting = money(starting_balance_usd, field_name="starting_balance_usd")
         if not self.path.exists():
             with exclusive_file_lock(self.path):

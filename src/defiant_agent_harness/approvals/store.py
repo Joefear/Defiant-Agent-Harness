@@ -24,7 +24,12 @@ from ..operator_identity import (
     OperatorTrustPolicy,
     unsigned_status,
 )
-from ..persistence import atomic_write_json, exclusive_file_lock, read_json
+from ..persistence import (
+    atomic_write_json,
+    exclusive_file_lock,
+    prepare_storage_root,
+    read_json,
+)
 
 APPROVAL_STATUSES = {
     "pending",
@@ -207,7 +212,7 @@ class ApprovalStore:
             raise ValueError("default_ttl_minutes must be positive")
         self.path = Path(path)
         self.operator_trust = operator_trust
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prepare_storage_root(self.path.parent)
         self.default_ttl_minutes = default_ttl_minutes
         if not self.path.exists():
             with exclusive_file_lock(self.path):

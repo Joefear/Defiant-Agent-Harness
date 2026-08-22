@@ -74,8 +74,14 @@ from .launch_envelope import (
     LaunchEnvelopeState,
     LaunchEnvelopeStateStore,
 )
+from .state_storage import (
+    StateStorageAssurance,
+    StateStorageError,
+    StateStorageState,
+    StateStorageStateStore,
+)
 
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -118,6 +124,10 @@ __all__ = [
     "StateIntegrityAuditor",
     "StateIntegrityError",
     "StateIntegrityReport",
+    "StateStorageAssurance",
+    "StateStorageError",
+    "StateStorageState",
+    "StateStorageStateStore",
     "Trust",
     "build_harness",
     "sign_authorization_reconciliation",

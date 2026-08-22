@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 
@@ -104,23 +105,27 @@ def test_unsigned_rotation_is_staged_then_exact_candidate_activates(tmp_path):
     workspace = tmp_path / "workspace"
     state = tmp_path / "state"
     current = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
-    candidate_state = tmp_path / "candidate"
-    candidate = build_harness(
-        candidate_state,
-        MockAgentAdapter(),
-        workspace_root=workspace,
-        dry_run=True,
-    )
     store = AuthorityProfileStore(state / "authority_profile.json")
 
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            dry_run=True,
+        )
+    match = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert match is not None
+    candidate_hash = match.group(1)
+
     staged = store.request_rotation(
-        candidate.policy.ruleset_hash,
+        candidate_hash,
         operator="release-operator",
         note="enable tested dry-run posture",
         operator_trust=None,
     )
     assert staged.profile_hash == current.policy.ruleset_hash
-    assert staged.pending_rotation["to_profile_hash"] == candidate.policy.ruleset_hash
+    assert staged.pending_rotation["to_profile_hash"] == candidate_hash
 
     # The old generation remains valid during a staged cutover.
     build_harness(state, MockAgentAdapter(), workspace_root=workspace)
@@ -132,7 +137,7 @@ def test_unsigned_rotation_is_staged_then_exact_candidate_activates(tmp_path):
     )
     resolved = store.get()
 
-    assert activated.policy.ruleset_hash == candidate.policy.ruleset_hash
+    assert activated.policy.ruleset_hash == candidate_hash
     assert resolved is not None
     assert resolved.generation == 2
     assert resolved.pending_rotation is None
@@ -336,8 +341,9 @@ def test_rotation_cli_requires_explicit_identity_note_and_stages_signed_target(
 
 def test_invalid_profile_state_and_lock_are_critical_read_only_findings(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     (state / "authority_profile.json").write_text("{}", encoding="utf-8")
+    (state / "authority_profile.json").chmod(0o600)
     report = StateIntegrityAuditor(state).audit()
     assert not report.safe_to_execute
     assert any(issue.code == "authority_profile_invalid" for issue in report.issues)
@@ -345,6 +351,7 @@ def test_invalid_profile_state_and_lock_are_critical_read_only_findings(tmp_path
     (state / "authority_profile.json.lock").write_text(
         "pid=unknown\n", encoding="utf-8"
     )
+    (state / "authority_profile.json.lock").chmod(0o600)
     locked = StateIntegrityAuditor(state).audit()
     assert any(
         issue.code == "state_lock_present" and issue.store == "authority_profile.json"

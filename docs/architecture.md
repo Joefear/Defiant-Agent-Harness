@@ -389,7 +389,27 @@ Command Center expose only hashes, counts, and posture; they cannot supply
 secrets, edit the environment, acknowledge an unsafe variable, or launch a
 process. See `launch_envelope_integrity.md`.
 
-## What is deliberately absent from v0.17
+## State-storage integrity in v0.18
+
+All authority-bearing runtimes resolve a canonical, non-indirected state root
+before policy construction. Its path/device/file identity hash, platform mode,
+private-permission posture, and directory-sync posture enter the complete
+authority profile. The matching `state_storage.json` observation is written
+under `authority.lock` before operational recovery and cross-checked on every
+read-only integrity audit.
+
+The persistence layer refuses symlink, reparse-point, non-regular, and
+multi-hard-link state files; compares path and descriptor identities around
+each open; creates private files; and validates both sides of atomic replacement
+before publishing and syncing the directory entry. POSIX roots/files require
+current-user ownership and `0700`/`0600`; Windows reports structural-only mode
+because stdlib cannot portably evaluate NTFS ACL equivalence.
+
+Command Core and Command Center expose only the sanitized posture, bounded
+hashes, and counts. They cannot repair, move, relink, chmod, accept, or restore
+state. See `state_storage_integrity.md`.
+
+## What is deliberately absent from v0.18
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -462,6 +482,11 @@ process. See `launch_envelope_integrity.md`.
   processes, or use runtime mechanisms outside environment variables. A
   privileged host can replace the cwd after the final identity check or patch
   process memory. OS sandboxing and immutable deployment remain separate.
+- **State-storage identity is not a rollback witness.** Local device/inode or
+  file-identifier signals detect ordinary path replacement and relocation, but
+  a privileged host can replace code and complete state together or restore an
+  older internally consistent root. Off-box signed observations remain the
+  answer to host-level rollback.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

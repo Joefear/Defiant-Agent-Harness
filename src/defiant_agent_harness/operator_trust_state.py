@@ -13,7 +13,12 @@ from .operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
 )
-from .persistence import atomic_write_json, exclusive_file_lock, read_json
+from .persistence import (
+    atomic_write_json,
+    exclusive_file_lock,
+    prepare_storage_root,
+    read_json,
+)
 
 TRUST_STATE_SCHEMA = "defiant.operator.trust_state"
 TRUST_STATE_VERSION = "0.1.0"
@@ -284,7 +289,7 @@ class OperatorTrustStateStore:
             return None
         if state is None:
             assert candidate is not None
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            prepare_storage_root(self.path.parent)
             with exclusive_file_lock(self.path):
                 state = self.get()
                 if state is None:

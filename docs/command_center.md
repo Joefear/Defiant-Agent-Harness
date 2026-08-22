@@ -131,6 +131,13 @@ not variable names, values, secrets, or the working-directory path. There is no
 environment editor, secret input, unsafe-variable acknowledgement, launch, or
 repair endpoint.
 
+v0.18 adds the sanitized state-storage mode and checked-file count to the
+authority metric. The underlying snapshot also carries only the root hash,
+profile binding, permission and directory-sync posture, orphan-temporary count,
+and last verification time. It never exposes the canonical state path, device,
+inode/file identifier, file contents, or ACL entries. Command Center has no
+chmod, relink, move, delete, restore, acceptance, or repair endpoint.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

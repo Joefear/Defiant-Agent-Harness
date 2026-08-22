@@ -82,11 +82,12 @@ def test_changed_mapping_requires_explicit_rotation(tmp_path):
 
 def test_v09_signed_state_requires_pins_for_first_v010_migration(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     (state / "approvals.json").write_text(
         json.dumps({"legacy": {"decision_attestation": {"signature": "sealed"}}}),
         encoding="utf-8",
     )
+    (state / "approvals.json").chmod(0o600)
     store = OperatorTrustStateStore(state / "operator_trust.json")
 
     with pytest.raises(OperatorTrustStateError, match="required to migrate"):
@@ -289,8 +290,9 @@ def test_tampered_durable_chain_fails_authority_and_read_only_audit(tmp_path):
 
 def test_present_trust_lock_is_critical(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     (state / "operator_trust.json.lock").write_text("pid=unknown\n", encoding="utf-8")
+    (state / "operator_trust.json.lock").chmod(0o600)
 
     report = StateIntegrityAuditor(state).audit()
 
@@ -303,8 +305,9 @@ def test_present_trust_lock_is_critical(tmp_path):
 
 def test_oversized_trust_state_fails_closed_without_json_parsing(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     (state / "operator_trust.json").write_bytes(b" " * (1024 * 1024 + 1))
+    (state / "operator_trust.json").chmod(0o600)
 
     report = StateIntegrityAuditor(state).audit()
 

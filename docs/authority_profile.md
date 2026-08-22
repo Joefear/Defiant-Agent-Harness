@@ -31,10 +31,12 @@ pending transition also requires a trusted Ed25519 signature under the distinct
 
 ## Planned rotation
 
-Start the candidate runtime once against a disposable work directory or use the
-hash printed by its fail-closed mismatch error. Review the complete policy,
-tool map, workspace, execution mode, and adapter/upstream configuration that
-produced it. Then stage exactly that hash from PowerShell:
+Beginning in v0.18, start the candidate runtime once against the real state
+directory and use the hash printed by its fail-closed mismatch error. Storage
+identity is now an authority input, so a disposable directory produces a
+different hash. Review the complete policy, tool map, workspace, execution
+mode, adapter/upstream configuration, and state-root posture that produced it.
+Then stage exactly that hash from PowerShell:
 
 ```powershell
 cd "C:\Users\samcf\Desktop\Dev\Defiant Agent Harness"
@@ -95,3 +97,8 @@ host administrator who can replace code and state can restore an older
 internally valid generation. Use access controls, immutable deployment inputs,
 and off-box generation/hash observations when host-level rollback detection is
 required.
+
+v0.18 additionally binds the canonical state-root device/file identity and
+security posture into the profile. A copied, relocated, or replaced root needs
+an explicit profile transition. See `state_storage_integrity.md` for the
+filesystem contract and upgrade procedure.

@@ -7,11 +7,16 @@ Every scenario named in the S1 scope is here:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from defiant_agent_harness.adapters.mock import SCRIPTS, MockAgentAdapter
 from defiant_agent_harness.adapters.base import ToolCall
-from defiant_agent_harness.authority_profile import AuthorityProfileStore
+from defiant_agent_harness.authority_profile import (
+    AuthorityProfileError,
+    AuthorityProfileStore,
+)
 from defiant_agent_harness.contracts import (
     Decision,
     HarnessRequest,
@@ -160,13 +165,16 @@ def test_approved_action_resumes_after_process_restart(tmp_path):
 
 def test_changed_policy_ruleset_voids_stale_approval(tmp_path):
     _, _, [pending] = run(tmp_path, "send_email")
-    candidate = build_harness(
-        tmp_path / "candidate",
-        MockAgentAdapter(),
-        policy_packs=["merchant_services"],
-    )
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            tmp_path,
+            MockAgentAdapter(),
+            policy_packs=["merchant_services"],
+        )
+    match = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert match is not None
     AuthorityProfileStore(tmp_path / "authority_profile.json").request_rotation(
-        candidate.policy.ruleset_hash,
+        match.group(1),
         operator="test-operator",
         note="authorize policy pack test",
         operator_trust=None,
