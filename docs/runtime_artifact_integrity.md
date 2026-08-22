@@ -36,6 +36,12 @@ names and exactly one must be `executable`. Relative artifact paths resolve
 against the configuration file. Digests use the literal `sha256:` prefix and
 64 lowercase hexadecimal characters.
 
+Manifest paths must name canonical regular files, not symlinks. If a runtime
+manager exposes `python`, `node`, or another command through a symlink, resolve
+that link first and pin its final target; `server.command[0]` may retain the
+alias because Defiant requires it to resolve to that target and then launches
+the verified absolute target path.
+
 ## Startup sequence
 
 For required local assurance, Defiant:

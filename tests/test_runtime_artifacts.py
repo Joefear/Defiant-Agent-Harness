@@ -21,6 +21,8 @@ from defiant_agent_harness.runtime_artifacts import (
 )
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
 
+EXECUTABLE = Path(sys.executable).resolve(strict=True)
+
 
 def _digest(path: Path) -> str:
     return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
@@ -76,7 +78,7 @@ def _run(config_path: Path, state: Path, workspace: Path) -> None:
 def test_bundle_is_order_independent_and_rewrites_to_pinned_executable(tmp_path):
     support = tmp_path / "server.py"
     support.write_text("print('safe')\n", encoding="utf-8")
-    executable = Path(sys.executable)
+    executable = EXECUTABLE
     pins = (_pin("entrypoint", support), _pin("executable", executable))
 
     first = verify_runtime_artifacts(
@@ -105,11 +107,11 @@ def test_digest_replacement_and_forged_identifiers_fail_closed(tmp_path):
     with pytest.raises(RuntimeArtifactError, match="digest mismatch"):
         verify_runtime_artifacts(
             (sys.executable, str(artifact)),
-            (_pin("executable", Path(sys.executable)), pin),
+            (_pin("executable", EXECUTABLE), pin),
             workdir=tmp_path / "state",
         )
     with pytest.raises(RuntimeArtifactError, match="sha256 identifier"):
-        RuntimeArtifactPin("executable", Path(sys.executable), "sha256:not-a-digest")
+        RuntimeArtifactPin("executable", EXECUTABLE, "sha256:not-a-digest")
 
 
 def test_artifacts_inside_mutable_harness_state_are_refused(tmp_path):
@@ -121,7 +123,7 @@ def test_artifacts_inside_mutable_harness_state_are_refused(tmp_path):
     with pytest.raises(RuntimeArtifactError, match="outside mutable harness state"):
         verify_runtime_artifacts(
             (sys.executable, str(artifact)),
-            (_pin("executable", Path(sys.executable)), _pin("entrypoint", artifact)),
+            (_pin("executable", EXECUTABLE), _pin("entrypoint", artifact)),
             workdir=state,
         )
 
@@ -133,13 +135,13 @@ def test_command_must_resolve_to_the_exact_pinned_executable(tmp_path):
     with pytest.raises(RuntimeArtifactError, match="does not resolve"):
         verify_runtime_artifacts(
             (str(support),),
-            (_pin("executable", Path(sys.executable)),),
+            (_pin("executable", EXECUTABLE),),
             workdir=tmp_path / "state",
         )
 
 
 def test_two_roles_cannot_alias_the_same_canonical_artifact(tmp_path):
-    executable = Path(sys.executable)
+    executable = EXECUTABLE
     with pytest.raises(RuntimeArtifactError, match="unique after canonical"):
         verify_runtime_artifacts(
             (sys.executable,),
@@ -160,7 +162,7 @@ def test_symlinked_artifact_is_refused_when_supported(tmp_path):
     with pytest.raises(RuntimeArtifactError, match="must not be a symlink"):
         verify_runtime_artifacts(
             (sys.executable, str(link)),
-            (_pin("executable", Path(sys.executable)), _pin("entrypoint", link)),
+            (_pin("executable", EXECUTABLE), _pin("entrypoint", link)),
             workdir=tmp_path / "state",
         )
 
@@ -192,8 +194,8 @@ server:
     required: true
     artifacts:
       - role: executable
-        path: {Path(sys.executable).as_posix()}
-        sha256: {_digest(Path(sys.executable))}
+        path: {EXECUTABLE.as_posix()}
+        sha256: {_digest(EXECUTABLE)}
 tools: {{echo: {{side_effect: none}}}}
 """,
         encoding="utf-8",
@@ -203,7 +205,7 @@ tools: {{echo: {{side_effect: none}}}}
 
 
 def test_pinned_startup_records_only_sanitized_read_only_assurance(tmp_path):
-    config_path = _config(tmp_path / "proxy.yaml", Path(sys.executable))
+    config_path = _config(tmp_path / "proxy.yaml", EXECUTABLE)
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -216,23 +218,21 @@ def test_pinned_startup_records_only_sanitized_read_only_assurance(tmp_path):
     assert artifact_state["verification"] == "verified"
     assert artifact_state["artifact_count"] == 1
     serialized = json.dumps(artifact_state)
-    assert str(Path(sys.executable)) not in serialized
+    assert str(EXECUTABLE) not in serialized
     assert "artifacts" not in serialized
 
 
 def test_changed_artifact_requires_profile_rotation_before_spawn(tmp_path, monkeypatch):
     support = tmp_path / "support.py"
     support.write_text("version = 1\n", encoding="utf-8")
-    config_path = _config(
-        tmp_path / "proxy.yaml", Path(sys.executable), support=support
-    )
+    config_path = _config(tmp_path / "proxy.yaml", EXECUTABLE, support=support)
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     _run(config_path, state, workspace)
 
     support.write_text("version = 2\n", encoding="utf-8")
-    _config(config_path, Path(sys.executable), support=support)
+    _config(config_path, EXECUTABLE, support=support)
     spawned = False
 
     def forbidden_start(self):
@@ -250,9 +250,7 @@ def test_changed_artifact_requires_profile_rotation_before_spawn(tmp_path, monke
 def test_old_pin_rejects_replacement_before_state_changes(tmp_path):
     support = tmp_path / "support.py"
     support.write_text("version = 1\n", encoding="utf-8")
-    config_path = _config(
-        tmp_path / "proxy.yaml", Path(sys.executable), support=support
-    )
+    config_path = _config(tmp_path / "proxy.yaml", EXECUTABLE, support=support)
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
