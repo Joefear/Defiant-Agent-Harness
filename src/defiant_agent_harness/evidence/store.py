@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Iterator
 
 from ..contracts import EvidenceRecord, sha256_of, utc_now
-from ..persistence import PersistenceError, exclusive_file_lock
+from ..persistence import (
+    PersistenceError,
+    exclusive_file_lock,
+    inspect_state_file,
+    open_state_file,
+    prepare_storage_root,
+    sync_storage_directory,
+)
 from .signing import EXPORT_SCHEMA, EXPORT_VERSION
 
 GENESIS = "sha256:" + "0" * 64
@@ -38,18 +45,19 @@ class ChainStatus:
 class EvidenceStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            with exclusive_file_lock(self.path):
-                if not self.path.exists():
-                    try:
-                        with open(self.path, "x", encoding="utf-8") as fh:
+        try:
+            root = prepare_storage_root(self.path.parent)
+            if inspect_state_file(self.path) is None:
+                with exclusive_file_lock(self.path):
+                    if inspect_state_file(self.path) is None:
+                        with open_state_file(self.path, "x", encoding="utf-8") as fh:
                             fh.flush()
                             os.fsync(fh.fileno())
-                    except OSError as exc:
-                        raise EvidenceError(
-                            f"cannot initialize evidence store {self.path}: {exc}"
-                        ) from exc
+                        sync_storage_directory(root.path)
+        except (OSError, PersistenceError) as exc:
+            raise EvidenceError(
+                f"cannot initialize evidence store {self.path}: {exc}"
+            ) from exc
 
     # -- write -------------------------------------------------------
 
@@ -85,7 +93,7 @@ class EvidenceStore:
                     ).encode("utf-8")
                     + b"\n"
                 )
-                with open(self.path, "ab") as fh:
+                with open_state_file(self.path, "ab") as fh:
                     fh.write(line)
                     fh.flush()
                     os.fsync(fh.fileno())
@@ -135,7 +143,7 @@ class EvidenceStore:
                     ).encode("utf-8")
                     + b"\n"
                 )
-                with open(self.path, "ab") as fh:
+                with open_state_file(self.path, "ab") as fh:
                     fh.write(line)
                     fh.flush()
                     os.fsync(fh.fileno())
@@ -149,7 +157,7 @@ class EvidenceStore:
 
     def _raw(self) -> Iterator[dict]:
         try:
-            with open(self.path, "r", encoding="utf-8") as fh:
+            with open_state_file(self.path, "r", encoding="utf-8") as fh:
                 for index, line in enumerate(fh):
                     if not line.strip():
                         continue
@@ -162,7 +170,7 @@ class EvidenceStore:
                     if not isinstance(record, dict):
                         raise EvidenceError(f"record {index} is not a JSON object")
                     yield record
-        except OSError as exc:
+        except (OSError, PersistenceError) as exc:
             raise EvidenceError(f"cannot read evidence store: {exc}") from exc
 
     def records(self) -> list[dict]:

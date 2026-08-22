@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.17.
+logs. A full trusted-memory/DKE system is not part of v0.18.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.17 is
+## What v0.18 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -186,6 +186,17 @@ hashes so credential rotation neither leaks values nor silently changes launch
 policy. Legacy inheritance remains available but is visibly unrestricted.
 Doctor, Command Core, and Command Center expose only sanitized counts, hashes,
 mode, and profile binding. Command Center remains strictly read-only.
+
+v0.18 hardens the local state filesystem beneath approvals, budgets, evidence,
+recovery journals, operator trust, and authority continuity. The canonical
+state-root path and filesystem identity enter the complete authority profile;
+durable observations reject copied, relocated, or replaced roots. State files
+and locks must be regular single-link objects, never symlinks or reparse points,
+and path identity is compared with the opened descriptor before use. POSIX
+storage additionally requires current-user ownership with `0700` root and
+`0600` files. Atomic JSON replacement now validates both sides and syncs the
+directory entry where supported. Doctor, Command Core, and Command Center show
+only sanitized posture and counts and cannot repair or mutate storage.
 
 ## Install
 
@@ -522,7 +533,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.17 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.18 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -531,6 +542,7 @@ cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
 content-addressed local runtime artifact assurance,
 restricted and authority-bound local process launch envelopes,
+authority-bound state-root identity and hardened local persistence,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -542,6 +554,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/authority_profile.md`,
 `docs/runtime_artifact_integrity.md`,
 `docs/launch_envelope_integrity.md`,
+`docs/state_storage_integrity.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

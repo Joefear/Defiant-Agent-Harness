@@ -178,6 +178,27 @@ This cannot enumerate every runtime-specific control or contain a process after
 launch. Immutable dependencies, least privilege, and OS/network sandboxing
 remain deployment requirements.
 
+### 13. State-path indirection or root replacement
+
+An attacker or broken deployment replaces a durable JSON/evidence path with a
+symlink, reparse point, hard link, pipe, device, or different regular file, or
+copies and restores the complete state directory under a new filesystem
+identity. Schema validation alone may then inspect bytes other than the store
+the operator intended.
+
+v0.18 binds the canonical state-root identity and security posture into the
+complete authority profile and records a matching profile-bound observation.
+Every known state file and lock must be regular and single-link; POSIX storage
+must be current-user-owned and private. Opens compare lstat and fstat identity,
+atomic replacement revalidates its source and destination, and orphan temporary
+files fail the read-only integrity gate. Contradictions block authority before
+operational recovery or a tool side effect.
+
+This is not a defense against a privileged host that can replace the running
+harness plus complete state and authority history. Windows ACL evaluation,
+encrypted storage, backups, and off-box rollback witnessing remain deployment
+controls.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

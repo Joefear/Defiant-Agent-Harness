@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from ..contracts import utc_now
-from ..persistence import atomic_write_json, exclusive_file_lock, read_json
+from ..persistence import (
+    atomic_write_json,
+    exclusive_file_lock,
+    prepare_storage_root,
+    read_json,
+)
 
 
 class HookStateError(RuntimeError):
@@ -51,7 +56,7 @@ class HookExecution:
 class HookExecutionStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prepare_storage_root(self.path.parent)
         if not self.path.exists():
             with exclusive_file_lock(self.path):
                 if not self.path.exists():

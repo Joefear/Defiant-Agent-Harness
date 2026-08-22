@@ -111,6 +111,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"renderAuthorityProfile" in javascript
     assert b"runtime_artifacts" in javascript
     assert b"launch_envelope" in javascript
+    assert b"state_storage" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

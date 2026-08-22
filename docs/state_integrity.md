@@ -13,6 +13,9 @@ binding to the active authority profile. v0.17 adds the strict sanitized
 `launch_envelope.json` observation and its profile binding. The audit
 distinguishes expected crash recovery states from contradictions that make
 further authority unsafe.
+v0.18 validates the state root and every known durable file before interpreting
+store contents, then checks `state_storage.json` against both the current root
+identity and active authority profile.
 
 Run it without initializing or modifying the state directory:
 
@@ -27,7 +30,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.8.0` and exits
+The command emits schema `defiant.state_integrity` version `0.9.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -68,6 +71,9 @@ The auditor verifies:
   active authority-profile hash;
 - sanitized launch-envelope structure, bounded counts and hashes, and exact
   binding to the active authority-profile hash;
+- canonical state-root structure and identity, regular single-link state files,
+  private POSIX ownership/modes, orphan atomic temporaries, and exact storage
+  observation binding to the active authority-profile hash;
 - journal schema, canonical payload hash, operation-specific payload shape,
   exact approval/reservation/evidence bindings, and unsealed prepared evidence;
 - known-result completion authority, exact settlement, terminal evidence,

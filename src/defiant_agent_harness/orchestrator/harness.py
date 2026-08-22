@@ -36,6 +36,11 @@ from ..operator_identity import (
 from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
 from ..persistence import AuthorityTransactionLock
+from ..state_storage import (
+    StateStorageStateStore,
+    prepare_state_storage,
+    require_state_storage_unchanged,
+)
 from ..state_integrity import StateIntegrityAuditor
 from ..tools.registry import ToolContractError, ToolRegistry, ToolResult
 
@@ -1443,9 +1448,9 @@ def build_harness(
 ) -> Harness:
     from ..tools.builtin import default_registry
 
-    state_root = Path(workdir)
+    state_storage = prepare_state_storage(workdir)
+    state_root = state_storage.root
     validate_external_trust_specs(trusted_operator_keys or [], state_root)
-    state_root.mkdir(parents=True, exist_ok=True)
     authority_lock = AuthorityTransactionLock(state_root / "authority.lock")
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
@@ -1465,9 +1470,11 @@ def build_harness(
             "workspace_root_hash": sha256_of(str(registry.workspace_root)),
             "dry_run": dry_run,
             "adapter": authority_context or {},
+            "state_storage": state_storage.authority_dict(),
         },
     )
     with authority_lock.acquire():
+        require_state_storage_unchanged(state_storage)
         trust_store = OperatorTrustStateStore(state_root / "operator_trust.json")
         operator_trust = trust_store.preview_for_authority(trusted_operator_keys or [])
         trust_resolved = False
@@ -1491,6 +1498,9 @@ def build_harness(
         else:
             profile_store.resolve_for_authority(policy.ruleset_hash, operator_trust)
             audit_profile_hash = policy.ruleset_hash
+            StateStorageStateStore(state_root / "state_storage.json").record(
+                policy.ruleset_hash, state_storage
+            )
         if runtime_artifact_assurance is not None:
             from ..runtime_artifacts import RuntimeArtifactStateStore
 

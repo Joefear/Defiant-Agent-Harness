@@ -22,12 +22,32 @@ from .operator_identity import (
 )
 from .operation_journal import JournalOperation, OperationJournal
 from .operator_trust_state import OperatorTrustStateStore
-from .persistence import read_json
 from .launch_envelope import LaunchEnvelopeError, LaunchEnvelopeStateStore
+from .persistence import open_state_file, read_json
 from .runtime_artifacts import RuntimeArtifactError, RuntimeArtifactStateStore
+from .state_storage import (
+    StateStorageError,
+    StateStorageStateStore,
+    inspect_state_storage,
+    inspect_state_storage_files,
+)
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.8.0"
+AUDIT_VERSION = "0.9.0"
+
+_STATE_FILENAMES = (
+    "approvals.json",
+    "authority.lock",
+    "authority_profile.json",
+    "budget.json",
+    "evidence.jsonl",
+    "hook_executions.json",
+    "launch_envelope.json",
+    "operation_journal.json",
+    "operator_trust.json",
+    "runtime_artifacts.json",
+    "state_storage.json",
+)
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -144,6 +164,7 @@ class StateIntegrityAuditor:
 
     def audit(self) -> StateIntegrityReport:
         report = StateIntegrityReport()
+        storage_file_count = self._audit_state_storage(report)
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
@@ -165,6 +186,7 @@ class StateIntegrityAuditor:
             "authority_profile_generation": profile_generation,
             "runtime_artifacts": artifact_count,
             "launch_environment_variables": launch_variable_count,
+            "state_storage_files": storage_file_count,
             "active_journal_operations": int(journal_operation is not None),
             "authorization_reconciliations_required": 0,
         }
@@ -187,6 +209,110 @@ class StateIntegrityAuditor:
         )
         return report
 
+    def _audit_state_storage(self, report: StateIntegrityReport) -> int:
+        try:
+            assurance = inspect_state_storage(self.workdir)
+            if assurance is None:
+                report.stores["state_storage"] = {
+                    "state": "not_initialized",
+                    "verification": "not_applicable",
+                    "profile_hash": None,
+                    "root_hash": None,
+                    "private_permissions": None,
+                    "directory_sync": None,
+                    "files_checked": 0,
+                    "temporary_files": 0,
+                    "last_verified_at": None,
+                }
+                return 0
+            checked, temporary = inspect_state_storage_files(
+                assurance,
+                (
+                    *_STATE_FILENAMES,
+                    *(f"{name}.lock" for name in _STATE_FILENAMES),
+                ),
+            )
+            if temporary:
+                self._issue(
+                    report,
+                    "state_temporary_file_present",
+                    "critical",
+                    "state_storage",
+                    "an orphan atomic-write temporary file is present",
+                )
+            state = StateStorageStateStore(assurance.root / "state_storage.json").get()
+            if state is None:
+                report.stores["state_storage"] = {
+                    "state": "not_recorded",
+                    "verification": "migration_required",
+                    "profile_hash": None,
+                    **assurance.authority_dict(),
+                    "files_checked": checked,
+                    "temporary_files": temporary,
+                    "last_verified_at": None,
+                }
+                profile = AuthorityProfileStore(
+                    assurance.root / "authority_profile.json"
+                ).get()
+                if profile is not None:
+                    self._issue(
+                        report,
+                        "state_storage_observation_missing",
+                        "warning",
+                        "state_storage.json",
+                        "state storage has not been recorded for the active authority profile",
+                    )
+                return checked
+            verification = "verified"
+            if state.authority_dict() != assurance.authority_dict():
+                verification = "root_mismatch"
+                self._issue(
+                    report,
+                    "state_storage_root_mismatch",
+                    "critical",
+                    "state_storage.json",
+                    "state directory identity or security posture changed",
+                )
+            profile = AuthorityProfileStore(
+                assurance.root / "authority_profile.json"
+            ).get()
+            if profile is not None and profile.profile_hash != state.profile_hash:
+                verification = "profile_mismatch"
+                self._issue(
+                    report,
+                    "state_storage_profile_mismatch",
+                    "critical",
+                    "state_storage.json",
+                    "state storage assurance is not bound to the active authority profile",
+                )
+            report.stores["state_storage"] = state.projection(
+                verification=verification,
+                files_checked=checked,
+                temporary_files=temporary,
+            )
+            return checked
+        except (StateStorageError, RuntimeError) as exc:
+            report.stores["state_storage"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "root_hash": None,
+                "private_permissions": None,
+                "directory_sync": None,
+                "files_checked": 0,
+                "temporary_files": 0,
+                "last_verified_at": None,
+            }
+            self._issue(
+                report,
+                "state_storage_invalid",
+                "critical",
+                "state_storage",
+                str(exc),
+            )
+            return 0
+
     def _audit_locks(self, report: StateIntegrityReport) -> None:
         for filename in (
             "evidence.jsonl",
@@ -197,6 +323,8 @@ class StateIntegrityAuditor:
             "operation_journal.json",
             "runtime_artifacts.json",
             "launch_envelope.json",
+            "state_storage.json",
+            "hook_executions.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
@@ -584,7 +712,7 @@ class StateIntegrityAuditor:
         seen_ids: set[str] = set()
         trusted = True
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            with open_state_file(path, "r", encoding="utf-8") as handle:
                 for index, line in enumerate(handle):
                     if not line.strip():
                         continue
@@ -620,7 +748,7 @@ class StateIntegrityAuditor:
                     seen_ids.add(record_id)
                     previous = record["record_hash"]
                     records.append(record)
-        except (OSError, TypeError, ValueError) as exc:
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
             trusted = False
             self._issue(
                 report,

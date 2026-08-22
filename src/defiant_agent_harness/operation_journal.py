@@ -18,7 +18,12 @@ from .contracts import (
 )
 from .money import money, money_text
 from .operator_identity import AuthorizationReconciliationSubject
-from .persistence import atomic_write_json, exclusive_file_lock, read_json
+from .persistence import (
+    atomic_write_json,
+    exclusive_file_lock,
+    prepare_storage_root,
+    read_json,
+)
 
 JOURNAL_SCHEMA = "defiant.operation_journal"
 JOURNAL_VERSION = "0.3.0"
@@ -177,7 +182,7 @@ class OperationJournal:
 
     def prepare(self, kind: str, payload: dict[str, Any]) -> JournalOperation:
         operation = JournalOperation.prepare(kind, payload)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prepare_storage_root(self.path.parent)
         with exclusive_file_lock(self.path):
             active = self.active()
             if active is not None:

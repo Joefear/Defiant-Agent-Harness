@@ -271,7 +271,7 @@ def test_command_core_reports_active_journal_without_exposing_payload(
 
 def test_tampered_journal_is_critical_and_authority_refuses_recovery(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     path = state / "operation_journal.json"
     path.write_text(
         json.dumps(
@@ -289,6 +289,7 @@ def test_tampered_journal_is_critical_and_authority_refuses_recovery(tmp_path):
         ),
         encoding="utf-8",
     )
+    path.chmod(0o600)
 
     report = StateIntegrityAuditor(state).audit()
     assert not report.safe_to_execute
@@ -299,7 +300,7 @@ def test_tampered_journal_is_critical_and_authority_refuses_recovery(tmp_path):
 
 def test_structurally_invalid_journal_fails_even_with_matching_payload_hash(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     payload = {"forged": True}
     (state / "operation_journal.json").write_text(
         json.dumps(
@@ -317,6 +318,7 @@ def test_structurally_invalid_journal_fails_even_with_matching_payload_hash(tmp_
         ),
         encoding="utf-8",
     )
+    (state / "operation_journal.json").chmod(0o600)
 
     report = StateIntegrityAuditor(state).audit()
     assert not report.safe_to_execute
@@ -384,8 +386,9 @@ def test_conflicting_approval_binding_fails_closed_and_keeps_journal(
 
 def test_journal_lock_is_a_critical_state_integrity_issue(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     (state / "operation_journal.json.lock").write_text("locked", encoding="utf-8")
+    (state / "operation_journal.json.lock").chmod(0o600)
 
     report = StateIntegrityAuditor(state).audit()
 

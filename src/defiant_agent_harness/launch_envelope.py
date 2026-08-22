@@ -14,6 +14,7 @@ from .persistence import (
     PersistenceError,
     atomic_write_json,
     exclusive_file_lock,
+    prepare_storage_root,
     read_json,
 )
 
@@ -455,7 +456,7 @@ class LaunchEnvelopeStateStore:
     ) -> LaunchEnvelopeState:
         profile_hash = _hash(profile_hash, "profile_hash")
         stable = assurance.authority_dict()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        prepare_storage_root(self.path.parent)
         try:
             with exclusive_file_lock(self.path):
                 previous = self.get()
