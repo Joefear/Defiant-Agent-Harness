@@ -109,7 +109,11 @@ def test_symlink_retarget_after_authorization_is_refused_before_execution(tmp_pa
     link.symlink_to(state, target_is_directory=True)
     with pytest.raises(ToolContractError, match="protected control-plane"):
         harness.tools.execute(action, grant)
-    assert grant.spent is False
+
+    link.unlink()
+    link.symlink_to(safe, target_is_directory=True)
+    result = harness.tools.execute(action, grant)
+    assert result.status == "succeeded"
 
 
 def test_directory_scope_cannot_contain_protected_state(tmp_path):
