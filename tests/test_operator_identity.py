@@ -106,7 +106,7 @@ def test_strict_policy_refuses_unsigned_and_wrong_identity_keys(tmp_path):
 
 def test_runtime_refuses_a_trust_root_inside_mutable_harness_state(tmp_path):
     state = tmp_path / "state"
-    state.mkdir()
+    state.mkdir(mode=0o700)
     private = tmp_path / "private.pem"
     public = state / "agent-writable-public.pem"
     generate_key_pair(private, public, PASSPHRASE)
