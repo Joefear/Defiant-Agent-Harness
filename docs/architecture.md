@@ -354,7 +354,26 @@ verifies the enrolled profile and cross-store state but cannot run, preflight,
 resume, or complete a tool action. Command Center remains a separate read-only
 projection and never acquires the authority lock.
 
-## What is deliberately absent from v0.15
+## Runtime artifact assurance in v0.16
+
+Required local MCP manifests bind one exact executable plus operator-declared
+supporting files to SHA-256 digests. Verification happens before authority
+profile resolution. The executable command is rewritten to the verified
+absolute path, and the bundle is verified again immediately before process
+creation. The normalized bundle assurance is part of the adapter authority
+inputs, so an artifact update changes the v0.15 profile and requires its
+explicit staged rotation.
+
+The sanitized `runtime_artifacts.json` observation is written under the global
+authority lock before operational recovery and is cross-checked against the
+active profile by the state auditor. It is a diagnostic projection, not an
+allowlist. Command Core and Command Center can report its posture but cannot
+edit a manifest, accept a digest, rotate authority, or launch a process.
+
+See `runtime_artifact_integrity.md` for the strict configuration schema,
+startup ordering, and limits.
+
+## What is deliberately absent from v0.16
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -393,12 +412,11 @@ projection and never acquires the authority lock.
   client or agent must repeat the same tool params before expiry.
 - **MCP task augmentation is not yet supported.** Initialization is negotiated
   down to `2025-06-18`; task-aware governance belongs in a later release.
-- **A command fingerprint is not binary attestation.** It binds approvals to the
-  configured argument vector, not to the bytes loaded from disk. The live
-  filesystem example pins the direct npm package version, but `npx` may still
-  resolve transitive dependency ranges. Production deployments should use a
-  reviewed lockfile, immutable container digest, or equivalent artifact
-  attestation.
+- **Declared hashes are not dependency discovery or binary attestation.** v0.16
+  verifies the executable and operator-declared support files, but an
+  interpreter may load undeclared modules, native extensions, configuration,
+  or plugins. Production deployments should also use reviewed lockfiles,
+  locked installations, immutable images, and OS policy.
 - **In-process code is trusted.** Signed grants constrain adapters and normal
   control flow; they do not sandbox malicious Python already executing inside
   the harness process.
@@ -417,11 +435,12 @@ projection and never acquires the authority lock.
   across a state directory, while conservative per-file locks still guard each
   atomic write. Read-only diagnostics may observe a transient in-progress
   state and should refresh after the writer finishes.
-- **Authority-profile continuity is not artifact attestation.** The profile
-  binds reviewed configuration and tool contracts, not executable bytes or the
-  host. A privileged attacker can replace code and state or restore an older
-  internally valid generation unless an external witness retains the observed
-  generation and hash.
+- **Artifact integrity is not host integrity.** The profile now binds a verified
+  declared local bundle when required, but a privileged attacker can replace
+  bytes after the final check, patch the harness or process, alter undeclared
+  dependencies, replace code and state together, or restore an older internally
+  valid generation unless an external witness retains the observed generation
+  and hash.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

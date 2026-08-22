@@ -30,6 +30,7 @@ class UpstreamSession:
         *,
         cwd: Path | None = None,
         timeout_seconds: float = 60.0,
+        start: bool = True,
     ):
         self.command = command
         self.client_output = client_output
@@ -40,9 +41,21 @@ class UpstreamSession:
         self._pending: dict[str, queue.Queue[dict[str, Any]]] = {}
         self._private_ids: set[str] = set()
         self._closed = False
+        self.cwd = cwd
+        self.process: subprocess.Popen[str] | None = None
+        self._reader: threading.Thread | None = None
+        if start:
+            self.start()
+
+    def start(self) -> None:
+        """Spawn the upstream only after all authority preflights have passed."""
+        if self._closed:
+            raise McpTransportError("upstream session is closed")
+        if self.process is not None:
+            raise McpTransportError("upstream session is already started")
         self.process = subprocess.Popen(
-            list(command),
-            cwd=str(cwd) if cwd else None,
+            list(self.command),
+            cwd=str(self.cwd) if self.cwd else None,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,
@@ -169,6 +182,8 @@ class UpstreamSession:
         if self._closed:
             return
         self._closed = True
+        if self.process is None:
+            return
         if self.process.stdin:
             try:
                 self.process.stdin.close()
@@ -185,7 +200,7 @@ class UpstreamSession:
                 self.process.wait(timeout=2)
 
     def _read_upstream(self) -> None:
-        assert self.process.stdout is not None
+        assert self.process is not None and self.process.stdout is not None
         failure = ""
         try:
             for line in self.process.stdout:
@@ -220,7 +235,7 @@ class UpstreamSession:
                 self._fail_pending(failure)
 
     def _write_upstream(self, line: str) -> None:
-        if self._closed or self.process.poll() is not None:
+        if self._closed or self.process is None or self.process.poll() is not None:
             raise McpTransportError("upstream MCP process is not running")
         assert self.process.stdin is not None
         with self._upstream_lock:

@@ -23,9 +23,10 @@ from .operator_identity import (
 from .operation_journal import JournalOperation, OperationJournal
 from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
+from .runtime_artifacts import RuntimeArtifactError, RuntimeArtifactStateStore
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.6.0"
+AUDIT_VERSION = "0.7.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -145,6 +146,7 @@ class StateIntegrityAuditor:
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
+        artifact_count = self._audit_runtime_artifacts(report)
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
@@ -159,6 +161,7 @@ class StateIntegrityAuditor:
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
             "authority_profile_generation": profile_generation,
+            "runtime_artifacts": artifact_count,
             "active_journal_operations": int(journal_operation is not None),
             "authorization_reconciliations_required": 0,
         }
@@ -189,6 +192,7 @@ class StateIntegrityAuditor:
             "operator_trust.json",
             "authority_profile.json",
             "operation_journal.json",
+            "runtime_artifacts.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
@@ -199,6 +203,64 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_runtime_artifacts(self, report: StateIntegrityReport) -> int:
+        store = RuntimeArtifactStateStore(self.workdir / "runtime_artifacts.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["runtime_artifacts"] = {
+                    "state": "not_recorded",
+                    "verification": "not_applicable",
+                    "profile_hash": None,
+                    "bundle_hash": None,
+                    "artifact_count": 0,
+                    "executable_pinned": False,
+                    "last_verified_at": None,
+                }
+                return 0
+            verification = "not_evaluated"
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is not None:
+                if profile.profile_hash == state.profile_hash:
+                    verification = "verified"
+                else:
+                    verification = "profile_mismatch"
+                    self._issue(
+                        report,
+                        "runtime_artifact_profile_mismatch",
+                        "critical",
+                        "runtime_artifacts.json",
+                        "runtime artifact assurance is not bound to the active authority profile",
+                    )
+            report.stores["runtime_artifacts"] = state.projection(
+                verification=verification
+            )
+            return state.artifact_count
+        except RuntimeArtifactError as exc:
+            report.stores["runtime_artifacts"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "bundle_hash": None,
+                "artifact_count": 0,
+                "executable_pinned": False,
+                "last_verified_at": None,
+            }
+            self._issue(
+                report,
+                "runtime_artifact_state_invalid",
+                "critical",
+                "runtime_artifacts.json",
+                str(exc),
+            )
+            return 0
 
     def _audit_authority_profile(self, report: StateIntegrityReport) -> int:
         store = AuthorityProfileStore(self.workdir / "authority_profile.json")

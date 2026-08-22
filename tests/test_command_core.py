@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.9.0"
+    assert output["schema_version"] == "0.10.0"
     assert output["authority_profile"]["state"] == "not_enrolled"
     assert output["state_integrity"]["status"] == "healthy"
     assert output["authoritative"] is True

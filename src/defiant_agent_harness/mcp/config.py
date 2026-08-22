@@ -12,6 +12,7 @@ import yaml
 
 from ..contracts import SideEffect, Trust
 from ..money import ZERO, money
+from ..runtime_artifacts import RuntimeArtifactError, RuntimeArtifactPin
 from ..tools.registry import ToolSpec
 
 
@@ -99,6 +100,31 @@ class McpToolConfig:
 
 
 @dataclass(frozen=True)
+class McpArtifactIntegrityConfig:
+    required: bool = False
+    artifacts: tuple[RuntimeArtifactPin, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.required) is not bool:
+            raise McpConfigError("server.artifact_integrity.required must be boolean")
+        if self.required and not self.artifacts:
+            raise McpConfigError(
+                "required artifact integrity needs at least one artifact"
+            )
+        if not self.required and self.artifacts:
+            raise McpConfigError(
+                "artifact pins require server.artifact_integrity.required: true"
+            )
+        roles = [item.role for item in self.artifacts]
+        if len(set(roles)) != len(roles):
+            raise McpConfigError("server artifact roles must be unique")
+        if self.required and roles.count("executable") != 1:
+            raise McpConfigError(
+                "required artifact integrity needs exactly one executable role"
+            )
+
+
+@dataclass(frozen=True)
 class McpProxyConfig:
     server_name: str
     command: tuple[str, ...]
@@ -109,6 +135,7 @@ class McpProxyConfig:
     model_id: str = ""
     cwd: Path | None = None
     upstream_timeout_seconds: float = 60.0
+    artifact_integrity: McpArtifactIntegrityConfig = McpArtifactIntegrityConfig()
 
     def __post_init__(self) -> None:
         if not isinstance(self.server_name, str) or not self.server_name.strip():
@@ -125,6 +152,10 @@ class McpProxyConfig:
             _validate_http_url(self.url)
             if self.cwd is not None:
                 raise McpConfigError("server.cwd is only valid with server.command")
+            if self.artifact_integrity.required:
+                raise McpConfigError(
+                    "server.artifact_integrity is only valid with server.command"
+                )
         seen_headers: set[str] = set()
         for header, env_name in self.header_env:
             if not _valid_header_name(header):
@@ -167,7 +198,10 @@ _SERVER_KEYS = {
     "header_env",
     "cwd",
     "timeout_seconds",
+    "artifact_integrity",
 }
+_ARTIFACT_INTEGRITY_KEYS = {"required", "artifacts"}
+_ARTIFACT_KEYS = {"role", "path", "sha256"}
 _TOOL_KEYS = {
     "side_effect",
     "description",
@@ -258,6 +292,48 @@ def load_proxy_config(
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
         raise McpConfigError("server.timeout_seconds must be a positive number")
 
+    artifact_raw = server.get("artifact_integrity")
+    artifact_integrity = McpArtifactIntegrityConfig()
+    if artifact_raw is not None:
+        artifact_mapping = _mapping(artifact_raw, "server.artifact_integrity")
+        _reject_unknown(
+            artifact_mapping,
+            _ARTIFACT_INTEGRITY_KEYS,
+            "server.artifact_integrity",
+        )
+        required = artifact_mapping.get("required")
+        if type(required) is not bool:
+            raise McpConfigError("server.artifact_integrity.required must be boolean")
+        artifacts_raw = artifact_mapping.get("artifacts", [])
+        if not isinstance(artifacts_raw, list):
+            raise McpConfigError("server.artifact_integrity.artifacts must be a list")
+        pins: list[RuntimeArtifactPin] = []
+        for index, value in enumerate(artifacts_raw):
+            label = f"server.artifact_integrity.artifacts[{index}]"
+            item = _mapping(value, label)
+            _reject_unknown(item, _ARTIFACT_KEYS, label)
+            if set(item) != _ARTIFACT_KEYS:
+                raise McpConfigError(f"{label} requires role, path, and sha256")
+            if not isinstance(item["path"], str) or not item["path"].strip():
+                raise McpConfigError(f"{label}.path must be non-empty")
+            artifact_path = Path(item["path"])
+            if not artifact_path.is_absolute():
+                artifact_path = source.parent / artifact_path
+            try:
+                pins.append(
+                    RuntimeArtifactPin(
+                        role=item["role"],
+                        path=artifact_path,
+                        sha256=item["sha256"],
+                    )
+                )
+            except RuntimeArtifactError as exc:
+                raise McpConfigError(f"invalid {label}: {exc}") from exc
+        artifact_integrity = McpArtifactIntegrityConfig(
+            required=required,
+            artifacts=tuple(pins),
+        )
+
     return McpProxyConfig(
         server_name=str(server.get("name", "")).strip(),
         command=tuple(command_raw),
@@ -272,6 +348,7 @@ def load_proxy_config(
         model_id=str(root.get("model", "")).strip(),
         cwd=cwd,
         upstream_timeout_seconds=float(timeout),
+        artifact_integrity=artifact_integrity,
     )
 
 

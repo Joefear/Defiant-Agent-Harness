@@ -7,9 +7,10 @@ v0.7 adds a read-only, cross-store audit over `evidence.jsonl`,
 reconciliation across evidence and budget markers. v0.13 distinguishes a
 journaled known result from a genuinely uncertain execution. The audit
 in v0.15 also validates `authority_profile.json`, its generation chain,
-pending rotation, optional operator signature, and configured candidate hash. It
-distinguishes expected crash recovery states from contradictions that make
-further authority unsafe.
+pending rotation, optional operator signature, and configured candidate hash.
+In v0.16 it also validates `runtime_artifacts.json`, its strict schema, and its
+binding to the active authority profile. The audit distinguishes expected crash
+recovery states from contradictions that make further authority unsafe.
 
 Run it without initializing or modifying the state directory:
 
@@ -24,7 +25,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.6.0` and exits
+The command emits schema `defiant.state_integrity` version `0.7.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -61,6 +62,8 @@ The auditor verifies:
 - durable authority-profile enrollment, contiguous old/new generations and
   hashes, bounded timestamps, pending-rotation binding, optional trusted
   signature, and candidate match when the caller supplies a runtime hash;
+- sanitized runtime-artifact assurance structure and exact binding to the
+  active authority-profile hash;
 - journal schema, canonical payload hash, operation-specific payload shape,
   exact approval/reservation/evidence bindings, and unsealed prepared evidence;
 - known-result completion authority, exact settlement, terminal evidence,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+from dataclasses import replace
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -22,6 +23,13 @@ from ..contracts import (
 )
 from ..money import money
 from ..orchestrator.harness import ActionOutcome, build_harness
+from ..runtime_artifacts import (
+    RuntimeArtifactAssurance,
+    remote_artifacts,
+    require_same_artifact_bundle,
+    unverified_artifacts,
+    verify_runtime_artifacts,
+)
 from ..tools.registry import (
     ToolContractError,
     ToolResult,
@@ -140,12 +148,16 @@ class McpStdioProxy:
         sensitivity: Sensitivity = Sensitivity.INTERNAL,
         dry_run: bool = False,
         trusted_operator_keys: list[str] | None = None,
+        runtime_artifact_assurance: RuntimeArtifactAssurance | None = None,
     ):
         self.config = config
         self.session = session
         self.user_id = user_id
         self.workspace_id = workspace_id
         self.sensitivity = sensitivity
+        artifact_assurance = runtime_artifact_assurance or (
+            remote_artifacts() if config.url else unverified_artifacts(config.command)
+        )
         self.server_fingerprint = sha256_of(
             {
                 "name": config.server_name,
@@ -154,6 +166,7 @@ class McpStdioProxy:
                 "url": config.url,
                 "header_env": config.header_env,
                 "cwd": str(config.cwd) if config.cwd else "",
+                "runtime_artifacts": artifact_assurance.authority_dict(),
             }
         )
         self.proxy_fingerprint = sha256_of(
@@ -193,7 +206,9 @@ class McpStdioProxy:
             authority_context={
                 "mcp_server_fingerprint": self.server_fingerprint,
                 "mcp_proxy_fingerprint": self.proxy_fingerprint,
+                "runtime_artifacts": artifact_assurance.authority_dict(),
             },
+            runtime_artifact_assurance=artifact_assurance,
             trusted_operator_keys=trusted_operator_keys,
         )
 
@@ -404,15 +419,23 @@ def run_stdio_proxy(
         raise McpConfigError("mcp-proxy requires server.command")
     input_stream = client_input or sys.stdin
     output_stream = client_output or sys.stdout
-    session = UpstreamSession(
+    assurance = verify_runtime_artifacts(
         config.command,
-        output_stream,
+        config.artifact_integrity.artifacts,
+        workdir=workdir,
         cwd=config.cwd,
-        timeout_seconds=config.upstream_timeout_seconds,
+    )
+    effective_config = replace(config, command=assurance.command)
+    session = UpstreamSession(
+        effective_config.command,
+        output_stream,
+        cwd=effective_config.cwd,
+        timeout_seconds=effective_config.upstream_timeout_seconds,
+        start=False,
     )
     try:
         proxy = McpStdioProxy(
-            config,
+            effective_config,
             session,
             workdir=workdir,
             user_id=user_id,
@@ -422,7 +445,16 @@ def run_stdio_proxy(
             sensitivity=sensitivity,
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
+            runtime_artifact_assurance=assurance,
         )
+        reverified = verify_runtime_artifacts(
+            effective_config.command,
+            effective_config.artifact_integrity.artifacts,
+            workdir=workdir,
+            cwd=effective_config.cwd,
+        )
+        require_same_artifact_bundle(assurance, reverified)
+        session.start()
         for line in input_stream:
             if line.strip():
                 proxy.accept_line(line)
@@ -469,6 +501,7 @@ def run_http_upstream_proxy(
             sensitivity=sensitivity,
             dry_run=dry_run,
             trusted_operator_keys=trusted_operator_keys,
+            runtime_artifact_assurance=remote_artifacts(),
         )
         for line in input_stream:
             if line.strip():

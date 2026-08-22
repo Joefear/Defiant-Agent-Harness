@@ -118,6 +118,12 @@ not add a rotation, activation, cancellation, policy upload, or profile-repair
 endpoint. The operator CLI stages a reviewed candidate, and only the exact
 authority runtime can activate it under the authority lock.
 
+v0.16 extends that metric with sanitized runtime-artifact assurance: pinned or
+unverified state, declared artifact count, a shortened canonical bundle hash,
+and profile-binding status. It does not expose local paths or individual file
+digests. There is no manifest editor, rehash, acceptance, rotation, launch, or
+repair endpoint; the dashboard remains strictly read-only.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote
