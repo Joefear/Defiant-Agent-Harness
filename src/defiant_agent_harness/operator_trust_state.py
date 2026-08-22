@@ -300,6 +300,28 @@ class OperatorTrustStateStore:
         state.verify(candidate)
         return candidate
 
+    def preview_for_authority(
+        self, specs: Iterable[str | Path]
+    ) -> OperatorTrustPolicy | None:
+        """Validate configured trust against durable state without enrolling it."""
+        supplied = list(specs)
+        candidate = OperatorTrustPolicy.from_specs(supplied) if supplied else None
+        state = self.get()
+        if state is None:
+            if candidate is None and self._legacy_signed_authority_present():
+                raise OperatorTrustStateError(
+                    "signed operator attestations predate durable enrollment; "
+                    "trusted operator keys are required to migrate this workdir"
+                )
+            return candidate
+        if candidate is None:
+            raise OperatorTrustStateError(
+                "signed operator trust is durably enrolled; trusted operator keys "
+                "are required for authority-bearing startup"
+            )
+        state.verify(candidate)
+        return candidate
+
     def _legacy_signed_authority_present(self) -> bool:
         approvals_path = self.path.with_name("approvals.json")
         if not approvals_path.exists():

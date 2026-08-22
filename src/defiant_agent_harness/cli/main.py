@@ -12,6 +12,7 @@ dah verify                verify the evidence hash chain
 dah signing-keygen        create an encrypted Ed25519 signing key pair
 dah operator-keygen       create an encrypted operator identity key pair
 dah operator-trust-rotate authorize an additive operator trust rotation
+dah authority-profile-rotate authorize one exact runtime authority profile
 dah verify-export         verify a signed export against pinned public keys
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
@@ -32,6 +33,7 @@ from pathlib import Path
 
 from ..adapters.mock import SCRIPTS, MockAgentAdapter
 from ..approvals.store import ApprovalStore
+from ..authority_profile import AuthorityProfileStore
 from ..command.core import CommandCore, CommandError
 from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
 from ..contracts import HarnessRequest, Sensitivity
@@ -56,11 +58,12 @@ from ..operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
     sign_authorization_reconciliation,
+    sign_authority_profile_transition,
     sign_operator_action,
     sign_trust_transition,
 )
 from ..operator_trust_state import OperatorTrustStateStore
-from ..persistence import PersistenceError
+from ..persistence import AuthorityTransactionLock, PersistenceError
 from ..state_integrity import StateIntegrityAuditor
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -226,7 +229,7 @@ def cmd_decide(args, approved: bool) -> int:
         )
         return 0
 
-    harness = _harness(args)
+    harness = _harness(args, operator_control=not approved)
     try:
         outcome = harness.resume(
             args.approval_id,
@@ -246,7 +249,7 @@ def cmd_decide(args, approved: bool) -> int:
 
 def cmd_reconcile(args) -> int:
     try:
-        harness = _harness(args)
+        harness = _harness(args, operator_control=True)
         pending = harness.approvals.get(args.approval_id)
         attestation = _operator_attestation(
             args,
@@ -277,7 +280,7 @@ def cmd_reconcile(args) -> int:
 
 def cmd_reconcile_authorization(args) -> int:
     try:
-        harness = _harness(args)
+        harness = _harness(args, operator_control=True)
         record = harness.evidence.get(args.authority_record_id)
         if record is None:
             raise OperatorIdentityError(
@@ -521,6 +524,79 @@ def cmd_operator_trust_rotate(args) -> int:
     return 0
 
 
+def cmd_authority_profile_rotate(args) -> int:
+    try:
+        _validate_trusted_operator_paths(args)
+        lock = AuthorityTransactionLock(Path(args.workdir) / "authority.lock")
+        with lock.acquire():
+            trust_store = OperatorTrustStateStore(
+                Path(args.workdir) / "operator_trust.json"
+            )
+            trust = trust_store.preview_for_authority(args.trusted_operator_key or [])
+            profile_store = AuthorityProfileStore(
+                Path(args.workdir) / "authority_profile.json"
+            )
+            state = profile_store.get()
+            if state is None:
+                raise OperatorIdentityError(
+                    "authority profile is not enrolled; start an authority path once first"
+                )
+            signing_values = (
+                args.operator_key,
+                args.operator_passphrase_file,
+            )
+            if trust is None:
+                if any(signing_values):
+                    raise OperatorIdentityError(
+                        "trusted operator keys are required for a signed profile rotation"
+                    )
+                attestation = None
+            else:
+                if not all(signing_values):
+                    raise OperatorIdentityError(
+                        "signed operator trust is enrolled; profile rotation requires "
+                        "--operator-key and --operator-passphrase-file"
+                    )
+                _require_external_secret(
+                    args.workdir, args.operator_key, "operator private key"
+                )
+                _require_external_secret(
+                    args.workdir,
+                    args.operator_passphrase_file,
+                    "operator passphrase file",
+                )
+                attestation = sign_authority_profile_transition(
+                    args.operator_key,
+                    read_passphrase(args.operator_passphrase_file),
+                    from_generation=state.generation,
+                    from_profile_hash=state.profile_hash,
+                    to_profile_hash=args.profile_hash,
+                    operator=args.operator,
+                    note=args.note,
+                )
+            updated = profile_store.request_rotation(
+                args.profile_hash,
+                operator=args.operator,
+                note=args.note,
+                operator_trust=trust,
+                attestation=attestation,
+            )
+    except (OperatorIdentityError, EvidenceSigningError, PersistenceError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    pending = updated.pending_rotation
+    if pending is None:
+        print(f"authority profile already active at generation {updated.generation}")
+        print(f"profile {updated.profile_hash}")
+    else:
+        print(
+            f"authority profile rotation staged for generation {pending['to_generation']}"
+        )
+        print(f"profile {pending['to_profile_hash']}")
+        print("activation occurs only when that exact runtime profile starts")
+    return 0
+
+
 def cmd_command_center(args) -> int:
     try:
         _validate_trusted_operator_paths(args)
@@ -603,7 +679,7 @@ def cmd_mcp_http_proxy(args) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _harness(args):
+def _harness(args, *, operator_control: bool = False):
     policy_packs = getattr(args, "policy", None) or []
     if not policy_packs and getattr(args, "approval_id", ""):
         approval = ApprovalStore(Path(args.workdir) / "approvals.json").get(
@@ -622,6 +698,7 @@ def _harness(args):
         policy_packs=policy_packs,
         workspace_root=args.workspace_root,
         trusted_operator_keys=getattr(args, "trusted_operator_key", None),
+        _operator_control=operator_control,
     )
 
 
@@ -890,6 +967,19 @@ def build_parser() -> argparse.ArgumentParser:
     rotate.add_argument("--operator", required=True)
     rotate.add_argument("--note", required=True)
     rotate.set_defaults(fn=cmd_operator_trust_rotate)
+
+    profile_rotate = sub.add_parser(
+        "authority-profile-rotate",
+        help="authorize and stage one exact runtime authority profile",
+    )
+    profile_rotate.add_argument(
+        "profile_hash",
+        help="complete sha256 authority profile reported by the candidate runtime",
+    )
+    profile_rotate.add_argument("--operator", required=True)
+    profile_rotate.add_argument("--note", required=True)
+    _add_operator_signing(profile_rotate)
+    profile_rotate.set_defaults(fn=cmd_authority_profile_rotate)
 
     verify_export_parser = sub.add_parser(
         "verify-export",

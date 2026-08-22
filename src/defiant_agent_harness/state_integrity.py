@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .approvals.store import PendingApproval
+from .authority_profile import AuthorityProfileStore
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
 from .evidence.store import GENESIS
@@ -24,7 +25,7 @@ from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.5.0"
+AUDIT_VERSION = "0.6.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -121,9 +122,11 @@ class StateIntegrityAuditor:
         self,
         workdir: str | Path,
         operator_trust: OperatorTrustPolicy | None = None,
+        authority_profile_hash: str | None = None,
     ):
         self.workdir = Path(workdir)
         self.operator_trust = operator_trust
+        self.authority_profile_hash = authority_profile_hash
 
     def require_safe(self) -> StateIntegrityReport:
         report = self.audit()
@@ -141,6 +144,7 @@ class StateIntegrityAuditor:
         report = StateIntegrityReport()
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
+        profile_generation = self._audit_authority_profile(report)
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
@@ -154,6 +158,7 @@ class StateIntegrityAuditor:
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
+            "authority_profile_generation": profile_generation,
             "active_journal_operations": int(journal_operation is not None),
             "authorization_reconciliations_required": 0,
         }
@@ -182,6 +187,7 @@ class StateIntegrityAuditor:
             "approvals.json",
             "budget.json",
             "operator_trust.json",
+            "authority_profile.json",
             "operation_journal.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
@@ -193,6 +199,96 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_authority_profile(self, report: StateIntegrityReport) -> int:
+        store = AuthorityProfileStore(self.workdir / "authority_profile.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["authority_profile"] = {
+                    "state": "not_enrolled",
+                    "generation": 0,
+                    "profile_hash": None,
+                    "verification": "not_applicable",
+                    "rotation_required": False,
+                    "pending_profile_hash": None,
+                    "pending_assurance": "not_applicable",
+                    "signed_transition_count": 0,
+                    "unsigned_transition_count": 0,
+                }
+                return 0
+            verification = "not_evaluated"
+            if self.operator_trust is not None:
+                state.verify(self.operator_trust)
+            elif any(
+                item["attestation"] is not None
+                for item in [*state.transitions]
+                + ([state.pending_rotation] if state.pending_rotation else [])
+            ):
+                verification = "operator_trust_required"
+            candidate = self.authority_profile_hash
+            if candidate is not None:
+                if state.profile_hash == candidate:
+                    verification = "verified"
+                elif (
+                    state.pending_rotation is not None
+                    and state.pending_rotation["to_profile_hash"] == candidate
+                ):
+                    verification = "activation_required"
+                    self._issue(
+                        report,
+                        "authority_profile_activation_required",
+                        "warning",
+                        "authority_profile",
+                        "configured profile has an authorized pending rotation that "
+                        "must be activated by authority startup",
+                    )
+                else:
+                    verification = "mismatch"
+                    self._issue(
+                        report,
+                        "authority_profile_mismatch",
+                        "critical",
+                        "authority_profile",
+                        "configured authority profile does not match the active or "
+                        "authorized pending profile",
+                    )
+            projection = state.projection(verification=verification)
+            if (
+                verification == "operator_trust_required"
+                and projection["pending_assurance"] == "signed_trusted"
+            ):
+                projection["pending_assurance"] = "signed_unverified"
+            report.stores["authority_profile"] = projection
+            if state.pending_rotation is not None:
+                self._issue(
+                    report,
+                    "authority_profile_rotation_required",
+                    "warning",
+                    "authority_profile",
+                    "an operator-authorized authority profile rotation is pending",
+                )
+            return state.generation
+        except RuntimeError as exc:
+            report.stores["authority_profile"] = {
+                "state": "invalid",
+                "generation": 0,
+                "profile_hash": None,
+                "verification": "invalid",
+                "rotation_required": False,
+                "pending_profile_hash": None,
+                "pending_assurance": "unknown",
+                "signed_transition_count": 0,
+                "unsigned_transition_count": 0,
+            }
+            self._issue(
+                report,
+                "authority_profile_invalid",
+                "critical",
+                "authority_profile",
+                str(exc),
+            )
+            return 0
 
     def _audit_operation_journal(
         self, report: StateIntegrityReport

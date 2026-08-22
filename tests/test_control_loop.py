@@ -11,6 +11,7 @@ import pytest
 
 from defiant_agent_harness.adapters.mock import SCRIPTS, MockAgentAdapter
 from defiant_agent_harness.adapters.base import ToolCall
+from defiant_agent_harness.authority_profile import AuthorityProfileStore
 from defiant_agent_harness.contracts import (
     Decision,
     HarnessRequest,
@@ -159,6 +160,17 @@ def test_approved_action_resumes_after_process_restart(tmp_path):
 
 def test_changed_policy_ruleset_voids_stale_approval(tmp_path):
     _, _, [pending] = run(tmp_path, "send_email")
+    candidate = build_harness(
+        tmp_path / "candidate",
+        MockAgentAdapter(),
+        policy_packs=["merchant_services"],
+    )
+    AuthorityProfileStore(tmp_path / "authority_profile.json").request_rotation(
+        candidate.policy.ruleset_hash,
+        operator="test-operator",
+        note="authorize policy pack test",
+        operator_trust=None,
+    )
     reopened = build_harness(
         tmp_path,
         MockAgentAdapter(),
@@ -435,8 +447,5 @@ def test_dry_run_approval_cannot_be_reused_for_live_execution(tmp_path):
     request = HarnessRequest(task="dry", user_id="t", workspace_id="ws")
     [pending] = dry.run(request)
 
-    live = build_harness(tmp_path, MockAgentAdapter(), dry_run=False)
-    resumed = live.resume(pending.approval_id, True, "sam")
-
-    assert resumed.status is ResultStatus.BLOCKED
-    assert resumed.decision.policy_ids == ["policy_changed"]
+    with pytest.raises(RuntimeError, match="authority profile does not match"):
+        build_harness(tmp_path, MockAgentAdapter(), dry_run=False)

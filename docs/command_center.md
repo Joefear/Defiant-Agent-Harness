@@ -35,6 +35,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   signature or operator note;
 - durable operator-trust generation and verified, unverified, mismatched, or
   invalid status without trust-transition signatures or notes;
+- durable authority-profile generation, active/pending hash, verification, and
+  rotation-required status without operator identity, note, or signature;
 - a prominent reconciliation-required alert for approvals stranded in
   `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;
@@ -110,6 +112,11 @@ never acquires, releases, deletes, or probes ownership of `authority.lock`.
 Because snapshots remain point-in-time, a read during an active writer may
 temporarily report an in-progress or locked store; refresh after the writer
 finishes.
+
+v0.15 adds an authority-profile metric and read-only rotation warning. It does
+not add a rotation, activation, cancellation, policy upload, or profile-repair
+endpoint. The operator CLI stages a reviewed candidate, and only the exact
+authority runtime can activate it under the authority lock.
 
 ## Security scope
 

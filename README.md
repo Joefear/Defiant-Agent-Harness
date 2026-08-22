@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.14.
+logs. A full trusted-memory/DKE system is not part of v0.15.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.14 is
+## What v0.15 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -153,6 +153,16 @@ system when a process crashes, so contention fails closed without creating a
 stale-lock repair step. Per-file locks remain the final atomic-write guard.
 Command Core and Command Center do not acquire or mutate this authority lock.
 
+v0.15 adds durable continuity for the complete runtime authority profile. The
+first authority startup pins the canonical hash of policy rules, known tools,
+security-relevant tool contracts, workspace root, dry-run posture, and
+adapter/upstream identity. Later drift fails before operational-store recovery
+or mutation. A reviewed change requires an explicit operator identity, note,
+and exact next hash; signed mode binds it to a trusted Ed25519 key. Rotation is
+staged atomically and activates only when that exact candidate runtime starts.
+Doctor, Command Core, and the strictly read-only Command Center expose only
+sanitized verified, mismatched, invalid, or rotation-required state.
+
 ## Install
 
 ```bash
@@ -230,6 +240,7 @@ dah verify              # confirm the hash chain is intact
 dah signing-keygen      # generate an encrypted Ed25519 signing key pair
 dah operator-keygen     # generate an encrypted operator identity key pair
 dah operator-trust-rotate ... # authorize an additive trust generation
+dah authority-profile-rotate ... # stage one exact reviewed runtime profile
 dah verify-export ...   # verify a signed export against pinned public keys
 dah doctor              # read-only cross-store integrity and recovery audit
 dah budget              # ledger, spend, and estimate drift
@@ -477,12 +488,13 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.14 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.15 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
 known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
+durable full-authority-profile continuity and explicit staged rotation,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -491,6 +503,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
 `docs/authorization_reconciliation.md`, `docs/operation_journal.md`,
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
+`docs/authority_profile.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,
