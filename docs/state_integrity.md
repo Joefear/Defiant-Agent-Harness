@@ -16,6 +16,8 @@ further authority unsafe.
 v0.18 validates the state root and every known durable file before interpreting
 store contents, then checks `state_storage.json` against both the current root
 identity and active authority profile.
+v0.19 validates `control_plane_isolation.json`, its strict sanitized contract,
+and its binding to the active authority profile.
 
 Run it without initializing or modifying the state directory:
 
@@ -30,7 +32,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.9.0` and exits
+The command emits schema `defiant.state_integrity` version `0.10.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.

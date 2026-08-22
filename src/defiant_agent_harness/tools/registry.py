@@ -17,7 +17,7 @@ import secrets
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from ..contracts import (
     CapabilityGrant,
@@ -101,6 +101,7 @@ class ToolRegistry:
         self._tools: dict[str, tuple[ToolSpec, Callable[..., ToolResult]]] = {}
         self.dry_run = dry_run
         self.workspace_root = Path(workspace_root).resolve(strict=False)
+        self._protected_roots: tuple[Path, ...] = ()
         self._grant_key = secrets.token_bytes(32)
 
     # -- registration -------------------------------------------------
@@ -120,6 +121,24 @@ class ToolRegistry:
     def specs(self) -> list[ToolSpec]:
         return [spec for spec, _ in self._tools.values()]
 
+    def _protect_roots(self, roots: Iterable[str | Path]) -> None:
+        """Bind control-plane roots that workspace tools must never overlap."""
+        resolved = tuple(
+            sorted(
+                {Path(root).resolve(strict=True) for root in roots},
+                key=lambda path: str(path).casefold(),
+            )
+        )
+        if not resolved:
+            raise ToolContractError(
+                "at least one protected control-plane root is required"
+            )
+        if self._protected_roots and self._protected_roots != resolved:
+            raise ToolContractError(
+                "tool registry is already bound to different protected roots"
+            )
+        self._protected_roots = resolved
+
     # -- authoritative contract --------------------------------------
 
     def validate_action(self, action: ProposedAction) -> None:
@@ -134,13 +153,26 @@ class ToolRegistry:
                 f"'{spec.side_effect_level.value}'"
             )
         if spec.target_scope == "workspace":
-            resolve_workspace_target(action.target, self.workspace_root)
+            target = resolve_workspace_target(action.target, self.workspace_root)
+            self._require_unprotected(target)
         elif spec.target_scope == "workspace_path":
-            resolve_workspace_target(
+            target = resolve_workspace_target(
                 action.target,
                 self.workspace_root,
                 allow_root=True,
             )
+            self._require_unprotected(target)
+
+    def _require_unprotected(self, target: Path) -> None:
+        for protected in self._protected_roots:
+            if (
+                target == protected
+                or target.is_relative_to(protected)
+                or protected.is_relative_to(target)
+            ):
+                raise ToolContractError(
+                    "workspace target overlaps a protected control-plane path"
+                )
 
     # -- signed authority --------------------------------------------
 

@@ -19,7 +19,7 @@ SERVER = ROOT / "tests" / "fixtures" / "mcp_server.py"
 
 
 class ProxyProcess:
-    def __init__(self, config: Path, state: Path):
+    def __init__(self, config: Path, state: Path, workspace: Path | None = None):
         environment = dict(os.environ)
         prior = environment.get("PYTHONPATH", "")
         environment["PYTHONPATH"] = str(ROOT / "src") + (
@@ -33,7 +33,7 @@ class ProxyProcess:
                 "--workdir",
                 str(state),
                 "--workspace-root",
-                str(state / "workspace"),
+                str(workspace or state.parent / "workspace"),
                 "--user",
                 "sam",
                 "--workspace",
@@ -121,6 +121,10 @@ tools:
   echo:
     side_effect: none
     target_arg: text
+  read_workspace:
+    side_effect: none
+    target_arg: path
+    target_scope: workspace
   send_email:
     side_effect: external_send
     target_arg: to
@@ -306,6 +310,32 @@ def test_repeated_pending_call_reuses_one_exact_action(tmp_path):
         == second["result"]["_defiant"]["approval_id"]
     )
     assert len(ApprovalStore(state / "approvals.json").list_pending()) == 1
+    assert calls(marker) == []
+
+
+def test_workspace_tool_cannot_target_nested_defiant_state(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state = workspace / ".dah"
+    marker = tmp_path / "calls.jsonl"
+    config = write_config(tmp_path, marker)
+    proxy = ProxyProcess(config, state, workspace)
+    try:
+        initialize(proxy)
+        response = proxy.request(
+            2,
+            "tools/call",
+            {
+                "name": "read_workspace",
+                "arguments": {"path": "workspace/.dah/approvals.json"},
+            },
+        )
+    finally:
+        proxy.stop()
+
+    assert response["result"]["isError"] is True
+    assert response["result"]["_defiant"]["status"] == "blocked"
+    assert "protected control-plane" in response["result"]["content"][0]["text"]
     assert calls(marker) == []
 
 

@@ -12,6 +12,10 @@ from .approvals.store import PendingApproval
 from .authority_profile import AuthorityProfileStore
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
+from .control_plane_isolation import (
+    ControlPlaneIsolationError,
+    ControlPlaneIsolationStateStore,
+)
 from .evidence.store import GENESIS
 from .money import ZERO, money, money_text
 from .operator_identity import (
@@ -33,13 +37,14 @@ from .state_storage import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.9.0"
+AUDIT_VERSION = "0.10.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
     "authority.lock",
     "authority_profile.json",
     "budget.json",
+    "control_plane_isolation.json",
     "evidence.jsonl",
     "hook_executions.json",
     "launch_envelope.json",
@@ -168,6 +173,7 @@ class StateIntegrityAuditor:
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
+        protected_root_count = self._audit_control_plane_isolation(report)
         artifact_count = self._audit_runtime_artifacts(report)
         launch_variable_count = self._audit_launch_envelope(report)
         journal_operation = self._audit_operation_journal(report)
@@ -184,6 +190,7 @@ class StateIntegrityAuditor:
             "reconciliations": len(budget.get("reconciliations", {})),
             "operator_trust_generation": trust_generation,
             "authority_profile_generation": profile_generation,
+            "protected_control_plane_roots": protected_root_count,
             "runtime_artifacts": artifact_count,
             "launch_environment_variables": launch_variable_count,
             "state_storage_files": storage_file_count,
@@ -318,6 +325,7 @@ class StateIntegrityAuditor:
             "evidence.jsonl",
             "approvals.json",
             "budget.json",
+            "control_plane_isolation.json",
             "operator_trust.json",
             "authority_profile.json",
             "operation_journal.json",
@@ -335,6 +343,84 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_control_plane_isolation(self, report: StateIntegrityReport) -> int:
+        store = ControlPlaneIsolationStateStore(
+            self.workdir / "control_plane_isolation.json"
+        )
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["control_plane_isolation"] = {
+                    "state": "not_recorded",
+                    "verification": "migration_required",
+                    "profile_hash": None,
+                    "contract_hash": None,
+                    "workspace_hash": None,
+                    "protected_root_count": 0,
+                    "relationship": None,
+                    "last_verified_at": None,
+                }
+                try:
+                    profile = AuthorityProfileStore(
+                        self.workdir / "authority_profile.json"
+                    ).get()
+                except RuntimeError:
+                    profile = None
+                if profile is not None:
+                    self._issue(
+                        report,
+                        "control_plane_isolation_observation_missing",
+                        "warning",
+                        "control_plane_isolation.json",
+                        "control-plane isolation has not been recorded for the "
+                        "active authority profile",
+                    )
+                return 0
+            verification = "not_evaluated"
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is not None:
+                if profile.profile_hash == state.profile_hash:
+                    verification = "verified"
+                else:
+                    verification = "profile_mismatch"
+                    self._issue(
+                        report,
+                        "control_plane_isolation_profile_mismatch",
+                        "critical",
+                        "control_plane_isolation.json",
+                        "control-plane isolation is not bound to the active "
+                        "authority profile",
+                    )
+            report.stores["control_plane_isolation"] = state.projection(
+                verification=verification
+            )
+            return state.protected_root_count
+        except ControlPlaneIsolationError as exc:
+            report.stores["control_plane_isolation"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "contract_hash": None,
+                "workspace_hash": None,
+                "protected_root_count": 0,
+                "relationship": None,
+                "last_verified_at": None,
+            }
+            self._issue(
+                report,
+                "control_plane_isolation_invalid",
+                "critical",
+                "control_plane_isolation.json",
+                str(exc),
+            )
+            return 0
 
     def _audit_runtime_artifacts(self, report: StateIntegrityReport) -> int:
         store = RuntimeArtifactStateStore(self.workdir / "runtime_artifacts.json")

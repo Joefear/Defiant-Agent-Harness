@@ -80,8 +80,14 @@ from .state_storage import (
     StateStorageState,
     StateStorageStateStore,
 )
+from .control_plane_isolation import (
+    ControlPlaneIsolationAssurance,
+    ControlPlaneIsolationError,
+    ControlPlaneIsolationState,
+    ControlPlaneIsolationStateStore,
+)
 
-__version__ = "0.18.0"
+__version__ = "0.19.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -93,6 +99,10 @@ __all__ = [
     "AuthorityProfileStore",
     "AuthorityTransactionLock",
     "ContentRef",
+    "ControlPlaneIsolationAssurance",
+    "ControlPlaneIsolationError",
+    "ControlPlaneIsolationState",
+    "ControlPlaneIsolationStateStore",
     "Decision",
     "EvidenceRecord",
     "ExecutionCompletionSubject",

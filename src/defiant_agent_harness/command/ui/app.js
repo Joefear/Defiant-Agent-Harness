@@ -328,7 +328,13 @@ function renderBudget(budget) {
   elements.budgetDrift.textContent = `${money(drift.drift_usd)} · ${drift.drift_pct}%`;
 }
 
-function renderAuthorityProfile(profile, artifacts, launchEnvelope, stateStorage) {
+function renderAuthorityProfile(
+  profile,
+  artifacts,
+  launchEnvelope,
+  stateStorage,
+  controlPlaneIsolation,
+) {
   if (!profile || profile.state === "not_enrolled") {
     elements.profileGeneration.textContent = "—";
     elements.profileDetail.textContent = "Not enrolled";
@@ -350,7 +356,10 @@ function renderAuthorityProfile(profile, artifacts, launchEnvelope, stateStorage
   const storageDetail = stateStorage
     ? `${label(stateStorage.state)} · ${integer.format(stateStorage.files_checked || 0)} files`
     : "Not recorded";
-  elements.profileDetail.textContent = `${profileDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
+  const isolationDetail = controlPlaneIsolation
+    ? `${label(controlPlaneIsolation.state)} · ${integer.format(controlPlaneIsolation.protected_root_count || 0)} roots · ${label(controlPlaneIsolation.relationship)}`
+    : "Not recorded";
+  elements.profileDetail.textContent = `${profileDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }
 
 function renderActivity(activity) {
@@ -396,6 +405,7 @@ function renderSnapshot(snapshot) {
     snapshot.runtime_artifacts,
     snapshot.launch_envelope,
     snapshot.state_storage,
+    snapshot.control_plane_isolation,
   );
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;

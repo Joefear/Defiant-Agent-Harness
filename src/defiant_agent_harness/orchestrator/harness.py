@@ -1446,6 +1446,10 @@ def build_harness(
     trusted_operator_keys: list[str] | None = None,
     _operator_control: bool = False,
 ) -> Harness:
+    from ..control_plane_isolation import (
+        ControlPlaneIsolationStateStore,
+        build_control_plane_isolation,
+    )
     from ..tools.builtin import default_registry
 
     state_storage = prepare_state_storage(workdir)
@@ -1459,6 +1463,11 @@ def build_harness(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
     )
+    control_plane_isolation = build_control_plane_isolation(
+        registry.workspace_root,
+        state_root,
+    )
+    registry._protect_roots(control_plane_isolation.protected_roots)
     policy = PolicyEngine.default(
         policy_packs,
         additional_known_tools=(registry.names() if tools is not None else None),
@@ -1471,6 +1480,7 @@ def build_harness(
             "dry_run": dry_run,
             "adapter": authority_context or {},
             "state_storage": state_storage.authority_dict(),
+            "control_plane_isolation": control_plane_isolation.authority_dict(),
         },
     )
     with authority_lock.acquire():
@@ -1501,6 +1511,9 @@ def build_harness(
             StateStorageStateStore(state_root / "state_storage.json").record(
                 policy.ruleset_hash, state_storage
             )
+            ControlPlaneIsolationStateStore(
+                state_root / "control_plane_isolation.json"
+            ).record(policy.ruleset_hash, control_plane_isolation)
         if runtime_artifact_assurance is not None:
             from ..runtime_artifacts import RuntimeArtifactStateStore
 

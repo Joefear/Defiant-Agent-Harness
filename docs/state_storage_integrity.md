@@ -2,7 +2,8 @@
 
 v0.18 hardens the filesystem boundary beneath Defiant's durable approvals,
 budgets, evidence, recovery journals, trust state, authority profile, and other
-local observations. A valid JSON schema or hash chain is not sufficient if the
+local observations, including the v0.19 control-plane isolation contract. A
+valid JSON schema or hash chain is not sufficient if the
 path being read can silently redirect to another file.
 
 ## Root identity and authority

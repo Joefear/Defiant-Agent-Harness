@@ -409,7 +409,22 @@ Command Core and Command Center expose only the sanitized posture, bounded
 hashes, and counts. They cannot repair, move, relink, chmod, accept, or restore
 state. See `state_storage_integrity.md`.
 
-## What is deliberately absent from v0.18
+## Control-plane path isolation in v0.19
+
+Every registry is bound to the canonical Defiant state root before the policy
+hash is computed. A `workspace` or `workspace_path` tool contract cannot name
+that root, a descendant, a symlink alias, or a directory scope that contains
+it. The same check runs at initial contract validation and inside grant
+execution, so a path retargeted after authorization is refused before the tool
+handler or MCP upstream receives it.
+
+The sanitized contract hash, workspace hash, protected-root count, and overlap
+relationship enter the complete authority profile. A matching
+`control_plane_isolation.json` observation is recorded under the authority
+lock. Doctor and the read-only Command surfaces can report that posture but
+cannot create exceptions or change tool scope. See `control_plane_isolation.md`.
+
+## What is deliberately absent from v0.19
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -487,6 +502,10 @@ state. See `state_storage_integrity.md`.
   a privileged host can replace code and complete state together or restore an
   older internally consistent root. Off-box signed observations remain the
   answer to host-level rollback.
+- **Protected targets are not an upstream sandbox.** v0.19 blocks accurately
+  declared workspace targets that overlap Defiant state. It cannot stop a
+  dishonest or compromised upstream from ignoring its target argument or
+  accessing a broader host mount; OS containment remains required.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

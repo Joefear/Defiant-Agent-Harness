@@ -199,6 +199,24 @@ harness plus complete state and authority history. Windows ACL evaluation,
 encrypted storage, backups, and off-box rollback witnessing remain deployment
 controls.
 
+### 14. Governed tools targeting Defiant control state
+
+When `.dah` is nested under the configured workspace, a filesystem tool can
+otherwise name approvals, budgets, evidence, trust state, or recovery records
+as ordinary agent data. Private modes do not separate two processes running as
+the same user.
+
+v0.19 binds the canonical state root into every tool registry as a protected
+control-plane root and into the complete authority profile. Workspace-scoped
+targets are refused when they enter, alias, or contain protected state.
+Resolution follows symlinks, validation repeats inside grant execution, and a
+denial is sealed as terminal evidence without forwarding the call upstream.
+
+This depends on an honest operator-authored target contract and does not
+sandbox an upstream process that ignores its declared argument or accesses a
+broader host mount. Least-privilege filesystem mounts and OS containment remain
+deployment controls.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
