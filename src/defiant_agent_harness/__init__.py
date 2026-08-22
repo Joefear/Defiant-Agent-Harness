@@ -42,6 +42,7 @@ from .operator_trust_state import (
     OperatorTrustStateStore,
 )
 from .operation_journal import (
+    ExecutionCompletionSubject,
     JournalOperation,
     OperationJournal,
     OperationJournalError,
@@ -53,7 +54,7 @@ from .state_integrity import (
     StateIntegrityReport,
 )
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -62,6 +63,7 @@ __all__ = [
     "ContentRef",
     "Decision",
     "EvidenceRecord",
+    "ExecutionCompletionSubject",
     "GrantError",
     "GuardrailDecision",
     "Harness",

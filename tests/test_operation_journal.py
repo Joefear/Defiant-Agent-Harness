@@ -393,12 +393,12 @@ def test_journal_lock_is_a_critical_state_integrity_issue(tmp_path):
     assert any(issue.code == "state_lock_present" for issue in report.issues)
 
 
-def test_nonapproval_execution_does_not_create_a_local_journal(tmp_path):
+def test_nonapproval_execution_completes_its_local_journal(tmp_path):
     state = tmp_path / "state"
     harness = _harness(state, scenario="read_statement")
 
     harness.run(_request())
 
     assert OperationJournal(state / "operation_journal.json").active() is None
-    assert not (state / "operation_journal.json").exists()
+    assert (state / "operation_journal.json").exists()
     assert BudgetLedger(state / "budget.json").summary()["reserved_usd"] == "0"

@@ -221,7 +221,7 @@ def test_not_executed_operator_outcome_releases_stranded_reservation(tmp_path):
     assert h.budget.summary()["total_spent_usd"] == "0"
 
 
-def test_reconciliation_finishes_crash_after_terminal_evidence_without_replay(
+def test_known_result_recovery_finishes_crash_after_evidence_without_replay(
     tmp_path,
 ):
     h, _, [pending] = run(tmp_path, "overspend", budget=500)
@@ -229,7 +229,7 @@ def test_reconciliation_finishes_crash_after_terminal_evidence_without_replay(
     def crash_before_consumption(*_args, **_kwargs):
         raise RuntimeError("simulated crash before approval consumption")
 
-    h.approvals.mark_consumed = crash_before_consumption
+    h.approvals.ensure_consumed = crash_before_consumption
     with pytest.raises(RuntimeError, match="simulated crash"):
         h.resume(pending.approval_id, True, "reviewer", "approved")
 
@@ -237,18 +237,14 @@ def test_reconciliation_finishes_crash_after_terminal_evidence_without_replay(
     before_records = len(h.evidence.records())
     before_spend = h.budget.summary()["total_spent_usd"]
     reopened = build_harness(tmp_path, MockAgentAdapter())
-    with pytest.raises(Exception, match="conflicts"):
-        reopened.reconcile_execution(
-            pending.approval_id, "failed", "operator-7", "checked provider logs"
-        )
-    reconciled = reopened.reconcile_execution(
-        pending.approval_id, "succeeded", "operator-7", "checked provider logs"
-    )
 
-    assert reconciled.status is ResultStatus.SUCCEEDED
     assert len(reopened.evidence.records()) == before_records
     assert reopened.budget.summary()["total_spent_usd"] == before_spend
     assert reopened.approvals.get(pending.approval_id).status == "consumed"
+    with pytest.raises(Exception, match="consumed"):
+        reopened.reconcile_execution(
+            pending.approval_id, "succeeded", "operator-7", "checked provider logs"
+        )
 
 
 def test_reconciliation_retry_finishes_crash_after_budget_without_double_charge(

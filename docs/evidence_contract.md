@@ -51,6 +51,11 @@ uses the reconciliation fields without fabricating `approved_by`. Its outcome,
 operator, note, timestamp, action, request, authorization hash, and conservative
 cost must agree with the authorization-bound budget reconciliation marker.
 
+For v0.13 known-result recovery, the unsealed terminal record is prepared in the
+operation journal after the tool returns. Its output hash, result, cost, and
+post-settlement available balance are fixed before cross-store completion. The
+raw tool response is not added to the journal.
+
 ## Hashing
 
 All hashes are `"sha256:" + sha256(canonical_json(value))`, where canonical

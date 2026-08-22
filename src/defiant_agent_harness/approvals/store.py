@@ -653,6 +653,41 @@ class ApprovalStore:
             self._write_all(data)
             return approval
 
+    def ensure_consumed(
+        self,
+        approval_id: str,
+        execution_record_id: str,
+    ) -> PendingApproval:
+        """Consume or recognize one exact journaled execution completion."""
+        if not isinstance(execution_record_id, str) or not execution_record_id:
+            raise ApprovalError("execution_record_id must be non-empty")
+        with exclusive_file_lock(self.path):
+            data = self._read_all()
+            raw = data.get(approval_id)
+            if raw is None:
+                raise ApprovalError(f"unknown approval {approval_id}")
+            approval = PendingApproval(**raw)
+            if approval.status == "consumed":
+                if approval.execution_record_id != execution_record_id:
+                    raise ApprovalError(
+                        f"approval {approval_id} was consumed by different evidence"
+                    )
+                return approval
+            if approval.status != "executing":
+                raise ApprovalError(
+                    f"approval {approval_id} is {approval.status}, not executing"
+                )
+            if approval.reconciliation_outcome:
+                raise ApprovalError(
+                    f"approval {approval_id} has operator reconciliation in progress"
+                )
+            approval.status = "consumed"
+            approval.execution_record_id = execution_record_id
+            approval.consumed_at = utc_now()
+            data[approval_id] = asdict(approval)
+            self._write_all(data)
+            return approval
+
     def begin_reconciliation(
         self,
         approval_id: str,

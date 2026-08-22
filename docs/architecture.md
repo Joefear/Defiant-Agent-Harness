@@ -288,6 +288,21 @@ This path does not replay tools, discover provider truth, or apply to an action
 owned by an approval. Doctor, Command Core, and Command Center expose sanitized
 recovery metadata, but the dashboard remains read-only.
 
+## Known-result completion boundary in v0.13
+
+After a tool returns, the external outcome is no longer uncertain, but budget,
+terminal evidence, and approval consumption are still separate durable stores.
+v0.13 prepares their exact completion in the local operation journal before the
+first of those mutations. Restart verifies the sealed authorization and then
+recognizes or applies settlement, evidence, and consumption once without
+invoking the tool.
+
+The journal contains terminal evidence metadata and an output hash, not the raw
+tool response. A reported positive cost is preserved; otherwise a non-dry-run
+attempt with reserved exposure settles at that conservative estimate. Valid
+known-result recovery is shown separately from manual reconciliation in doctor,
+Command Core, and Command Center. The dashboard remains read-only.
+
 ## Native agent hook boundary (Preview)
 
 The workspace `PreToolUse` hook covers supported native VS Code and Copilot CLI
@@ -301,7 +316,7 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.12
+## What is deliberately absent from v0.13
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -353,10 +368,12 @@ successes. See `native_hooks.md`.
   back to normal runner permissions when a hook times out. Hook errors are
   converted to explicit deny responses, but the platform timeout rule requires
   an outer OS sandbox for production.
-- **Reconciliation does not discover the truth automatically.** The operator
-  must inspect the external provider or target system and assert the outcome.
-  v0.6 makes that assertion explicit, durable, conservative, and auditable; it
-  cannot prove that the human conclusion was correct.
+- **Reconciliation does not discover the truth automatically.** v0.13 recovers
+  a result only when it was returned and durably journaled. Otherwise the
+  operator must inspect the external provider or target system and assert the
+  outcome. The reconciliation procedures make that assertion explicit,
+  durable, conservative, and auditable; they cannot prove that the human
+  conclusion was correct.
 - **Cross-store auditing is point-in-time.** It does not turn local JSON files
   into a transactional database. Defiant assumes one logical writer per state
   directory and uses conservative per-file locks to reject concurrent writes.

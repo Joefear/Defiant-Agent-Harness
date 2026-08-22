@@ -99,6 +99,12 @@ tool name, timestamp, and recovery state. The banner distinguishes approval and
 approval-free counts. Targets, payloads, operator notes, attestations, and raw
 results remain excluded, and no reconciliation control or endpoint is added.
 
+v0.13 distinguishes a journaled known result from an uncertain execution. The
+operation-recovery banner remains visible, but matching approval and
+approval-free items are not counted as requiring manual reconciliation. The UI
+cannot settle budget, append evidence, consume an approval, or complete the
+journal; authority startup performs that deterministic recovery.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

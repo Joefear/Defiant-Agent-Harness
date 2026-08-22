@@ -16,6 +16,11 @@ from ..budgets.ledger import BudgetError, BudgetLedger
 from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..money import ZERO, money, money_text
+from ..operation_journal import (
+    JournalOperation,
+    OperationJournal,
+    OperationJournalError,
+)
 from ..operator_identity import (
     DECISION_PURPOSE,
     RECONCILIATION_PURPOSE,
@@ -28,7 +33,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.7.0"
+SNAPSHOT_VERSION = "0.8.0"
 
 
 class CommandError(RuntimeError):
@@ -60,6 +65,11 @@ class CommandCore:
                 self.workdir, operator_trust=self.operator_trust
             ).audit()
             audit_payload = audit.to_dict()
+            journal_operation = (
+                None
+                if audit.stores["operation_journal"]["state"] == "invalid"
+                else OperationJournal(self.workdir / "operation_journal.json").active()
+            )
             if audit.stores["evidence"]["state"] == "invalid":
                 detail = _store_issue_detail(audit_payload, "evidence")
                 integrity = ChainStatus(
@@ -71,13 +81,13 @@ class CommandCore:
             approvals = (
                 _unavailable_approvals()
                 if audit.stores["approvals"]["state"] == "invalid"
-                else self._approvals()
+                else self._approvals(journal_operation)
             )
             authorization_reconciliation = (
                 _unavailable_authorization_reconciliation()
                 if audit.stores["evidence"]["state"] == "invalid"
                 or audit.stores["approvals"]["state"] == "invalid"
-                else self._authorization_reconciliation()
+                else self._authorization_reconciliation(journal_operation)
             )
             budget = (
                 _unavailable_budget()
@@ -114,6 +124,7 @@ class CommandCore:
             EvidenceError,
             PersistenceError,
             OSError,
+            OperationJournalError,
             TypeError,
             ValueError,
         ) as exc:
@@ -187,7 +198,7 @@ class CommandCore:
             recent,
         )
 
-    def _approvals(self) -> dict[str, Any]:
+    def _approvals(self, journal_operation: JournalOperation | None) -> dict[str, Any]:
         path = self.workdir / "approvals.json"
         status_counts = Counter({status: 0 for status in sorted(APPROVAL_STATUSES)})
         if not path.exists():
@@ -211,6 +222,7 @@ class CommandCore:
         actionable: list[dict[str, Any]] = []
         identity_counts: Counter[str] = Counter()
         overdue = 0
+        reconciliation_required_count = 0
         for approval_id, raw in raw_approvals.items():
             if not isinstance(raw, dict):
                 raise CommandError(f"approval {approval_id} is not an object")
@@ -227,6 +239,11 @@ class CommandCore:
                 approval.status in {"pending", "approved", "executing"}
                 and not expired_pending
             ):
+                completion_known = _journal_completes_approval(
+                    journal_operation, approval
+                )
+                if approval.status == "executing" and not completion_known:
+                    reconciliation_required_count += 1
                 identity = self._operator_identity(approval)
                 identity_counts[identity.assurance] += 1
                 reconciliation_identity = (
@@ -243,9 +260,13 @@ class CommandCore:
                         "status": approval.status,
                         "created_at": approval.created_at,
                         "expires_at": approval.expires_at or None,
-                        "reconciliation_required": approval.status == "executing",
+                        "reconciliation_required": (
+                            approval.status == "executing" and not completion_known
+                        ),
                         "reconciliation_state": (
-                            "in_progress"
+                            "known_result_recovery"
+                            if completion_known
+                            else "in_progress"
                             if approval.reconciliation_outcome
                             else "required"
                             if approval.status == "executing"
@@ -266,7 +287,7 @@ class CommandCore:
             "total_count": len(raw_approvals),
             "actionable_count": len(actionable),
             "overdue_pending_count": overdue,
-            "reconciliation_required_count": status_counts["executing"],
+            "reconciliation_required_count": reconciliation_required_count,
             "operator_identity_policy": (
                 "signed_required"
                 if self.operator_trust is not None
@@ -304,7 +325,9 @@ class CommandCore:
             note=approval.note,
         )
 
-    def _authorization_reconciliation(self) -> dict[str, Any]:
+    def _authorization_reconciliation(
+        self, journal_operation: JournalOperation | None
+    ) -> dict[str, Any]:
         evidence_path = self.workdir / "evidence.jsonl"
         if not evidence_path.exists():
             return {
@@ -332,6 +355,7 @@ class CommandCore:
             for record in EvidenceStore(evidence_path).open_authorizations()
             if record.get("action_id") not in approval_actions
             and record.get("decision") == "allow"
+            and not _journal_completes_authorization(journal_operation, record)
         ]
         items.sort(
             key=lambda item: (item["authorized_at"], item["authority_record_id"])
@@ -427,6 +451,38 @@ def _unavailable_authorization_reconciliation() -> dict[str, Any]:
         "required_count": 0,
         "items": [],
     }
+
+
+def _journal_completes_approval(
+    operation: JournalOperation | None,
+    approval: PendingApproval,
+) -> bool:
+    if operation is None or operation.kind != "execution_complete":
+        return False
+    authority = operation.payload.get("authority", {})
+    return (
+        operation.payload.get("approval_id") == approval.approval_id
+        and authority.get("action_id") == approval.action_id
+        and authority.get("request_id") == approval.request_id
+        and authority.get("authorization_hash") == approval.authorization_hash
+    )
+
+
+def _journal_completes_authorization(
+    operation: JournalOperation | None,
+    authorization: dict[str, Any],
+) -> bool:
+    if operation is None or operation.kind != "execution_complete":
+        return False
+    authority = operation.payload.get("authority", {})
+    return (
+        authority.get("authority_record_id") == authorization.get("record_id")
+        and authority.get("authority_record_hash") == authorization.get("record_hash")
+        and authority.get("action_id") == authorization.get("action_id")
+        and authority.get("request_id") == authorization.get("request_id")
+        and authority.get("authorization_hash")
+        == authorization.get("authorization_hash")
+    )
 
 
 def _identity_projection(status: OperatorIdentityStatus) -> dict[str, Any]:

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.12.
+logs. A full trusted-memory/DKE system is not part of v0.13.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.12 is
+## What v0.13 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -134,6 +134,15 @@ mode binds the statement to the exact sealed authorization under a distinct
 Ed25519 purpose. Budget disposition and terminal evidence recover idempotently
 through the operation journal, while Command Core and the strictly read-only
 Command Center expose only sanitized recovery metadata.
+
+v0.13 journals a known tool result before budget settlement, terminal evidence,
+or approval consumption. If the process stops after the tool returns, restart
+finishes those exact local mutations without calling the tool again, charging
+twice, duplicating evidence, or asking an operator to guess an outcome the
+harness had already received. Missing actual-cost data settles at the
+conservative reserved estimate for non-dry-run attempts. Doctor, Command Core,
+and the strictly read-only Command Center distinguish this deterministic
+recovery from manual reconciliation.
 
 ## Install
 
@@ -450,16 +459,19 @@ approval, proxy restart, exact-call retry, destructive block, unmapped-tool
 block, and evidence-chain verification. Native-hook tests cover exact approval
 retry, payload changes, terminal and subagent bypass, unknown tools,
 out-of-workspace paths, guardrail self-modification, result correlation, and
-evidence sealing. Set `DAH_LIVE_MCP=1` to add the pinned official filesystem
-server to a test run.
+evidence sealing. Known-result tests crash before settlement, after settlement,
+after evidence, and before approval consumption, then verify restart without
+tool replay, duplicate debit, or duplicate evidence. Set `DAH_LIVE_MCP=1` to
+add the pinned official filesystem server to a test run.
 
 ## Status
 
-v0.12 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.13 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
-deterministic local operation recovery, cross-store integrity gating,
+known-result completion recovery, deterministic local operation recovery,
+cross-store integrity gating,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -467,7 +479,8 @@ process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,
 `docs/authorization_reconciliation.md`, `docs/operation_journal.md`,
-`docs/state_integrity.md`, `docs/evidence_signing.md`,
+`docs/known_result_recovery.md`, `docs/state_integrity.md`,
+`docs/evidence_signing.md`,
 `docs/operator_identity.md`,
 `docs/command_center.md`, `docs/streamable_http.md`, `docs/native_hooks.md`, and
 `docs/codex_runner.md`.

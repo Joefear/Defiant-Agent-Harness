@@ -172,6 +172,12 @@ class BudgetLedger:
             )
             if not isinstance(entry.get("at"), str) or not entry["at"]:
                 raise BudgetError(f"entry {index} is missing timestamp")
+            completion_record_id = entry.get("completion_record_id")
+            if completion_record_id is not None and (
+                not isinstance(completion_record_id, str)
+                or not completion_record_id.startswith("evd_")
+            ):
+                raise BudgetError(f"entry {index} has invalid completion_record_id")
         return data
 
     def _write(self, data: dict) -> None:
@@ -390,6 +396,119 @@ class BudgetLedger:
                     note=f"reserved ${money_text(reserved)}",
                 ),
             )
+            return remaining
+
+    def preview_settlement(
+        self,
+        expected_usd: MoneyLike,
+        actual_usd: MoneyLike,
+        request_id: str,
+        action_id: str,
+    ) -> Decimal:
+        """Validate and return the available balance after an exact settlement."""
+        expected = money(expected_usd, field_name="expected reservation")
+        actual = money(actual_usd, field_name="actual settlement")
+        if not request_id or not action_id:
+            raise BudgetError("settlement requires request_id and action_id")
+        data = self._validated_read()
+        reservation = data["reservations"].get(action_id)
+        prior = [
+            entry
+            for entry in data["entries"]
+            if entry.get("request_id") == request_id
+            and entry.get("action_id") == action_id
+            and entry.get("kind") in {"debit", "release", "reconcile"}
+        ]
+        if prior:
+            raise BudgetError("settlement conflicts with a prior budget disposition")
+        if expected > ZERO:
+            if reservation is None:
+                raise BudgetError(f"action {action_id} has no reservation")
+            if (
+                reservation.get("request_id") != request_id
+                or money(reservation.get("amount_usd"), field_name="reservation")
+                != expected
+            ):
+                raise BudgetError("settlement reservation does not match authority")
+        elif reservation is not None:
+            raise BudgetError("zero-estimate settlement has an unexpected reservation")
+        return self._available(data) + expected - actual
+
+    def ensure_settlement(
+        self,
+        expected_usd: MoneyLike,
+        actual_usd: MoneyLike,
+        request_id: str,
+        action_id: str,
+        completion_record_id: str,
+    ) -> Decimal:
+        """Apply or recognize one exact journaled result settlement."""
+        expected = money(expected_usd, field_name="expected reservation")
+        actual = money(actual_usd, field_name="actual settlement")
+        if not request_id or not action_id:
+            raise BudgetError("settlement requires request_id and action_id")
+        if not isinstance(
+            completion_record_id, str
+        ) or not completion_record_id.startswith("evd_"):
+            raise BudgetError("settlement requires a terminal evidence record id")
+        with exclusive_file_lock(self.path):
+            data = self._validated_read()
+            reservation = data["reservations"].get(action_id)
+            prior = [
+                entry
+                for entry in data["entries"]
+                if entry.get("request_id") == request_id
+                and entry.get("action_id") == action_id
+                and entry.get("kind") in {"debit", "release", "reconcile"}
+            ]
+            if reservation is None:
+                matching = [
+                    entry
+                    for entry in prior
+                    if entry.get("kind") == "debit"
+                    and money(entry.get("amount_usd"), field_name="debit") == actual
+                    and entry.get("note") == f"reserved ${money_text(expected)}"
+                    and entry.get("completion_record_id") == completion_record_id
+                ]
+                if len(prior) == 1 and len(matching) == 1:
+                    return self._available(data)
+                if prior:
+                    raise BudgetError(
+                        "settlement conflicts with a prior budget disposition"
+                    )
+                if expected > ZERO:
+                    raise BudgetError(
+                        f"action {action_id} has no reservation or matching debit"
+                    )
+            else:
+                if prior:
+                    raise BudgetError(
+                        "live reservation conflicts with a prior budget disposition"
+                    )
+                if (
+                    reservation.get("request_id") != request_id
+                    or money(reservation.get("amount_usd"), field_name="reservation")
+                    != expected
+                ):
+                    raise BudgetError("settlement reservation does not match authority")
+                del data["reservations"][action_id]
+
+            balance = _finite_decimal(data["balance_usd"], "balance_usd") - actual
+            spent = _finite_decimal(data["total_spent_usd"], "total_spent_usd")
+            data["balance_usd"] = _decimal_text(balance)
+            data["total_spent_usd"] = _decimal_text(spent + actual)
+            remaining = self._available(data)
+            entry = LedgerEntry(
+                "debit",
+                actual,
+                remaining,
+                request_id=request_id,
+                action_id=action_id,
+                note=f"reserved ${money_text(expected)}",
+            ).to_dict()
+            entry["completion_record_id"] = completion_record_id
+            data["entries"].append(entry)
+            self._write(data)
             return remaining
 
     def release(self, request_id: str, action_id: str) -> Decimal:

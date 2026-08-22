@@ -71,6 +71,11 @@ Approval-free executions have no approval id and must use
 the sealed authorization evidence record and deliberately refuses actions owned
 by an approval. See `authorization_reconciliation.md`.
 
+If an `execution_complete` operation is active, the tool result was already
+returned and v0.13 authority startup will finish the exact local settlement,
+evidence, and approval-consumption steps. Do not replace that deterministic
+recovery with an operator assertion. See `known_result_recovery.md`.
+
 ## Security limits
 
 v0.9 can bind the operator identity, outcome, note, approval authority, and

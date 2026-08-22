@@ -8,19 +8,27 @@ from pathlib import Path
 from typing import Any
 
 from .approvals.store import PendingApproval
-from .contracts import EvidenceRecord, ResultStatus, new_id, sha256_of, utc_now
+from .contracts import (
+    Decision,
+    EvidenceRecord,
+    ResultStatus,
+    new_id,
+    sha256_of,
+    utc_now,
+)
 from .money import money, money_text
 from .operator_identity import AuthorizationReconciliationSubject
 from .persistence import atomic_write_json, exclusive_file_lock, read_json
 
 JOURNAL_SCHEMA = "defiant.operation_journal"
-JOURNAL_VERSION = "0.2.0"
-_SUPPORTED_JOURNAL_VERSIONS = {"0.1.0", JOURNAL_VERSION}
+JOURNAL_VERSION = "0.3.0"
+_SUPPORTED_JOURNAL_VERSIONS = {"0.1.0", "0.2.0", JOURNAL_VERSION}
 OPERATION_KINDS = {
     "approval_create",
     "approval_reject",
     "approval_expire",
     "authorization_reconcile",
+    "execution_complete",
 }
 _STATE_FIELDS = {"schema_name", "schema_version", "active"}
 _OPERATION_FIELDS = {
@@ -35,6 +43,56 @@ _MAX_BYTES = 4 * 1024 * 1024
 
 class OperationJournalError(RuntimeError):
     """A prepared local mutation cannot be recovered safely."""
+
+
+@dataclass(frozen=True)
+class ExecutionCompletionSubject:
+    """Exact sealed authorization whose tool result is already known."""
+
+    authority_record_id: str
+    authority_record_hash: str
+    action_id: str
+    request_id: str
+    authorization_hash: str
+    decision: str
+
+    def __post_init__(self) -> None:
+        for field in (
+            "authority_record_id",
+            "authority_record_hash",
+            "action_id",
+            "request_id",
+            "authorization_hash",
+            "decision",
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, str) or not value.strip():
+                raise OperationJournalError(f"completion authority {field} is invalid")
+        for field in ("authority_record_hash", "authorization_hash"):
+            if not _is_sha256(getattr(self, field)):
+                raise OperationJournalError(f"completion authority {field} is invalid")
+        if self.decision not in {
+            Decision.ALLOW.value,
+            Decision.APPROVAL_REQUIRED.value,
+        }:
+            raise OperationJournalError("completion authority decision is invalid")
+
+    @classmethod
+    def from_record(cls, record: dict[str, Any]) -> "ExecutionCompletionSubject":
+        if not isinstance(record, dict):
+            raise OperationJournalError("completion authorization must be an object")
+        if record.get("result_status") != ResultStatus.SKIPPED.value:
+            raise OperationJournalError(
+                "completion evidence is not an execution authorization"
+            )
+        return cls(
+            authority_record_id=record.get("record_id"),
+            authority_record_hash=record.get("record_hash"),
+            action_id=record.get("action_id"),
+            request_id=record.get("request_id"),
+            authorization_hash=record.get("authorization_hash"),
+            decision=record.get("decision"),
+        )
 
 
 @dataclass(frozen=True)
@@ -178,6 +236,14 @@ def _validate_payload(kind: str, payload: dict[str, Any]) -> None:
             "attestation",
             "evidence",
         },
+        "execution_complete": {
+            "authority",
+            "approval_id",
+            "reserved_usd",
+            "actual_usd",
+            "budget_disposition",
+            "evidence",
+        },
     }[kind]
     if set(payload) != expected_fields:
         raise OperationJournalError("journal payload fields do not match operation")
@@ -191,6 +257,9 @@ def _validate_payload(kind: str, payload: dict[str, Any]) -> None:
         raise OperationJournalError(f"journal payload is invalid: {exc}") from exc
     if evidence.record_hash or evidence.previous_record_hash:
         raise OperationJournalError("journal evidence must be unsealed")
+    if kind == "execution_complete":
+        _validate_execution_completion(payload, evidence, reserved)
+        return
     expected_status = (
         {
             "succeeded": ResultStatus.SUCCEEDED,
@@ -275,3 +344,74 @@ def _validate_payload(kind: str, payload: dict[str, Any]) -> None:
             payload["attestation"], dict
         ):
             raise OperationJournalError("journal rejection attestation is invalid")
+
+
+def _validate_execution_completion(
+    payload: dict[str, Any],
+    evidence: EvidenceRecord,
+    reserved: Any,
+) -> None:
+    try:
+        authority = ExecutionCompletionSubject(**payload["authority"])
+        actual = money(payload["actual_usd"], field_name="journal actual cost")
+    except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+        raise OperationJournalError(
+            f"journal execution completion is invalid: {exc}"
+        ) from exc
+    approval_id = payload["approval_id"]
+    if not isinstance(approval_id, str):
+        raise OperationJournalError("journal completion approval_id is invalid")
+    if approval_id and not approval_id.startswith("apr_"):
+        raise OperationJournalError("journal completion approval_id is invalid")
+    if approval_id and authority.decision != Decision.APPROVAL_REQUIRED.value:
+        raise OperationJournalError(
+            "approval completion is not bound to approval-required authority"
+        )
+    if not approval_id and authority.decision != Decision.ALLOW.value:
+        raise OperationJournalError(
+            "approval-free completion is not bound to allowed authority"
+        )
+    if evidence.result_status not in {ResultStatus.SUCCEEDED, ResultStatus.FAILED}:
+        raise OperationJournalError("journal completion evidence is not a tool result")
+    if (
+        authority.action_id != evidence.action_id
+        or authority.request_id != evidence.request_id
+        or authority.authorization_hash != evidence.authorization_hash
+        or authority.decision != evidence.decision.value
+    ):
+        raise OperationJournalError(
+            "journal completion authority does not match terminal evidence"
+        )
+    disposition = payload["budget_disposition"]
+    if disposition not in {"settle", "none"}:
+        raise OperationJournalError("journal completion budget disposition is invalid")
+    if disposition == "settle" and reserved == 0 and actual == 0:
+        raise OperationJournalError(
+            "zero-value completion must use no-budget disposition"
+        )
+    if disposition == "none" and (reserved != 0 or actual != 0):
+        raise OperationJournalError(
+            "no-budget completion cannot reserve or charge funds"
+        )
+    if money(evidence.cost_usd, field_name="completion evidence cost") != actual:
+        raise OperationJournalError(
+            "journal completion cost does not match terminal evidence"
+        )
+    if any(
+        (
+            evidence.reconciliation_outcome,
+            evidence.reconciled_by,
+            evidence.reconciled_at,
+            evidence.reconciliation_note,
+        )
+    ):
+        raise OperationJournalError(
+            "known tool completion cannot contain operator reconciliation"
+        )
+
+
+def _is_sha256(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    digest = value[7:]
+    return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)

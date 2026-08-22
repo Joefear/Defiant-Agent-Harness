@@ -24,7 +24,7 @@ from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.4.0"
+AUDIT_VERSION = "0.5.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -144,7 +144,7 @@ class StateIntegrityAuditor:
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
-        approvals = self._load_approvals(report)
+        approvals = self._load_approvals(report, journal_operation)
         self._audit_legacy_signed_migration(report, approvals)
         budget = self._load_budget(report)
 
@@ -413,7 +413,9 @@ class StateIntegrityAuditor:
         return records, trusted
 
     def _load_approvals(
-        self, report: StateIntegrityReport
+        self,
+        report: StateIntegrityReport,
+        journal_operation: JournalOperation | None,
     ) -> dict[str, PendingApproval]:
         path = self.workdir / "approvals.json"
         if not path.exists():
@@ -464,7 +466,7 @@ class StateIntegrityAuditor:
                         action_id=action_id,
                     )
             for approval in approvals.values():
-                self._audit_approval_shape(report, approval)
+                self._audit_approval_shape(report, approval, journal_operation)
 
         report.stores["approvals"] = {
             "state": "ready" if valid else "invalid",
@@ -478,7 +480,10 @@ class StateIntegrityAuditor:
         return approvals
 
     def _audit_approval_shape(
-        self, report: StateIntegrityReport, approval: PendingApproval
+        self,
+        report: StateIntegrityReport,
+        approval: PendingApproval,
+        journal_operation: JournalOperation | None,
     ) -> None:
         if approval.status in {"approved", "executing"} and not approval.decided_by:
             self._issue(
@@ -544,14 +549,23 @@ class StateIntegrityAuditor:
                 approval_id=approval.approval_id,
             )
         if approval.status == "executing":
+            completion_known = self._journal_completes_approval(
+                journal_operation, approval
+            )
             state = (
-                "operator reconciliation is in progress"
+                "known tool result requires deterministic local recovery"
+                if completion_known
+                else "operator reconciliation is in progress"
                 if approval.reconciliation_outcome
                 else "execution outcome is uncertain"
             )
             self._issue(
                 report,
-                "execution_recovery_required",
+                (
+                    "execution_completion_recovery_required"
+                    if completion_known
+                    else "execution_recovery_required"
+                ),
                 "warning",
                 "approvals",
                 state,
@@ -685,6 +699,14 @@ class StateIntegrityAuditor:
             record.get("record_id") for record in open_authorizations
         }
 
+        if evidence_trusted:
+            self._audit_known_result_settlements(
+                report,
+                entries,
+                records_by_id,
+                journal_operation,
+            )
+
         for action_id, reservation in reservations.items():
             matching = [
                 approval
@@ -722,6 +744,10 @@ class StateIntegrityAuditor:
         if evidence_trusted:
             for authorization in open_authorizations:
                 action_id = authorization.get("action_id", "")
+                if self._journal_completes_authorization(
+                    journal_operation, authorization
+                ):
+                    continue
                 if approvals_by_action.get(action_id):
                     continue
                 if authorization.get("decision") != "allow":
@@ -1050,6 +1076,79 @@ class StateIntegrityAuditor:
                 record_id=terminal.get("record_id", ""),
             )
 
+    def _audit_known_result_settlements(
+        self,
+        report: StateIntegrityReport,
+        entries: list[dict[str, Any]],
+        records_by_id: dict[str, dict[str, Any]],
+        journal_operation: JournalOperation | None,
+    ) -> None:
+        seen: set[str] = set()
+        for entry in entries:
+            record_id = entry.get("completion_record_id")
+            if not record_id:
+                continue
+            if record_id in seen:
+                self._issue(
+                    report,
+                    "known_result_settlement_duplicate",
+                    "critical",
+                    "budget",
+                    "terminal evidence is referenced by multiple settlements",
+                    action_id=entry.get("action_id", ""),
+                    record_id=record_id,
+                )
+                continue
+            seen.add(record_id)
+            record = records_by_id.get(record_id)
+            if record is None:
+                prepared = (
+                    journal_operation.payload.get("evidence", {})
+                    if journal_operation is not None
+                    and journal_operation.kind == "execution_complete"
+                    else {}
+                )
+                if (
+                    prepared.get("record_id") == record_id
+                    and prepared.get("request_id") == entry.get("request_id")
+                    and prepared.get("action_id") == entry.get("action_id")
+                    and money(prepared.get("cost_usd", "0"))
+                    == money(entry.get("amount_usd", "0"))
+                    and money(prepared.get("budget_remaining_usd", "0"))
+                    == money(entry.get("balance_after_usd", "0"))
+                ):
+                    continue
+                self._issue(
+                    report,
+                    "known_result_evidence_missing",
+                    "critical",
+                    "cross_store",
+                    "known-result settlement references absent terminal evidence",
+                    action_id=entry.get("action_id", ""),
+                    record_id=record_id,
+                )
+                continue
+            if (
+                entry.get("kind") != "debit"
+                or record.get("request_id") != entry.get("request_id")
+                or record.get("action_id") != entry.get("action_id")
+                or record.get("result_status")
+                not in {ResultStatus.SUCCEEDED.value, ResultStatus.FAILED.value}
+                or money(record.get("cost_usd", "0"))
+                != money(entry.get("amount_usd", "0"))
+                or money(record.get("budget_remaining_usd", "0"))
+                != money(entry.get("balance_after_usd", "0"))
+            ):
+                self._issue(
+                    report,
+                    "known_result_settlement_mismatch",
+                    "critical",
+                    "cross_store",
+                    "known-result settlement differs from terminal evidence",
+                    action_id=entry.get("action_id", ""),
+                    record_id=record_id,
+                )
+
     @staticmethod
     def _open_authorizations(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
         terminal_hashes = {
@@ -1107,6 +1206,40 @@ class StateIntegrityAuditor:
             )
         except (KeyError, TypeError, ValueError):
             return False
+
+    @staticmethod
+    def _journal_completes_approval(
+        operation: JournalOperation | None,
+        approval: PendingApproval,
+    ) -> bool:
+        if operation is None or operation.kind != "execution_complete":
+            return False
+        payload = operation.payload
+        authority = payload.get("authority", {})
+        return (
+            payload.get("approval_id") == approval.approval_id
+            and authority.get("action_id") == approval.action_id
+            and authority.get("request_id") == approval.request_id
+            and authority.get("authorization_hash") == approval.authorization_hash
+        )
+
+    @staticmethod
+    def _journal_completes_authorization(
+        operation: JournalOperation | None,
+        authorization: dict[str, Any],
+    ) -> bool:
+        if operation is None or operation.kind != "execution_complete":
+            return False
+        authority = operation.payload.get("authority", {})
+        return (
+            authority.get("authority_record_id") == authorization.get("record_id")
+            and authority.get("authority_record_hash")
+            == authorization.get("record_hash")
+            and authority.get("action_id") == authorization.get("action_id")
+            and authority.get("request_id") == authorization.get("request_id")
+            and authority.get("authorization_hash")
+            == authorization.get("authorization_hash")
+        )
 
     def _check_reservation_binding(
         self,
