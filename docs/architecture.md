@@ -373,7 +373,23 @@ edit a manifest, accept a digest, rotate authority, or launch a process.
 See `runtime_artifact_integrity.md` for the strict configuration schema,
 startup ordering, and limits.
 
-## What is deliberately absent from v0.16
+## Launch-envelope integrity in v0.17
+
+For local stdio upstreams, an optional strict launch contract starts the child
+from an empty environment and admits only operator-declared literals, inherited
+variables, and rotatable secrets. Common loader, runtime, path, and shell
+variables need a second explicit acknowledgement. Nonsecret effective values,
+counts, mode, and an explicit canonical working directory are bound into the
+complete authority profile before process creation. Secret values are passed to
+the child but excluded from persisted hashes and projections.
+
+The sanitized `launch_envelope.json` observation is written under
+`authority.lock` and cross-checked against the active profile. Command Core and
+Command Center expose only hashes, counts, and posture; they cannot supply
+secrets, edit the environment, acknowledge an unsafe variable, or launch a
+process. See `launch_envelope_integrity.md`.
+
+## What is deliberately absent from v0.17
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -441,6 +457,11 @@ startup ordering, and limits.
   dependencies, replace code and state together, or restore an older internally
   valid generation unless an external witness retains the observed generation
   and hash.
+- **Launch-envelope integrity is not process containment.** A restricted child
+  can still load declared writable files, open the network, invoke other
+  processes, or use runtime mechanisms outside environment variables. A
+  privileged host can replace the cwd after the final identity check or patch
+  process memory. OS sandboxing and immutable deployment remain separate.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

@@ -67,8 +67,15 @@ from .runtime_artifacts import (
     RuntimeArtifactState,
     RuntimeArtifactStateStore,
 )
+from .launch_envelope import (
+    LaunchEnvironmentConfig,
+    LaunchEnvelopeAssurance,
+    LaunchEnvelopeError,
+    LaunchEnvelopeState,
+    LaunchEnvelopeStateStore,
+)
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -88,6 +95,11 @@ __all__ = [
     "Harness",
     "HarnessRequest",
     "IntegrityIssue",
+    "LaunchEnvironmentConfig",
+    "LaunchEnvelopeAssurance",
+    "LaunchEnvelopeError",
+    "LaunchEnvelopeState",
+    "LaunchEnvelopeStateStore",
     "OperatorTrustState",
     "OperatorTrustStateError",
     "OperatorTrustStateStore",

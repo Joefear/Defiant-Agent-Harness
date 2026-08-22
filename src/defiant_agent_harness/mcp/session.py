@@ -8,7 +8,7 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Mapping, TextIO
 
 from ..tools.registry import ToolResult
 
@@ -30,6 +30,7 @@ class UpstreamSession:
         *,
         cwd: Path | None = None,
         timeout_seconds: float = 60.0,
+        environment: Mapping[str, str] | None = None,
         start: bool = True,
     ):
         self.command = command
@@ -42,6 +43,7 @@ class UpstreamSession:
         self._private_ids: set[str] = set()
         self._closed = False
         self.cwd = cwd
+        self.environment = dict(environment) if environment is not None else None
         self.process: subprocess.Popen[str] | None = None
         self._reader: threading.Thread | None = None
         if start:
@@ -56,6 +58,7 @@ class UpstreamSession:
         self.process = subprocess.Popen(
             list(self.command),
             cwd=str(self.cwd) if self.cwd else None,
+            env=self.environment,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,

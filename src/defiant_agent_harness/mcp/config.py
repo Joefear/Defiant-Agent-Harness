@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from ..contracts import SideEffect, Trust
+from ..launch_envelope import LaunchEnvironmentConfig, LaunchEnvelopeError
 from ..money import ZERO, money
 from ..runtime_artifacts import RuntimeArtifactError, RuntimeArtifactPin
 from ..tools.registry import ToolSpec
@@ -136,6 +137,7 @@ class McpProxyConfig:
     cwd: Path | None = None
     upstream_timeout_seconds: float = 60.0
     artifact_integrity: McpArtifactIntegrityConfig = McpArtifactIntegrityConfig()
+    launch_environment: LaunchEnvironmentConfig | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.server_name, str) or not self.server_name.strip():
@@ -155,6 +157,10 @@ class McpProxyConfig:
             if self.artifact_integrity.required:
                 raise McpConfigError(
                     "server.artifact_integrity is only valid with server.command"
+                )
+            if self.launch_environment is not None:
+                raise McpConfigError(
+                    "server.launch_environment is only valid with server.command"
                 )
         seen_headers: set[str] = set()
         for header, env_name in self.header_env:
@@ -199,9 +205,11 @@ _SERVER_KEYS = {
     "cwd",
     "timeout_seconds",
     "artifact_integrity",
+    "launch_environment",
 }
 _ARTIFACT_INTEGRITY_KEYS = {"required", "artifacts"}
 _ARTIFACT_KEYS = {"role", "path", "sha256"}
+_LAUNCH_ENVIRONMENT_KEYS = {"inherit", "secret_env", "set", "allow_unsafe"}
 _TOOL_KEYS = {
     "side_effect",
     "description",
@@ -334,6 +342,38 @@ def load_proxy_config(
             artifacts=tuple(pins),
         )
 
+    launch_raw = server.get("launch_environment")
+    launch_environment = None
+    if launch_raw is not None:
+        launch_mapping = _mapping(launch_raw, "server.launch_environment")
+        _reject_unknown(
+            launch_mapping, _LAUNCH_ENVIRONMENT_KEYS, "server.launch_environment"
+        )
+        values_raw = launch_mapping.get("set", {})
+        if not isinstance(values_raw, dict) or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in values_raw.items()
+        ):
+            raise McpConfigError("server.launch_environment.set must map strings")
+        try:
+            launch_environment = LaunchEnvironmentConfig(
+                inherit=_string_list(
+                    launch_mapping.get("inherit", []),
+                    "server.launch_environment.inherit",
+                ),
+                secret_env=_string_list(
+                    launch_mapping.get("secret_env", []),
+                    "server.launch_environment.secret_env",
+                ),
+                values=tuple(values_raw.items()),
+                allow_unsafe=_string_list(
+                    launch_mapping.get("allow_unsafe", []),
+                    "server.launch_environment.allow_unsafe",
+                ),
+            )
+        except LaunchEnvelopeError as exc:
+            raise McpConfigError(f"invalid server.launch_environment: {exc}") from exc
+
     return McpProxyConfig(
         server_name=str(server.get("name", "")).strip(),
         command=tuple(command_raw),
@@ -349,6 +389,7 @@ def load_proxy_config(
         cwd=cwd,
         upstream_timeout_seconds=float(timeout),
         artifact_integrity=artifact_integrity,
+        launch_environment=launch_environment,
     )
 
 
@@ -356,6 +397,12 @@ def _mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise McpConfigError(f"{label} must be a mapping")
     return value
+
+
+def _string_list(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise McpConfigError(f"{label} must be a list of strings")
+    return tuple(value)
 
 
 def _reject_unknown(raw: dict[str, Any], allowed: set[str], label: str) -> None:

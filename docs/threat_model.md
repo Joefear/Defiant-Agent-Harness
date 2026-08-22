@@ -159,6 +159,25 @@ This does not discover dependencies or provide code signing, immutable storage,
 trusted boot, or a complete answer to time-of-check/time-of-use races. A
 privileged host attacker remains outside the boundary.
 
+### 12. Ambient launch-context injection
+
+The executable and declared files are unchanged, but the parent adds
+`PYTHONPATH`, `LD_PRELOAD`, `NODE_OPTIONS`, a shell startup hook, a replacement
+`PATH`, or a different working directory that redirects runtime behavior.
+
+v0.17 restricted launch mode constructs the child environment from an empty
+mapping, admits only declared sources, requires separate acknowledgement for
+known loader/path controls, and resolves an explicit canonical cwd outside
+harness state. Nonsecret values and cwd identity are bound into the complete
+authority profile before spawn. Secret values are required and passed without
+entering persisted hashes. Profile mismatch, missing inputs, unsafe undeclared
+variables, cwd replacement, or assurance-state contradiction fails closed
+before process creation.
+
+This cannot enumerate every runtime-specific control or contain a process after
+launch. Immutable dependencies, least privilege, and OS/network sandboxing
+remain deployment requirements.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

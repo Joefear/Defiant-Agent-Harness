@@ -1437,6 +1437,7 @@ def build_harness(
     workspace_root: str | Path | None = None,
     authority_context: dict | None = None,
     runtime_artifact_assurance=None,
+    launch_envelope_assurance=None,
     trusted_operator_keys: list[str] | None = None,
     _operator_control: bool = False,
 ) -> Harness:
@@ -1495,6 +1496,12 @@ def build_harness(
 
             RuntimeArtifactStateStore(state_root / "runtime_artifacts.json").record(
                 policy.ruleset_hash, runtime_artifact_assurance
+            )
+        if launch_envelope_assurance is not None:
+            from ..launch_envelope import LaunchEnvelopeStateStore
+
+            LaunchEnvelopeStateStore(state_root / "launch_envelope.json").record(
+                policy.ruleset_hash, launch_envelope_assurance
             )
         if not trust_resolved:
             operator_trust = trust_store.resolve_for_authority(

@@ -124,6 +124,13 @@ and profile-binding status. It does not expose local paths or individual file
 digests. There is no manifest editor, rehash, acceptance, rotation, launch, or
 repair endpoint; the dashboard remains strictly read-only.
 
+v0.17 adds sanitized launch-envelope posture to the same read-only authority
+metric: restricted, inherited-unrestricted, or remote-not-applicable mode plus
+the effective variable count. The snapshot contains bounded hashes and counts,
+not variable names, values, secrets, or the working-directory path. There is no
+environment editor, secret input, unsafe-variable acknowledgement, launch, or
+repair endpoint.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

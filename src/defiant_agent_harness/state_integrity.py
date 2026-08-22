@@ -23,10 +23,11 @@ from .operator_identity import (
 from .operation_journal import JournalOperation, OperationJournal
 from .operator_trust_state import OperatorTrustStateStore
 from .persistence import read_json
+from .launch_envelope import LaunchEnvelopeError, LaunchEnvelopeStateStore
 from .runtime_artifacts import RuntimeArtifactError, RuntimeArtifactStateStore
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.7.0"
+AUDIT_VERSION = "0.8.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -147,6 +148,7 @@ class StateIntegrityAuditor:
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
         artifact_count = self._audit_runtime_artifacts(report)
+        launch_variable_count = self._audit_launch_envelope(report)
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
@@ -162,6 +164,7 @@ class StateIntegrityAuditor:
             "operator_trust_generation": trust_generation,
             "authority_profile_generation": profile_generation,
             "runtime_artifacts": artifact_count,
+            "launch_environment_variables": launch_variable_count,
             "active_journal_operations": int(journal_operation is not None),
             "authorization_reconciliations_required": 0,
         }
@@ -193,6 +196,7 @@ class StateIntegrityAuditor:
             "authority_profile.json",
             "operation_journal.json",
             "runtime_artifacts.json",
+            "launch_envelope.json",
         ):
             lock_path = self.workdir / f"{filename}.lock"
             if lock_path.exists():
@@ -258,6 +262,68 @@ class StateIntegrityAuditor:
                 "runtime_artifact_state_invalid",
                 "critical",
                 "runtime_artifacts.json",
+                str(exc),
+            )
+            return 0
+
+    def _audit_launch_envelope(self, report: StateIntegrityReport) -> int:
+        store = LaunchEnvelopeStateStore(self.workdir / "launch_envelope.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["launch_envelope"] = {
+                    "state": "not_recorded",
+                    "verification": "not_applicable",
+                    "profile_hash": None,
+                    "environment_hash": None,
+                    "variable_count": 0,
+                    "secret_count": 0,
+                    "unsafe_count": 0,
+                    "cwd_hash": None,
+                    "last_verified_at": None,
+                }
+                return 0
+            verification = "not_evaluated"
+            try:
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+            except RuntimeError:
+                profile = None
+            if profile is not None:
+                if profile.profile_hash == state.profile_hash:
+                    verification = "verified"
+                else:
+                    verification = "profile_mismatch"
+                    self._issue(
+                        report,
+                        "launch_envelope_profile_mismatch",
+                        "critical",
+                        "launch_envelope.json",
+                        "launch envelope assurance is not bound to the active authority profile",
+                    )
+            report.stores["launch_envelope"] = state.projection(
+                verification=verification
+            )
+            return state.variable_count
+        except LaunchEnvelopeError as exc:
+            report.stores["launch_envelope"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "environment_hash": None,
+                "variable_count": 0,
+                "secret_count": 0,
+                "unsafe_count": 0,
+                "cwd_hash": None,
+                "last_verified_at": None,
+            }
+            self._issue(
+                report,
+                "launch_envelope_state_invalid",
+                "critical",
+                "launch_envelope.json",
                 str(exc),
             )
             return 0
