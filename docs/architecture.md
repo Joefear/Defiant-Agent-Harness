@@ -316,7 +316,23 @@ The hook policy blocks terminal, subagent, unknown, path-escape, and trusted
 enforcement-file mutation attempts. Missing post-events never become guessed
 successes. See `native_hooks.md`.
 
-## What is deliberately absent from v0.13
+## Authority serialization in v0.14
+
+Per-file locks prevent simultaneous writes to one JSON file, but they cannot by
+themselves make an audit-authorize-execute-settle sequence exclusive across the
+whole state directory. v0.14 adds `authority.lock`, an operating-system byte
+lock held across each authority-bearing entry point and startup recovery.
+Contention fails immediately before state or tool mutation. Nested calls in the
+same thread are reentrant, while other threads and processes are refused.
+
+The file remains present, but lock ownership is maintained by the operating
+system. A process crash closes its descriptor and releases authority without an
+operator deleting a stale PID file. The existing per-store `.lock` files remain
+conservative atomic-write sentinels and retain their existing stale-lock rule.
+Read-only doctor, Command Core, and Command Center paths never acquire or mutate
+the authority lock.
+
+## What is deliberately absent from v0.14
 
 - **Remote or multi-user Command.** Command Center is a local loopback view, not
   a hosted service. It has no authentication, remote ingestion, or identity
@@ -375,8 +391,10 @@ successes. See `native_hooks.md`.
   durable, conservative, and auditable; they cannot prove that the human
   conclusion was correct.
 - **Cross-store auditing is point-in-time.** It does not turn local JSON files
-  into a transactional database. Defiant assumes one logical writer per state
-  directory and uses conservative per-file locks to reject concurrent writes.
+  into a transactional database. v0.14 serializes authority-bearing writers
+  across a state directory, while conservative per-file locks still guard each
+  atomic write. Read-only diagnostics may observe a transient in-progress
+  state and should refresh after the writer finishes.
 - **Signing identity is key-based, not account-based.** A valid v0.8
   attestation proves possession of a pinned private key. The signer string and
   note are cryptographically bound assertions, not authentication against an

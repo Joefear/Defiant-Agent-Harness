@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal
+from functools import wraps
 from pathlib import Path
 
 from ..adapters.base import AgentAdapter, ToolCall, ToolCallOutcome
@@ -33,8 +34,18 @@ from ..operator_identity import (
 )
 from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
+from ..persistence import AuthorityTransactionLock
 from ..state_integrity import StateIntegrityAuditor
 from ..tools.registry import ToolContractError, ToolRegistry, ToolResult
+
+
+def _authority_entrypoint(method):
+    @wraps(method)
+    def protected(self, *args, **kwargs):
+        with self.authority_lock.acquire():
+            return method(self, *args, **kwargs)
+
+    return protected
 
 
 @dataclass
@@ -96,6 +107,7 @@ class Harness:
         state_integrity: StateIntegrityAuditor,
         operation_journal: OperationJournal,
         dry_run: bool = False,
+        authority_lock: AuthorityTransactionLock | None = None,
     ):
         self.policy = policy
         self.tools = tools
@@ -105,16 +117,21 @@ class Harness:
         self.adapter = adapter
         self.state_integrity = state_integrity
         self.operation_journal = operation_journal
+        self.authority_lock = authority_lock or AuthorityTransactionLock(
+            operation_journal.path.parent / "authority.lock"
+        )
         self.dry_run = dry_run
 
     # -- entry points -------------------------------------------------
 
+    @_authority_entrypoint
     def run(self, request: HarnessRequest) -> list[ActionOutcome]:
         return [
             self.handle_call(call, request)
             for call in self.adapter.propose(request.task)
         ]
 
+    @_authority_entrypoint
     def handle_call(
         self,
         call: ToolCall,
@@ -131,6 +148,7 @@ class Harness:
             execution_key=execution_key,
         )
 
+    @_authority_entrypoint
     def preflight_external_call(
         self,
         call: ToolCall,
@@ -272,6 +290,7 @@ class Harness:
 
     # -- durable approval resume ------------------------------------
 
+    @_authority_entrypoint
     def resume_external(self, approval_id: str) -> ActionOutcome:
         """Authorize an approved exact retry for execution by another runtime."""
         self.recover_operation()
@@ -339,6 +358,7 @@ class Harness:
             approval_id=approval_id,
         )
 
+    @_authority_entrypoint
     def complete_external_call(
         self,
         action: ProposedAction,
@@ -425,6 +445,7 @@ class Harness:
             detail=result.summary,
         )
 
+    @_authority_entrypoint
     def resume(
         self,
         approval_id: str,
@@ -557,6 +578,7 @@ class Harness:
         )
         return outcome
 
+    @_authority_entrypoint
     def reconcile_expired_approvals(self) -> list[ActionOutcome]:
         self.recover_operation()
         self.state_integrity.require_safe()
@@ -601,6 +623,7 @@ class Harness:
             )
         return outcomes
 
+    @_authority_entrypoint
     def reconcile_execution(
         self,
         approval_id: str,
@@ -711,6 +734,7 @@ class Harness:
             detail=f"operator reconciled execution as {outcome}",
         )
 
+    @_authority_entrypoint
     def reconcile_authorization(
         self,
         authority_record_id: str,
@@ -1140,6 +1164,7 @@ class Harness:
             reconciliation_note=note,
         )
 
+    @_authority_entrypoint
     def recover_operation(self) -> JournalOperation | None:
         operation = self.operation_journal.active()
         if operation is not None:
@@ -1402,6 +1427,7 @@ def build_harness(
     state_root = Path(workdir)
     validate_external_trust_specs(trusted_operator_keys or [], state_root)
     state_root.mkdir(parents=True, exist_ok=True)
+    authority_lock = AuthorityTransactionLock(state_root / "authority.lock")
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
     )
@@ -1409,39 +1435,43 @@ def build_harness(
         dry_run=dry_run,
         workspace_root=allowed_workspace,
     )
-    operator_trust = OperatorTrustStateStore(
-        state_root / "operator_trust.json"
-    ).resolve_for_authority(trusted_operator_keys or [])
-    harness = Harness(
-        policy=PolicyEngine.default(
-            policy_packs,
-            additional_known_tools=registry.names() if tools is not None else None,
-            authority_inputs={
-                "tool_registry": [
-                    spec.authority_dict()
-                    for spec in sorted(registry.specs(), key=lambda item: item.name)
-                ],
-                "workspace_root_hash": sha256_of(str(registry.workspace_root)),
-                "dry_run": dry_run,
-                "adapter": authority_context or {},
-            },
-        ),
-        tools=registry,
-        evidence=EvidenceStore(state_root / "evidence.jsonl"),
-        approvals=ApprovalStore(
-            state_root / "approvals.json", operator_trust=operator_trust
-        ),
-        budget=BudgetLedger(
-            state_root / "budget.json",
-            starting_balance_usd=starting_budget_usd,
-        ),
-        adapter=adapter,
-        state_integrity=StateIntegrityAuditor(
-            state_root, operator_trust=operator_trust
-        ),
-        operation_journal=OperationJournal(state_root / "operation_journal.json"),
-        dry_run=dry_run,
-    )
-    harness.recover_operation()
-    harness.reconcile_expired_approvals()
+    with authority_lock.acquire():
+        operator_trust = OperatorTrustStateStore(
+            state_root / "operator_trust.json"
+        ).resolve_for_authority(trusted_operator_keys or [])
+        harness = Harness(
+            policy=PolicyEngine.default(
+                policy_packs,
+                additional_known_tools=(
+                    registry.names() if tools is not None else None
+                ),
+                authority_inputs={
+                    "tool_registry": [
+                        spec.authority_dict()
+                        for spec in sorted(registry.specs(), key=lambda item: item.name)
+                    ],
+                    "workspace_root_hash": sha256_of(str(registry.workspace_root)),
+                    "dry_run": dry_run,
+                    "adapter": authority_context or {},
+                },
+            ),
+            tools=registry,
+            evidence=EvidenceStore(state_root / "evidence.jsonl"),
+            approvals=ApprovalStore(
+                state_root / "approvals.json", operator_trust=operator_trust
+            ),
+            budget=BudgetLedger(
+                state_root / "budget.json",
+                starting_balance_usd=starting_budget_usd,
+            ),
+            adapter=adapter,
+            state_integrity=StateIntegrityAuditor(
+                state_root, operator_trust=operator_trust
+            ),
+            operation_journal=OperationJournal(state_root / "operation_journal.json"),
+            authority_lock=authority_lock,
+            dry_run=dry_run,
+        )
+        harness.recover_operation()
+        harness.reconcile_expired_approvals()
     return harness

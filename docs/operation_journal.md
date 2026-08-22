@@ -45,6 +45,11 @@ signature, or release fails closed and leaves the operation available for
 investigation. A crash after the final evidence append but before journal
 completion does not duplicate evidence on restart.
 
+v0.14 performs recovery while holding the state directory's OS-released
+authority transaction lock. Another harness process therefore cannot begin a
+new audit or mutation between recovery steps. This does not replace the
+journal's crash contract or the individual store locks.
+
 Only one operation may be active. Concurrent preparation fails immediately.
 As with the other state files, an `operation_journal.json.lock` left by a hard
 crash requires the operator to confirm that no writer remains before resolving
