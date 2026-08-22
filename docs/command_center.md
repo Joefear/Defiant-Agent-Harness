@@ -105,6 +105,12 @@ approval-free items are not counted as requiring manual reconciliation. The UI
 cannot settle budget, append evidence, consume an approval, or complete the
 journal; authority startup performs that deterministic recovery.
 
+v0.14 does not add an authority-lock control to the dashboard. Command Center
+never acquires, releases, deletes, or probes ownership of `authority.lock`.
+Because snapshots remain point-in-time, a read during an active writer may
+temporarily report an in-progress or locked store; refresh after the writer
+finishes.
+
 ## Security scope
 
 Loopback binding is a local-development boundary, not authentication or remote

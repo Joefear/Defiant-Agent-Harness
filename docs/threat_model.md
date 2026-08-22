@@ -102,6 +102,13 @@ consumption must agree. Restart never calls the tool and cannot double debit or
 duplicate evidence. A result that was not returned and journaled remains
 uncertain and cannot use this deterministic path.
 
+v0.14 closes the concurrent-writer gap around those checks and mutations. One
+nonblocking authority transaction lock spans startup recovery and every public
+authority-bearing harness entry point. A second thread or process fails before
+state or tool mutation. The operating system releases ownership on process
+death, while nested operations in the owning thread remain reentrant. Per-file
+locks still protect each atomic store write.
+
 ### 9. Signed-mode downgrade or unauthorized trust replacement
 
 A process restarts without operator trust pins, or with a different mapping,

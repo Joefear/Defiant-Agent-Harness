@@ -47,6 +47,7 @@ from .operation_journal import (
     OperationJournal,
     OperationJournalError,
 )
+from .persistence import AuthorityLockError, AuthorityTransactionLock
 from .state_integrity import (
     IntegrityIssue,
     StateIntegrityAuditor,
@@ -54,12 +55,14 @@ from .state_integrity import (
     StateIntegrityReport,
 )
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 __all__ = [
     "CapabilityGrant",
     "AuthorizationReconciliationOutcome",
     "AuthorizationReconciliationSubject",
+    "AuthorityLockError",
+    "AuthorityTransactionLock",
     "ContentRef",
     "Decision",
     "EvidenceRecord",

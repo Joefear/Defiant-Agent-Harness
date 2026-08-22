@@ -94,8 +94,10 @@ without completing or repairing the journal.
 The audit is a local point-in-time consistency check, not a database
 transaction, repair engine, or OS sandbox. A durable trust chain without
 external pins is visible but cannot be authenticated and is therefore unsafe.
-Defiant still assumes one
-logical writer per state directory, uses per-file exclusive locks, and requires
-the directory to be access-controlled. Restore corrupt state from a known-good
-copy or investigate it offline; do not edit a live store merely to clear an
-alert.
+v0.14 enforces one authority-bearing writer per state directory with an
+OS-released transaction lock; per-file exclusive locks remain the final write
+guard. The persistent `authority.lock` file is not a stale-lock signal because
+ownership lives in the operating system. Store `.lock` files retain the
+conservative operator-resolution rule. The directory must remain
+access-controlled. Restore corrupt state from a known-good copy or investigate
+it offline; do not edit a live store merely to clear an alert.
