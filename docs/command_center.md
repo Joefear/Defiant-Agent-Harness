@@ -37,8 +37,9 @@ Press `Ctrl+C` in the serving terminal to stop it.
   invalid status without trust-transition signatures or notes;
 - durable authority-profile generation, active/pending hash, verification, and
   rotation-required status without operator identity, note, or signature;
-- signed external evidence-head witness posture, witnessed count, and sanitized
-  signer/key/time assurance without paths, signature, or note;
+- signed external evidence-head witness posture, witnessed count, current lag,
+  optional maximum, and sanitized signer/key/time assurance without paths,
+  signature, or note;
 - a prominent reconciliation-required alert for approvals stranded in
   `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;

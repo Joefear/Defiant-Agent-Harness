@@ -98,6 +98,9 @@ When signed external evidence-head witnessing is enrolled, set
 Copilot or Codex. Both variables are required together. The hook passes them to
 the same authority preflight used by MCP proxies and fails closed on omission,
 malformed JSON, trust mismatch, signature failure, rollback, or divergence.
+If the enrolled authority profile has a finite witness-lag ceiling, also set
+`DAH_MAX_UNWITNESSED_RECORDS` to that exact non-negative integer. Omission or a
+different value fails closed rather than weakening the enrolled policy.
 Private keys and passphrases never enter the hook environment. See
 `evidence_head_witness.md`.
 

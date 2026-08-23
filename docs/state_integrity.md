@@ -25,6 +25,8 @@ retained evidence prefix represented by its record count and head hash.
 v0.22 validates the local `evidence_witness_policy.json` posture and, when
 required, a caller-supplied external signed witness and trust keys against the
 state-root identity, authority-profile history, and live evidence chain.
+v0.24 also enforces the enrolled optional maximum number of records beyond that
+witness and reports a distinct critical `evidence_witness_lag_exceeded` issue.
 
 Run it without initializing or modifying the state directory:
 
@@ -39,7 +41,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.14.0` and exits
+The command emits schema `defiant.state_integrity` version `0.15.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -69,7 +71,8 @@ The auditor verifies:
 - the profile-bound evidence checkpoint, distinguishing a provable forward
   append crash from critical tail rollback or chain divergence;
 - the profile-bound external-witness policy and, in required mode, its exact
-  trusted key set, signature, deployment/profile bindings, and witnessed prefix;
+  trusted key set, optional maximum lag, signature, deployment/profile
+  bindings, witnessed prefix, and current unwitnessed-record count;
 - approval structure, ids, active-action uniqueness, operator identity for
   approved states, and durable action/request bindings;
 - when trust pins are configured, signed operator purpose, outcome, identity,

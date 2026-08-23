@@ -103,6 +103,16 @@ def _c(status: str) -> str:
     return f"{STATUS_COLOR.get(status, '')}{status}{RESET}"
 
 
+def _non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a non-negative integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return parsed
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -124,6 +134,7 @@ def cmd_demo(args) -> int:
         trusted_operator_keys=getattr(args, "trusted_operator_key", None),
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
+        max_unwitnessed_records=args.max_unwitnessed_records,
     )
     request = HarnessRequest(
         task=f"demo: {scenario}",
@@ -488,7 +499,10 @@ def cmd_verify_evidence_head_witness(args) -> int:
             args.witness_path,
             args.trusted_key,
         )
-        policy = EvidenceWitnessPolicy.from_paths(args.trusted_key)
+        policy = EvidenceWitnessPolicy.from_paths(
+            args.trusted_key,
+            max_unwitnessed_records=args.max_unwitnessed_records,
+        )
         profile = AuthorityProfileStore(
             Path(args.workdir) / "authority_profile.json"
         ).get()
@@ -736,6 +750,7 @@ def cmd_mcp_proxy(args) -> int:
             trusted_operator_keys=args.trusted_operator_key,
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
+            max_unwitnessed_records=args.max_unwitnessed_records,
         )
     except (
         McpConfigError,
@@ -767,6 +782,7 @@ def cmd_mcp_http_proxy(args) -> int:
             trusted_operator_keys=args.trusted_operator_key,
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
+            max_unwitnessed_records=args.max_unwitnessed_records,
         )
     except (
         McpConfigError,
@@ -803,6 +819,7 @@ def _harness(args, *, operator_control: bool = False):
         trusted_operator_keys=getattr(args, "trusted_operator_key", None),
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
+        max_unwitnessed_records=args.max_unwitnessed_records,
         _operator_control=operator_control,
     )
 
@@ -947,6 +964,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="trusted evidence witness public key PEM (repeatable for rotation)",
+    )
+    p.add_argument(
+        "--max-unwitnessed-records",
+        type=_non_negative_int,
+        help="maximum live evidence records permitted beyond the signed witness",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 

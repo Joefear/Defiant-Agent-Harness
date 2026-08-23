@@ -279,6 +279,7 @@ class CopilotHookGate:
         trusted_operator_keys: list[str] | None = None,
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
+        max_unwitnessed_records: int | None = None,
     ):
         self.workspace_root = Path(workspace_root).resolve(strict=False)
         self.state_root = Path(state_root)
@@ -320,6 +321,7 @@ class CopilotHookGate:
             trusted_operator_keys=trusted_operator_keys,
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+            max_unwitnessed_records=max_unwitnessed_records,
         )
         self.executions = HookExecutionStore(self.state_root / "hook_executions.json")
 
@@ -787,6 +789,7 @@ def run_hook(
     trusted_operator_keys: list[str] | None = None,
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
+    max_unwitnessed_records: int | None = None,
 ) -> dict[str, Any]:
     gate = CopilotHookGate(
         workspace_root,
@@ -794,6 +797,7 @@ def run_hook(
         trusted_operator_keys=trusted_operator_keys,
         evidence_head_witness=evidence_head_witness,
         trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+        max_unwitnessed_records=max_unwitnessed_records,
     )
     if phase == "pre":
         return gate.pre_tool_use(event)
@@ -810,6 +814,7 @@ def main(argv: list[str] | None = None) -> int:
         workspace_root = Path.cwd()
         state_root = Path(os.environ.get("DAH_HOOK_WORKDIR", ".dah-hooks"))
         witness_path, witness_keys = _evidence_witness_from_env()
+        max_unwitnessed_records = _max_unwitnessed_records_from_env()
         response = run_hook(
             phase,
             event,
@@ -818,6 +823,7 @@ def main(argv: list[str] | None = None) -> int:
             trusted_operator_keys=_trusted_operator_keys_from_env(),
             evidence_head_witness=witness_path,
             trusted_evidence_witness_keys=witness_keys,
+            max_unwitnessed_records=max_unwitnessed_records,
         )
     except Exception as exc:
         reason = f"Defiant hook failed closed: {type(exc).__name__}: {exc}"
@@ -873,6 +879,16 @@ def _evidence_witness_from_env() -> tuple[str | None, list[str]]:
     if not keys:
         raise ValueError("DAH_TRUSTED_EVIDENCE_KEYS must contain at least one key")
     return witness, keys
+
+
+def _max_unwitnessed_records_from_env() -> int | None:
+    raw = os.environ.get("DAH_MAX_UNWITNESSED_RECORDS")
+    if raw is None:
+        return None
+    value = raw.strip()
+    if not value or not value.isascii() or not value.isdecimal():
+        raise ValueError("DAH_MAX_UNWITNESSED_RECORDS must be a non-negative integer")
+    return int(value)
 
 
 if __name__ == "__main__":

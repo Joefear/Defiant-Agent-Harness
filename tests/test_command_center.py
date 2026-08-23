@@ -115,6 +115,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"control_plane_isolation" in javascript
     assert b"workspace_integrity" in javascript
     assert b"evidence_head" in javascript
+    assert b"max_unwitnessed_records" in javascript
+    assert b"unwitnessed_record_count" in javascript
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])

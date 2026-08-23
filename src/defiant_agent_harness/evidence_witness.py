@@ -44,7 +44,7 @@ WITNESS_VERSION = "0.1.0"
 ATTESTATION_SCHEMA = "defiant.evidence.head_witness.attestation"
 ATTESTATION_VERSION = "0.1.0"
 POLICY_SCHEMA = "defiant.evidence.head_witness_policy"
-POLICY_VERSION = "0.1.0"
+POLICY_VERSION = "0.2.0"
 WITNESS_MODE = "signed_external_required"
 WITNESS_NOT_CONFIGURED = "not_configured"
 ALGORITHM = "Ed25519"
@@ -73,7 +73,7 @@ _ATTESTATION_FIELDS = {
     "payload_hash",
     "signature",
 }
-_POLICY_FIELDS = {
+_POLICY_FIELDS_V1 = {
     "schema_name",
     "schema_version",
     "profile_hash",
@@ -81,6 +81,7 @@ _POLICY_FIELDS = {
     "trusted_key_ids",
     "recorded_at",
 }
+_POLICY_FIELDS = _POLICY_FIELDS_V1 | {"max_unwitnessed_records"}
 _MAX_DOCUMENT_BYTES = 256 * 1024
 _MAX_KEY_BYTES = 64 * 1024
 _MAX_SIGNER_CHARS = 256
@@ -95,23 +96,36 @@ class EvidenceWitnessError(RuntimeError):
 class EvidenceWitnessPolicy:
     trusted_key_ids: tuple[str, ...]
     trusted_key_paths: tuple[Path, ...]
+    max_unwitnessed_records: int | None = None
 
     @classmethod
-    def from_paths(cls, paths: Iterable[str | Path]) -> "EvidenceWitnessPolicy":
+    def from_paths(
+        cls,
+        paths: Iterable[str | Path],
+        *,
+        max_unwitnessed_records: int | None = None,
+    ) -> "EvidenceWitnessPolicy":
+        max_unwitnessed_records = _optional_non_negative_int(
+            max_unwitnessed_records,
+            "max_unwitnessed_records",
+        )
         key_paths = tuple(Path(path).resolve() for path in paths)
         if not key_paths:
             raise EvidenceWitnessError("at least one trusted witness key is required")
         key_ids = tuple(sorted({_key_id_from_path(path) for path in key_paths}))
         if len(key_ids) != len(key_paths):
             raise EvidenceWitnessError("trusted witness keys must be unique")
-        return cls(key_ids, key_paths)
+        return cls(key_ids, key_paths, max_unwitnessed_records)
 
     def authority_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "mode": WITNESS_MODE,
             "schema_version": WITNESS_VERSION,
             "trusted_key_ids": list(self.trusted_key_ids),
         }
+        if self.max_unwitnessed_records is not None:
+            result["max_unwitnessed_records"] = self.max_unwitnessed_records
+        return result
 
 
 @dataclass(frozen=True)
@@ -119,18 +133,25 @@ class EvidenceWitnessPolicyState:
     profile_hash: str
     mode: str
     trusted_key_ids: tuple[str, ...]
+    max_unwitnessed_records: int | None
     recorded_at: str
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "EvidenceWitnessPolicyState":
-        if not isinstance(raw, dict) or set(raw) != _POLICY_FIELDS:
+        if not isinstance(raw, dict):
             raise EvidenceWitnessError(
                 "evidence witness policy fields do not match schema"
             )
         if raw.get("schema_name") != POLICY_SCHEMA:
             raise EvidenceWitnessError("unsupported evidence witness policy schema")
-        if raw.get("schema_version") != POLICY_VERSION:
+        version = raw.get("schema_version")
+        if version not in {"0.1.0", POLICY_VERSION}:
             raise EvidenceWitnessError("unsupported evidence witness policy version")
+        expected_fields = _POLICY_FIELDS_V1 if version == "0.1.0" else _POLICY_FIELDS
+        if set(raw) != expected_fields:
+            raise EvidenceWitnessError(
+                "evidence witness policy fields do not match schema"
+            )
         profile_hash = _hash(raw.get("profile_hash"), "profile_hash")
         mode = raw.get("mode")
         if mode not in {WITNESS_MODE, WITNESS_NOT_CONFIGURED}:
@@ -147,8 +168,22 @@ class EvidenceWitnessPolicyState:
             raise EvidenceWitnessError("required witness policy must trust a key")
         if mode == WITNESS_NOT_CONFIGURED and key_ids:
             raise EvidenceWitnessError("unconfigured witness policy cannot trust keys")
+        max_unwitnessed_records = _optional_non_negative_int(
+            raw.get("max_unwitnessed_records"),
+            "max_unwitnessed_records",
+        )
+        if mode == WITNESS_NOT_CONFIGURED and max_unwitnessed_records is not None:
+            raise EvidenceWitnessError(
+                "unconfigured witness policy cannot set a witness lag bound"
+            )
         recorded_at = _timestamp(raw.get("recorded_at"), "recorded_at")
-        return cls(profile_hash, mode, key_ids, recorded_at)
+        return cls(
+            profile_hash,
+            mode,
+            key_ids,
+            max_unwitnessed_records,
+            recorded_at,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -157,6 +192,7 @@ class EvidenceWitnessPolicyState:
             "profile_hash": self.profile_hash,
             "mode": self.mode,
             "trusted_key_ids": list(self.trusted_key_ids),
+            "max_unwitnessed_records": self.max_unwitnessed_records,
             "recorded_at": self.recorded_at,
         }
 
@@ -171,6 +207,10 @@ class EvidenceWitnessPolicyState:
             "verification": verification,
             "profile_hash": self.profile_hash,
             "trusted_key_count": len(self.trusted_key_ids),
+            "max_unwitnessed_records": self.max_unwitnessed_records,
+            "unwitnessed_record_count": (
+                assessment.unwitnessed_record_count if assessment is not None else 0
+            ),
             "witnessed_record_count": (
                 assessment.record_count if assessment is not None else 0
             ),
@@ -202,6 +242,7 @@ class EvidenceWitnessAssessment:
     signer: str = ""
     signed_at: str = ""
     payload_hash: str = ""
+    unwitnessed_record_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -237,8 +278,15 @@ class EvidenceWitnessPolicyStore:
                 current = self.get()
                 mode = WITNESS_MODE if policy is not None else WITNESS_NOT_CONFIGURED
                 key_ids = policy.trusted_key_ids if policy is not None else ()
+                max_unwitnessed_records = (
+                    policy.max_unwitnessed_records if policy is not None else None
+                )
                 if current is not None and current.profile_hash == profile_hash:
-                    if current.mode != mode or current.trusted_key_ids != key_ids:
+                    if (
+                        current.mode != mode
+                        or current.trusted_key_ids != key_ids
+                        or current.max_unwitnessed_records != max_unwitnessed_records
+                    ):
                         raise EvidenceWitnessError(
                             "evidence witness policy changed within one authority profile"
                         )
@@ -247,6 +295,7 @@ class EvidenceWitnessPolicyStore:
                     profile_hash=profile_hash,
                     mode=mode,
                     trusted_key_ids=key_ids,
+                    max_unwitnessed_records=max_unwitnessed_records,
                     recorded_at=utc_now(),
                 )
                 atomic_write_json(self.path, state.to_dict())
@@ -375,6 +424,25 @@ def assess_witness(
             raise EvidenceWitnessError(
                 "evidence chain diverges from the external witness"
             )
+        lag = len(records) - payload["record_count"]
+        if (
+            policy.max_unwitnessed_records is not None
+            and lag > policy.max_unwitnessed_records
+        ):
+            return EvidenceWitnessAssessment(
+                False,
+                "lag_exceeded",
+                "external evidence witness is too far behind the live chain",
+                record_count=payload["record_count"],
+                head_hash=payload["head_hash"],
+                authority_generation=payload["authority_generation"],
+                authority_profile_hash=payload["authority_profile_hash"],
+                key_id=attestation["key_id"],
+                signer=attestation["signer"],
+                signed_at=attestation["signed_at"],
+                payload_hash=attestation["payload_hash"],
+                unwitnessed_record_count=lag,
+            )
         return EvidenceWitnessAssessment(
             True,
             verification,
@@ -391,6 +459,7 @@ def assess_witness(
             signer=attestation["signer"],
             signed_at=attestation["signed_at"],
             payload_hash=attestation["payload_hash"],
+            unwitnessed_record_count=lag,
         )
     except (EvidenceWitnessError, TypeError, ValueError, OverflowError) as exc:
         return EvidenceWitnessAssessment(False, "invalid", str(exc))
@@ -586,6 +655,14 @@ def _hash(value: Any, field: str) -> str:
     digest = value[7:]
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise EvidenceWitnessError(f"{field} is not a sha256 identifier")
+    return value
+
+
+def _optional_non_negative_int(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise EvidenceWitnessError(f"{field} must be a non-negative integer")
     return value
 
 

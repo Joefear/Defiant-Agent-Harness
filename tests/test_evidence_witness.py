@@ -63,7 +63,12 @@ def _write_signed_witness(state, private_key, destination, *, note="release head
     return document
 
 
-def _enroll_required_witness(tmp_path, *, records=1):
+def _enroll_required_witness(
+    tmp_path,
+    *,
+    records=1,
+    max_unwitnessed_records=None,
+):
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
     harness = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
@@ -80,6 +85,7 @@ def _enroll_required_witness(tmp_path, *, records=1):
             workspace_root=workspace,
             evidence_head_witness=witness_path,
             trusted_evidence_witness_keys=[str(public_key)],
+            max_unwitnessed_records=max_unwitnessed_records,
         )
     candidate = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
     assert candidate is not None
@@ -95,6 +101,7 @@ def _enroll_required_witness(tmp_path, *, records=1):
         workspace_root=workspace,
         evidence_head_witness=witness_path,
         trusted_evidence_witness_keys=[str(public_key)],
+        max_unwitnessed_records=max_unwitnessed_records,
     )
     return state, workspace, harness, private_key, public_key, witness_path
 
@@ -149,6 +156,131 @@ def test_live_chain_may_validly_extend_a_trusted_witness(tmp_path):
         trusted_evidence_witness_keys=[str(public)],
     )
     assert len(reopened.evidence.records()) == 2
+
+
+def test_profile_bound_witness_lag_blocks_authority_until_witness_refresh(tmp_path):
+    state, workspace, harness, private, public, witness = _enroll_required_witness(
+        tmp_path,
+        max_unwitnessed_records=1,
+    )
+    harness.evidence.append(_record(2))
+
+    at_limit = StateIntegrityAuditor(
+        state,
+        workspace_root=workspace,
+        evidence_head_witness=witness,
+        trusted_evidence_witness_keys=[str(public)],
+    ).audit()
+    projection = at_limit.stores["evidence_witness"]
+    assert at_limit.safe_to_execute is True
+    assert projection["verification"] == "forward"
+    assert projection["max_unwitnessed_records"] == 1
+    assert projection["unwitnessed_record_count"] == 1
+
+    harness.evidence.append(_record(3))
+    exceeded = StateIntegrityAuditor(
+        state,
+        workspace_root=workspace,
+        evidence_head_witness=witness,
+        trusted_evidence_witness_keys=[str(public)],
+    ).audit()
+    projection = exceeded.stores["evidence_witness"]
+    assert exceeded.safe_to_execute is False
+    assert projection["verification"] == "lag_exceeded"
+    assert projection["unwitnessed_record_count"] == 2
+    assert any(
+        issue.code == "evidence_witness_lag_exceeded" for issue in exceeded.issues
+    )
+    with pytest.raises(EvidenceWitnessError, match="too far behind"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            evidence_head_witness=witness,
+            trusted_evidence_witness_keys=[str(public)],
+            max_unwitnessed_records=1,
+        )
+
+    refreshed = tmp_path / "refreshed-head-witness.json"
+    _write_signed_witness(state, private, refreshed, note="refresh stale witness")
+    reopened = build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        evidence_head_witness=refreshed,
+        trusted_evidence_witness_keys=[str(public)],
+        max_unwitnessed_records=1,
+    )
+    assert len(reopened.evidence.records()) == 3
+
+
+def test_zero_lag_and_operator_control_cannot_weaken_enrolled_bound(tmp_path):
+    state, workspace, harness, _private, public, witness = _enroll_required_witness(
+        tmp_path,
+        max_unwitnessed_records=0,
+    )
+    stored = EvidenceWitnessPolicyStore(state / "evidence_witness_policy.json").get()
+    assert stored is not None
+    assert stored.max_unwitnessed_records == 0
+
+    with pytest.raises(EvidenceWitnessError, match="does not match the enrolled"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            evidence_head_witness=witness,
+            trusted_evidence_witness_keys=[str(public)],
+            _operator_control=True,
+        )
+    build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        evidence_head_witness=witness,
+        trusted_evidence_witness_keys=[str(public)],
+        max_unwitnessed_records=0,
+        _operator_control=True,
+    )
+
+    harness.evidence.append(_record(2))
+    with pytest.raises(EvidenceWitnessError, match="too far behind"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            evidence_head_witness=witness,
+            trusted_evidence_witness_keys=[str(public)],
+            max_unwitnessed_records=0,
+        )
+
+
+@pytest.mark.parametrize("value", [True, -1, 1.5, "1"])
+def test_witness_lag_policy_rejects_non_integer_or_negative_values(tmp_path, value):
+    _private, public = _keys(tmp_path)
+    with pytest.raises(EvidenceWitnessError, match="non-negative integer"):
+        EvidenceWitnessPolicy.from_paths(
+            [public],
+            max_unwitnessed_records=value,
+        )
+
+
+def test_v1_witness_policy_state_remains_readable_and_unbounded(tmp_path):
+    state, _workspace, _harness, _private, _public, _witness = _enroll_required_witness(
+        tmp_path
+    )
+    policy_path = state / "evidence_witness_policy.json"
+    raw = read_json(policy_path)
+    raw["schema_version"] = "0.1.0"
+    raw.pop("max_unwitnessed_records")
+    atomic_write_json(policy_path, raw)
+
+    stored = EvidenceWitnessPolicyStore(policy_path).get()
+    assert stored is not None
+    assert stored.max_unwitnessed_records is None
+    assert (
+        "max_unwitnessed_records"
+        not in EvidenceWitnessPolicy.from_paths([_public]).authority_dict()
+    )
 
 
 def test_external_witness_detects_matched_evidence_and_checkpoint_rollback(tmp_path):
@@ -353,6 +485,26 @@ def test_cli_witness_and_verify_round_trip_and_refuse_state_paths(tmp_path, caps
     result = json.loads(capsys.readouterr().out)
     assert result["ok"] is True
     assert result["verification"] == "verified"
+
+    harness.evidence.append(_record(2))
+    assert (
+        main(
+            [
+                "--workdir",
+                str(state),
+                "--max-unwitnessed-records",
+                "0",
+                "verify-evidence-head-witness",
+                str(witness),
+                "--trusted-key",
+                str(public),
+            ]
+        )
+        == 1
+    )
+    stale = json.loads(capsys.readouterr().out)
+    assert stale["verification"] == "lag_exceeded"
+    assert stale["unwitnessed_record_count"] == 1
 
     inside = state / "forbidden-witness.json"
     exit_code = main(
