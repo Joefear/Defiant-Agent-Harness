@@ -265,9 +265,12 @@ evidence/checkpoint pair is therefore rejected when the newer external witness
 is supplied.
 
 The witness is only as current and independent as deployment operations make
-it. Supplying a stale valid witness leaves later records outside its rollback
-floor. Replacing code, external configuration, trusted keys, and witness storage
-remains a privileged-host compromise outside this boundary.
+it. v0.24 can authority-bind a maximum live-record tail after the witness and
+fail closed with a distinct lag diagnostic when that ceiling is crossed. This
+bounds stale-witness exposure by record count without claiming trusted time.
+It still cannot prove that no later records once existed. Replacing code,
+external configuration, trusted keys, and witness storage remains a
+privileged-host compromise outside this boundary.
 
 ### 18. Undeclared dependency substitution inside a runtime tree
 
@@ -294,10 +297,11 @@ Stated plainly, because a buyer will find these anyway and it is better they hea
 
 **A compromised host.** Anyone with root on the machine can edit the evidence file, replace the policy pack, or patch the registry. The chain makes tampering detectable to someone who has an off-box copy of a later hash; it does not make it impossible. Off-box replication belongs to Command.
 
-**Rollback after the supplied witness.** v0.22 detects matched local rollback
-only through the newest independently retained witness supplied at startup. An
-older valid witness cannot prove that later records existed. Automatic off-box
-transport and freshness enforcement remain deployment responsibilities.
+**Rollback after the supplied witness.** A finite v0.24 lag ceiling limits how
+far the live chain may advance beyond the independently retained witness before
+authority stops. It does not prove that later records never existed, provide a
+trusted clock, or transport/refresh witnesses automatically. Without a
+configured ceiling, v0.22-compatible valid tails remain unbounded.
 
 **Paraphrase around deterministic phrase rules.** `merchant_services.yaml` catches the listed phrasings and nothing else. This is a floor, deliberately auditable, not a claim of completeness. A model-based reviewer layered above it is future work; it must never replace the floor.
 

@@ -34,7 +34,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.17.0"
+SNAPSHOT_VERSION = "0.18.0"
 
 
 class CommandError(RuntimeError):

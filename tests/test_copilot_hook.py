@@ -11,6 +11,7 @@ from defiant_agent_harness.evidence.store import EvidenceStore
 from defiant_agent_harness.hooks.copilot import (
     CopilotHookGate,
     _evidence_witness_from_env,
+    _max_unwitnessed_records_from_env,
 )
 from defiant_agent_harness.hooks.state import HookStateError
 
@@ -457,3 +458,15 @@ def test_hook_evidence_witness_environment_is_strict(monkeypatch):
         "C:/secure/head.json",
         ["C:/secure/evidence-public.pem"],
     )
+
+
+def test_hook_witness_lag_environment_is_strict(monkeypatch):
+    assert _max_unwitnessed_records_from_env() is None
+    monkeypatch.setenv("DAH_MAX_UNWITNESSED_RECORDS", "0")
+    assert _max_unwitnessed_records_from_env() == 0
+    monkeypatch.setenv("DAH_MAX_UNWITNESSED_RECORDS", "42")
+    assert _max_unwitnessed_records_from_env() == 42
+    for invalid in ("", "-1", "1.5", "  ", "１２"):
+        monkeypatch.setenv("DAH_MAX_UNWITNESSED_RECORDS", invalid)
+        with pytest.raises(ValueError, match="non-negative integer"):
+            _max_unwitnessed_records_from_env()

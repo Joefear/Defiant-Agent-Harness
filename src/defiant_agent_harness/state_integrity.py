@@ -56,7 +56,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.14.0"
+AUDIT_VERSION = "0.15.0"
 
 _STATE_FILENAMES = (
     "approvals.json",
@@ -1185,6 +1185,8 @@ class StateIntegrityAuditor:
                     "verification": "not_required",
                     "profile_hash": None,
                     "trusted_key_count": 0,
+                    "max_unwitnessed_records": None,
+                    "unwitnessed_record_count": 0,
                     "witnessed_record_count": 0,
                     "witnessed_head_hash": None,
                     "witnessed_profile_generation": 0,
@@ -1268,7 +1270,8 @@ class StateIntegrityAuditor:
                 return 0
 
             policy = EvidenceWitnessPolicy.from_paths(
-                self.trusted_evidence_witness_keys
+                self.trusted_evidence_witness_keys,
+                max_unwitnessed_records=state.max_unwitnessed_records,
             )
             if policy.trusted_key_ids != state.trusted_key_ids:
                 report.stores["evidence_witness"] = state.projection(
@@ -1300,12 +1303,17 @@ class StateIntegrityAuditor:
             )
             report.stores["evidence_witness"] = state.projection(
                 verification=assessment.verification,
-                assessment=assessment if assessment.ok else None,
+                assessment=assessment,
             )
             if not assessment.ok:
+                issue_code = (
+                    "evidence_witness_lag_exceeded"
+                    if assessment.verification == "lag_exceeded"
+                    else "evidence_witness_invalid"
+                )
                 self._issue(
                     report,
-                    "evidence_witness_invalid",
+                    issue_code,
                     "critical",
                     "external evidence witness",
                     assessment.detail,
@@ -1319,6 +1327,8 @@ class StateIntegrityAuditor:
                 "detail": str(exc),
                 "profile_hash": None,
                 "trusted_key_count": 0,
+                "max_unwitnessed_records": None,
+                "unwitnessed_record_count": 0,
                 "witnessed_record_count": 0,
                 "witnessed_head_hash": None,
                 "witnessed_profile_generation": 0,

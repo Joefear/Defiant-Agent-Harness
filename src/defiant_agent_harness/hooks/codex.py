@@ -11,6 +11,7 @@ from typing import Any
 from .copilot import (
     CopilotHookGate,
     _evidence_witness_from_env,
+    _max_unwitnessed_records_from_env,
     _trusted_operator_keys_from_env,
 )
 
@@ -30,6 +31,7 @@ class CodexHookGate(CopilotHookGate):
         trusted_operator_keys: list[str] | None = None,
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
+        max_unwitnessed_records: int | None = None,
     ):
         super().__init__(
             workspace_root,
@@ -44,6 +46,7 @@ class CodexHookGate(CopilotHookGate):
             trusted_operator_keys=trusted_operator_keys,
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+            max_unwitnessed_records=max_unwitnessed_records,
         )
 
     def pre_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
@@ -63,6 +66,7 @@ def run_hook(
     trusted_operator_keys: list[str] | None = None,
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
+    max_unwitnessed_records: int | None = None,
 ) -> dict[str, Any]:
     gate = CodexHookGate(
         workspace_root,
@@ -71,6 +75,7 @@ def run_hook(
         trusted_operator_keys=trusted_operator_keys,
         evidence_head_witness=evidence_head_witness,
         trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+        max_unwitnessed_records=max_unwitnessed_records,
     )
     if phase == "pre":
         return gate.pre_tool_use(event)
@@ -101,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
             else workspace_root / configured_state
         )
         witness_path, witness_keys = _evidence_witness_from_env()
+        max_unwitnessed_records = _max_unwitnessed_records_from_env()
         response = run_hook(
             phase,
             event,
@@ -110,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             trusted_operator_keys=_trusted_operator_keys_from_env(),
             evidence_head_witness=witness_path,
             trusted_evidence_witness_keys=witness_keys,
+            max_unwitnessed_records=max_unwitnessed_records,
         )
     except Exception as exc:
         reason = f"Defiant Codex hook failed closed: {type(exc).__name__}: {exc}"

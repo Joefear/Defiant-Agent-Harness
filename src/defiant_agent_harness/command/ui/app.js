@@ -370,8 +370,11 @@ function renderAuthorityProfile(
   const evidenceHeadDetail = evidenceHead
     ? `${label(evidenceHead.state)} · ${label(evidenceHead.verification)} · ${integer.format(evidenceHead.record_count || 0)} records`
     : "Not recorded";
+  const evidenceWitnessLag = evidenceWitness?.max_unwitnessed_records == null
+    ? "unbounded lag"
+    : `${integer.format(evidenceWitness.unwitnessed_record_count || 0)}/${integer.format(evidenceWitness.max_unwitnessed_records)} unwitnessed`;
   const evidenceWitnessDetail = evidenceWitness
-    ? `${label(evidenceWitness.state)} · ${label(evidenceWitness.verification)} · ${integer.format(evidenceWitness.witnessed_record_count || 0)} records`
+    ? `${label(evidenceWitness.state)} · ${label(evidenceWitness.verification)} · ${integer.format(evidenceWitness.witnessed_record_count || 0)} records · ${evidenceWitnessLag}`
     : "Not configured";
   elements.profileDetail.textContent = `${profileDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }

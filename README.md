@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.23.
+logs. A full trusted-memory/DKE system is not part of v0.24.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.23 is
+## What v0.24 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -244,6 +244,15 @@ repeats verification immediately before process creation. State Integrity,
 Command Core, and the strictly read-only Command Center expose only sanitized
 mode, hashes, and counts. This is not an OS sandbox and does not cover loading
 surfaces outside the declared roots.
+
+v0.24 adds an optional authority-profile-bound freshness ceiling for signed
+external evidence witnesses. Operators may cap how many live evidence records
+can exist beyond the retained signed head. Startup and authority gates fail
+closed with a distinct `lag_exceeded` diagnostic when the enrolled ceiling is
+crossed; refreshing the external witness restores authority. The bound uses
+record counts rather than pretending local wall-clock time is trusted. Doctor,
+Command Core, and the strictly read-only Command Center expose only the bound
+and current lag, never witness paths, signatures, or notes.
 
 ## Install
 
@@ -580,7 +589,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.23 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.24 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -594,7 +603,8 @@ authority-bound state-root identity and hardened local persistence,
 profile-bound control-plane path isolation for governed workspace tools,
 profile-bound workspace-root identity and replacement detection,
 profile-bound crash-safe evidence-head checkpointing,
-profile-bound operator-signed external evidence-head witnessing,
+profile-bound operator-signed external evidence-head witnessing with optional
+maximum unwitnessed-record lag,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct

@@ -1460,6 +1460,7 @@ def build_harness(
     trusted_operator_keys: list[str] | None = None,
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
+    max_unwitnessed_records: int | None = None,
     _operator_control: bool = False,
 ) -> Harness:
     from ..control_plane_isolation import (
@@ -1476,6 +1477,10 @@ def build_harness(
     state_root = state_storage.root
     validate_external_trust_specs(trusted_operator_keys or [], state_root)
     witness_key_paths = trusted_evidence_witness_keys or []
+    if max_unwitnessed_records is not None and not witness_key_paths:
+        raise EvidenceWitnessError(
+            "max_unwitnessed_records requires external evidence witnessing"
+        )
     if bool(evidence_head_witness) != bool(witness_key_paths):
         raise EvidenceWitnessError(
             "--evidence-head-witness and at least one trusted witness key are "
@@ -1499,7 +1504,10 @@ def build_harness(
             "this authority profile requires an external evidence-head witness"
         )
     witness_policy = (
-        EvidenceWitnessPolicy.from_paths(witness_key_paths)
+        EvidenceWitnessPolicy.from_paths(
+            witness_key_paths,
+            max_unwitnessed_records=max_unwitnessed_records,
+        )
         if witness_key_paths
         else None
     )
@@ -1586,9 +1594,12 @@ def build_harness(
                 if (
                     enrolled_witness_policy.trusted_key_ids
                     != witness_policy.trusted_key_ids
+                    or enrolled_witness_policy.max_unwitnessed_records
+                    != witness_policy.max_unwitnessed_records
                 ):
                     raise EvidenceWitnessError(
-                        "operator-control witness keys do not match the enrolled policy"
+                        "operator-control witness configuration does not match the "
+                        "enrolled policy"
                     )
                 _preflight_evidence_witness(
                     state_root,
