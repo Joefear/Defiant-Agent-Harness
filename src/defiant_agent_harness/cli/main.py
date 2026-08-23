@@ -135,6 +135,7 @@ def cmd_demo(args) -> int:
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
         max_unwitnessed_records=args.max_unwitnessed_records,
+        require_windows_private_state_acl=args.require_windows_private_state_acl,
     )
     request = HarnessRequest(
         task=f"demo: {scenario}",
@@ -751,6 +752,7 @@ def cmd_mcp_proxy(args) -> int:
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
             max_unwitnessed_records=args.max_unwitnessed_records,
+            require_windows_private_state_acl=args.require_windows_private_state_acl,
         )
     except (
         McpConfigError,
@@ -783,6 +785,7 @@ def cmd_mcp_http_proxy(args) -> int:
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
             max_unwitnessed_records=args.max_unwitnessed_records,
+            require_windows_private_state_acl=args.require_windows_private_state_acl,
         )
     except (
         McpConfigError,
@@ -820,6 +823,7 @@ def _harness(args, *, operator_control: bool = False):
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
         max_unwitnessed_records=args.max_unwitnessed_records,
+        require_windows_private_state_acl=args.require_windows_private_state_acl,
         _operator_control=operator_control,
     )
 
@@ -969,6 +973,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-unwitnessed-records",
         type=_non_negative_int,
         help="maximum live evidence records permitted beyond the signed witness",
+    )
+    p.add_argument(
+        "--require-windows-private-state-acl",
+        action="store_true",
+        help="require a protected, current-user-owned private Windows state DACL",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 

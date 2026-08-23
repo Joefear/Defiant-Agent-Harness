@@ -138,7 +138,9 @@ v0.18 adds the sanitized state-storage mode and checked-file count to the
 authority metric. The underlying snapshot also carries only the root hash,
 profile binding, permission and directory-sync posture, orphan-temporary count,
 and last verification time. It never exposes the canonical state path, device,
-inode/file identifier, file contents, or ACL entries. Command Center has no
+inode/file identifier, file contents, SIDs, account names, or ACL entries.
+Strict Windows state mode exposes only the sanitized ACL policy, protected-root
+status, and allow-principal count. Command Center has no
 chmod, relink, move, delete, restore, acceptance, or repair endpoint.
 
 v0.19 adds the sanitized control-plane isolation mode, protected-root count,

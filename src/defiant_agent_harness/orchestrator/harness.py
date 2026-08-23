@@ -51,7 +51,10 @@ from ..operator_trust_state import OperatorTrustStateStore
 from ..policy.engine import PolicyEngine
 from ..persistence import AuthorityTransactionLock
 from ..state_storage import (
+    KNOWN_STATE_FILENAMES,
+    StateStorageError,
     StateStorageStateStore,
+    inspect_state_storage_files,
     prepare_state_storage,
     require_state_storage_unchanged,
 )
@@ -1461,6 +1464,7 @@ def build_harness(
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
     max_unwitnessed_records: int | None = None,
+    require_windows_private_state_acl: bool = False,
     _operator_control: bool = False,
 ) -> Harness:
     from ..control_plane_isolation import (
@@ -1473,8 +1477,29 @@ def build_harness(
         prepare_workspace_root,
     )
 
-    state_storage = prepare_state_storage(workdir)
+    state_storage = prepare_state_storage(
+        workdir,
+        require_windows_private_acl=require_windows_private_state_acl,
+    )
     state_root = state_storage.root
+    storage_store = StateStorageStateStore(state_root / "state_storage.json")
+    if state_storage.mode == "windows_private_acl":
+        inspect_state_storage_files(
+            state_storage,
+            (
+                *KNOWN_STATE_FILENAMES,
+                *(f"{name}.lock" for name in KNOWN_STATE_FILENAMES),
+            ),
+        )
+    else:
+        enrolled_storage = storage_store.get()
+        if (
+            enrolled_storage is not None
+            and enrolled_storage.mode == "windows_private_acl"
+        ):
+            raise StateStorageError(
+                "this authority profile requires --require-windows-private-state-acl"
+            )
     validate_external_trust_specs(trusted_operator_keys or [], state_root)
     witness_key_paths = trusted_evidence_witness_keys or []
     if max_unwitnessed_records is not None and not witness_key_paths:
@@ -1638,9 +1663,7 @@ def build_harness(
                 and prior_profile.profile_hash != resolved_profile.profile_hash
             )
             audit_profile_hash = policy.ruleset_hash
-            StateStorageStateStore(state_root / "state_storage.json").record(
-                policy.ruleset_hash, state_storage
-            )
+            storage_store.record(policy.ruleset_hash, state_storage)
             ControlPlaneIsolationStateStore(
                 state_root / "control_plane_isolation.json"
             ).record(policy.ruleset_hash, control_plane_isolation)

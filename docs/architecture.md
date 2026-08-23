@@ -403,7 +403,7 @@ Command Center expose only hashes, counts, and posture; they cannot supply
 secrets, edit the environment, acknowledge an unsafe variable, or launch a
 process. See `launch_envelope_integrity.md`.
 
-## State-storage integrity in v0.18
+## State-storage integrity in v0.18 and v0.25
 
 All authority-bearing runtimes resolve a canonical, non-indirected state root
 before policy construction. Its path/device/file identity hash, platform mode,
@@ -416,8 +416,13 @@ The persistence layer refuses symlink, reparse-point, non-regular, and
 multi-hard-link state files; compares path and descriptor identities around
 each open; creates private files; and validates both sides of atomic replacement
 before publishing and syncing the directory entry. POSIX roots/files require
-current-user ownership and `0700`/`0600`; Windows reports structural-only mode
-because stdlib cannot portably evaluate NTFS ACL equivalence.
+current-user ownership and `0700`/`0600`. Windows remains structural-only by
+default. v0.25 optionally requires native owner/DACL inspection: current-user
+ownership, a protected root DACL, a bounded current-user/LocalSystem/Builtin
+Administrators allow-trustee set, current-user full control, and child
+inheritance. Unsupported or ambiguous ACL forms fail closed. This sanitized
+policy is authority-profile-bound and rechecked on known state files; Defiant
+does not modify ACLs.
 
 Command Core and Command Center expose only the sanitized posture, bounded
 hashes, and counts. They cannot repair, move, relink, chmod, accept, or restore
@@ -485,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.24
+## What is deliberately absent from v0.25
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -567,6 +572,11 @@ show current/max lag, and withhold paths, signatures, and notes. See
   a privileged host can replace code and complete state together or restore an
   older internally consistent root. Off-box signed observations remain the
   answer to host-level rollback.
+- **Windows ACL assurance is point-in-time, not process containment.** Native
+  checks bound owners and allow trustees and repeat at authority boundaries,
+  but they cannot defeat a privileged host that can replace the process, token,
+  code, or complete state between checks. Default Windows mode remains visibly
+  `structural_only` until an operator explicitly enrolls strict mode.
 - **Protected targets are not an upstream sandbox.** v0.19 blocks accurately
   declared workspace targets that overlap Defiant state. It cannot stop a
   dishonest or compromised upstream from ignoring its target argument or

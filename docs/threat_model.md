@@ -291,6 +291,23 @@ still load code from an unlisted search path, the network, process memory, or a
 broader host mount. Restricting those sources requires loader configuration,
 least-privilege mounts, immutable images, and OS containment.
 
+### 19. Broad or ambiguous Windows state ACLs
+
+A structurally ordinary state file can still be readable or writable by an
+unintended Windows principal. v0.25 can opt into native owner/DACL assurance
+for the state root and known files. It requires current-user ownership, a
+protected root DACL, current-user full control and child inheritance, and
+limits allow ACE trustees to the current user, LocalSystem, and Builtin
+Administrators. Foreign allow trustees, NULL DACLs, and unsupported or
+ambiguous ACE forms fail closed before authority mutation. The sanitized
+posture is bound to the complete authority profile so later omission is drift.
+
+The check is read-only and point-in-time. It does not establish OS containment,
+repair permissions, hide state from administrators or LocalSystem, or defeat a
+privileged host that can replace the process, token, code, and state together.
+Default Windows deployments remain visibly `structural_only` until explicitly
+enrolled.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

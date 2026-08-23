@@ -104,6 +104,12 @@ different value fails closed rather than weakening the enrolled policy.
 Private keys and passphrases never enter the hook environment. See
 `evidence_head_witness.md`.
 
+On Windows, an owning native-hook runtime can require the v0.25 private state
+ACL policy by setting `DAH_REQUIRE_WINDOWS_PRIVATE_STATE_ACL=1`. The value must
+be exactly `1`; malformed values fail closed. Once that posture is enrolled in
+the authority profile, later owning hook runtimes must preserve it. The hook
+only inspects ACLs and never changes them. See `state_storage_integrity.md`.
+
 Current Copilot CLI camel-case payloads do not include a tool invocation ID.
 Defiant therefore derives a stable correlation key from the session, working
 directory, tool name, and complete normalized arguments. Sequential identical

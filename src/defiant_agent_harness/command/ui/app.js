@@ -358,8 +358,11 @@ function renderAuthorityProfile(
   const launchDetail = launchEnvelope
     ? `${label(launchEnvelope.state)} · ${integer.format(launchEnvelope.variable_count || 0)} vars`
     : "Not recorded";
+  const storageAclDetail = stateStorage?.acl_policy
+    ? ` · protected ACL · ${integer.format(stateStorage.acl_principal_count || 0)} principals`
+    : "";
   const storageDetail = stateStorage
-    ? `${label(stateStorage.state)} · ${integer.format(stateStorage.files_checked || 0)} files`
+    ? `${label(stateStorage.state)} · ${integer.format(stateStorage.files_checked || 0)} files${storageAclDetail}`
     : "Not recorded";
   const isolationDetail = controlPlaneIsolation
     ? `${label(controlPlaneIsolation.state)} · ${integer.format(controlPlaneIsolation.protected_root_count || 0)} roots · ${label(controlPlaneIsolation.relationship)}`
