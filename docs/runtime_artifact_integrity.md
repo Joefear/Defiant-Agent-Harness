@@ -1,4 +1,4 @@
-# Runtime artifact integrity
+# Runtime artifact and dependency-closure integrity
 
 v0.16 closes the gap between a configured local MCP command and the bytes that
 Defiant actually starts. A command string or package version identifies an
@@ -29,6 +29,32 @@ tools:
   charge:
     side_effect: spend
 ```
+
+v0.23 can additionally close one or more operator-declared dependency roots:
+
+```yaml
+  artifact_integrity:
+    required: true
+    artifacts:
+      - role: executable
+        path: C:/Program Files/Python312/python.exe
+        sha256: sha256:<64 lowercase hex characters>
+    dependency_roots:
+      - path: C:/srv/payments/runtime
+        files:
+          - path: payments/__init__.py
+            sha256: sha256:<64 lowercase hex characters>
+          - path: payments/server.py
+            sha256: sha256:<64 lowercase hex characters>
+          - path: plugins/approved.dll
+            sha256: sha256:<64 lowercase hex characters>
+```
+
+Each `dependency_roots` entry requires exactly `path` and `files`. Each file
+requires exactly a canonical relative `path` and `sha256`. Relative paths use
+`/`, cannot contain `.` or `..`, and cannot be absolute. Roots and manifests
+must be non-empty. Unknown fields fail loading. Relative root paths resolve
+against the configuration file.
 
 `required` must be a boolean. Artifact entries require exactly `role`, `path`,
 and `sha256`; unknown fields fail loading. Roles are unique lowercase logical
@@ -62,6 +88,14 @@ For required local assurance, Defiant:
 7. re-hashes the bundle and compares the observation immediately before the
    upstream subprocess is created.
 
+When dependency roots are present, each verification also walks every root
+without following links, requires the complete observed regular-file set to
+equal the manifest, hashes every listed file, and rejects added, missing,
+changed, symlinked, reparse-point, hard-linked, or special entries. Canonical roots must be
+unique, non-overlapping, and disjoint from mutable harness state. Root order
+and manifest order do not affect the bundle hash. A maximum of 100,000 files
+and 200,000 total entries per root bounds inventory work.
+
 No subprocess starts before both artifact verification and authority-profile
 acceptance succeed. A first pinned startup records only sanitized assurance in
 `runtime_artifacts.json`, under the same state-directory authority lock. Exact
@@ -85,9 +119,10 @@ use the explicit profile-rotation workflow.
 ## Read-only diagnostics
 
 `dah doctor`, Command Core, and Command Center report whether the runtime was
-`pinned`, `unverified`, `remote_not_applicable`, invalid, or bound to a different
+`pinned`, `closed`, `unverified`, `remote_not_applicable`, invalid, or bound to a different
 active profile. They may show the canonical bundle hash, count, executable-pin
-posture, and last-verification time. They never expose artifact paths or
+posture, dependency-root and dependency-file counts, and last-verification
+time. They never expose artifact or root paths, relative filenames, or
 individual digests and cannot edit pins, accept drift, rotate a profile, start
 an upstream, or repair state.
 
@@ -104,12 +139,13 @@ authority-profile rotation workflow before starting it.
 
 ## Security limits
 
-This is content verification, not code signing, dependency discovery, or an
-immutable execution environment. Defiant verifies only files the operator
-declares. Interpreters may load undeclared libraries, native extensions,
-configuration, environment-driven plugins, or dynamic code after launch.
-Operators should pin all material entrypoints and reviewed lockfiles and combine
-this control with a locked dependency installation or immutable image.
+This is content verification, not code signing, automatic dependency discovery,
+or an immutable execution environment. v0.23 closes only the roots the operator
+declares. Interpreters may still load libraries, native extensions,
+configuration, environment-driven plugins, or dynamic code from paths outside
+those roots after launch. Operators must choose roots that cover every intended
+loading surface and combine this control with restricted search paths, a locked
+dependency installation, least-privilege mounts, or an immutable image.
 
 The second verification narrows but cannot eliminate the filesystem
 time-of-check/time-of-use race. A privileged host attacker can replace bytes

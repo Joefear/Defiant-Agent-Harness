@@ -447,6 +447,7 @@ def run_stdio_proxy(
         config.artifact_integrity.artifacts,
         workdir=workdir,
         cwd=config.cwd,
+        dependency_roots=config.artifact_integrity.dependency_roots,
     )
     launch_assurance = build_launch_envelope(
         config.launch_environment,
@@ -486,6 +487,7 @@ def run_stdio_proxy(
             effective_config.artifact_integrity.artifacts,
             workdir=workdir,
             cwd=effective_config.cwd,
+            dependency_roots=effective_config.artifact_integrity.dependency_roots,
         )
         require_same_artifact_bundle(assurance, reverified)
         require_launch_target_unchanged(launch_assurance)

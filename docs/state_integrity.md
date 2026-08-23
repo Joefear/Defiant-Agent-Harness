@@ -39,7 +39,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.13.0` and exits
+The command emits schema `defiant.state_integrity` version `0.14.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -150,3 +150,10 @@ ownership lives in the operating system. Store `.lock` files retain the
 conservative operator-resolution rule. The directory must remain
 access-controlled. Restore corrupt state from a known-good copy or investigate
 it offline; do not edit a live store merely to clear an alert.
+
+v0.23 accepts both the prior runtime-artifact state schema and the new closed
+dependency projection. New writes upgrade the sanitized observation and add
+only dependency-root and dependency-file counts. State Integrity never walks
+configured runtime roots itself; the owning startup verifier records the
+profile-bound result, while the auditor validates its schema and active-profile
+binding without acquiring execution authority.

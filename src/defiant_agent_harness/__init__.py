@@ -66,6 +66,8 @@ from .runtime_artifacts import (
     RuntimeArtifactPin,
     RuntimeArtifactState,
     RuntimeArtifactStateStore,
+    RuntimeDependencyFilePin,
+    RuntimeDependencyRoot,
 )
 from .launch_envelope import (
     LaunchEnvironmentConfig,
@@ -105,7 +107,7 @@ from .evidence_witness import (
     EvidenceWitnessPolicyStore,
 )
 
-__version__ = "0.22.0"
+__version__ = "0.23.0"
 
 __all__ = [
     "CapabilityGrant",
@@ -155,6 +157,8 @@ __all__ = [
     "RuntimeArtifactPin",
     "RuntimeArtifactState",
     "RuntimeArtifactStateStore",
+    "RuntimeDependencyFilePin",
+    "RuntimeDependencyRoot",
     "Sensitivity",
     "SideEffect",
     "StateIntegrityAuditor",

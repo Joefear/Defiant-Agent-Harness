@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.22.
+logs. A full trusted-memory/DKE system is not part of v0.23.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.22 is
+## What v0.23 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -234,6 +234,16 @@ This detects restoring evidence and its local checkpoint together when the
 newer witness is retained independently. Doctor, Command Core, and the strictly
 read-only Command Center expose only sanitized posture; signing, trust files,
 and witness retention stay outside `.dah`.
+
+v0.23 adds an opt-in closed dependency-bundle mode for local MCP runtimes.
+Operator-authored manifests now can cover complete declared directory trees,
+not only individually selected artifacts. Startup rejects any added, missing,
+changed, linked/reparse, special, overlapping, or state-directory content;
+binds the deterministic closure into the complete authority profile; and
+repeats verification immediately before process creation. State Integrity,
+Command Core, and the strictly read-only Command Center expose only sanitized
+mode, hashes, and counts. This is not an OS sandbox and does not cover loading
+surfaces outside the declared roots.
 
 ## Install
 
@@ -570,14 +580,15 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.22 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.23 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
 known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
-content-addressed local runtime artifact assurance,
+content-addressed local runtime artifact assurance with opt-in closed declared
+dependency roots,
 restricted and authority-bound local process launch envelopes,
 authority-bound state-root identity and hardened local persistence,
 profile-bound control-plane path isolation for governed workspace tools,

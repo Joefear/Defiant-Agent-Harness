@@ -348,7 +348,9 @@ function renderAuthorityProfile(
   const profileDetail = profile.rotation_required
     ? `Rotation required · ${label(profile.pending_assurance)} · ${shortId(profile.pending_profile_hash)}`
     : `${label(profile.verification)} · ${hash}`;
-  const artifactDetail = artifacts && artifacts.state === "pinned"
+  const artifactDetail = artifacts && artifacts.state === "closed"
+    ? `${integer.format(artifacts.dependency_file_count)} dependency files in ${integer.format(artifacts.dependency_root_count)} closed roots · ${shortId(artifacts.bundle_hash)}`
+    : artifacts && artifacts.state === "pinned"
     ? `${integer.format(artifacts.artifact_count)} pinned · ${shortId(artifacts.bundle_hash)}`
     : artifacts
       ? label(artifacts.state)
