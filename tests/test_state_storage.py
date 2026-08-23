@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -9,7 +10,10 @@ import pytest
 
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
-from defiant_agent_harness.authority_profile import AuthorityProfileError
+from defiant_agent_harness.authority_profile import (
+    AuthorityProfileError,
+    AuthorityProfileStore,
+)
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.contracts import HarnessRequest, sha256_of
 from defiant_agent_harness.orchestrator.harness import build_harness
@@ -25,9 +29,11 @@ from defiant_agent_harness.state_integrity import (
 )
 from defiant_agent_harness.state_storage import (
     StateStorageError,
+    StateStorageStateStore,
     prepare_state_storage,
     require_state_storage_unchanged,
 )
+from defiant_agent_harness.windows_acl import WindowsAclError, WindowsAclObservation
 
 
 def _request() -> HarnessRequest:
@@ -256,3 +262,207 @@ def test_storage_failure_blocks_tool_authority(tmp_path):
             ToolCall(name="read_file", arguments={"path": "workspace/a.txt"}),
             _request(),
         )
+
+
+def _private_windows_acl(_path, *, directory):
+    return WindowsAclObservation(
+        owner_current_user=True,
+        dacl_protected=directory,
+        principal_count=3,
+        ace_count=3,
+    )
+
+
+def test_windows_private_acl_mode_is_profile_bound_and_sanitized(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    monkeypatch.setattr(
+        "defiant_agent_harness.state_storage.inspect_windows_private_acl",
+        _private_windows_acl,
+    )
+
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            require_windows_private_state_acl=True,
+        )
+    candidate = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert candidate is not None
+    AuthorityProfileStore(state / "authority_profile.json").request_rotation(
+        candidate.group(1),
+        operator="storage-operator",
+        note="require reviewed private Windows ACL posture",
+        operator_trust=None,
+    )
+    build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        require_windows_private_state_acl=True,
+    )
+
+    snapshot = CommandCore(state, workspace_root=workspace).snapshot()
+    storage = snapshot["state_storage"]
+    serialized = json.dumps(storage)
+    assert snapshot["authoritative"] is True
+    assert storage["state"] == "windows_private_acl"
+    assert storage["private_permissions"] is True
+    assert storage["acl_policy"] == "current_user_system_administrators"
+    assert storage["acl_protected"] is True
+    assert storage["acl_principal_count"] == 3
+    assert "S-1-" not in serialized
+    assert str(state) not in serialized
+
+    with pytest.raises(StateStorageError, match="requires"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+        )
+    with pytest.raises(StateStorageError, match="requires"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            _operator_control=True,
+        )
+    operator_harness = build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        require_windows_private_state_acl=True,
+        _operator_control=True,
+    )
+    assert operator_harness.execution_disabled is True
+
+
+def test_windows_private_acl_drift_blocks_read_only_and_tool_authority(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    unsafe_name = ""
+
+    def inspect_acl(path, *, directory):
+        if Path(path).name == unsafe_name:
+            raise WindowsAclError(
+                "Windows state DACL grants access to an unapproved principal"
+            )
+        return _private_windows_acl(path, directory=directory)
+
+    monkeypatch.setattr(
+        "defiant_agent_harness.state_storage.inspect_windows_private_acl",
+        inspect_acl,
+    )
+    harness = build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        require_windows_private_state_acl=True,
+    )
+    unsafe_name = "budget.json"
+
+    report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+    rendered = json.dumps(report.to_dict())
+    assert report.safe_to_execute is False
+    assert report.stores["state_storage"]["verification"] == "invalid"
+    assert any(issue.code == "state_storage_invalid" for issue in report.issues)
+    assert "S-1-" not in rendered
+    assert str(state) not in rendered
+    with pytest.raises(StateIntegrityError, match="state_storage_invalid"):
+        harness.handle_call(
+            ToolCall(name="read_file", arguments={"path": "workspace/a.txt"}),
+            _request(),
+        )
+
+
+def test_windows_private_acl_failure_precedes_authority_state_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    harness = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    before = (state / "authority_profile.json").read_bytes()
+
+    def broad_acl(_path, *, directory):
+        raise WindowsAclError(
+            "Windows state DACL grants access to an unapproved principal"
+        )
+
+    monkeypatch.setattr(
+        "defiant_agent_harness.state_storage.inspect_windows_private_acl",
+        broad_acl,
+    )
+    with pytest.raises(StateStorageError, match="unapproved principal"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            require_windows_private_state_acl=True,
+        )
+    assert (state / "authority_profile.json").read_bytes() == before
+    assert harness.evidence.records() == []
+
+
+def test_v1_state_storage_observation_remains_readable(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    path = state / "state_storage.json"
+    raw = read_json(path)
+    raw["schema_version"] = "0.1.0"
+    raw.pop("acl_policy")
+    raw.pop("acl_protected")
+    raw.pop("acl_principal_count")
+    atomic_write_json(path, raw)
+
+    stored = StateStorageStateStore(path).get()
+    assert stored is not None
+    assert stored.acl_policy is None
+    assert stored.acl_protected is None
+    assert stored.acl_principal_count == 0
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"private_permissions": False},
+        {"acl_policy": "S-1-5-21-attacker"},
+        {"acl_protected": False},
+        {"acl_principal_count": True},
+        {"acl_principal_count": 0},
+        {"acl_principal_count": 4},
+    ],
+)
+def test_v2_windows_acl_observation_rejects_inconsistent_fields(tmp_path, changes):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    path = state / "state_storage.json"
+    raw = read_json(path)
+    raw.update(
+        {
+            "mode": "windows_private_acl",
+            "private_permissions": True,
+            "acl_policy": "current_user_system_administrators",
+            "acl_protected": True,
+            "acl_principal_count": 3,
+            **changes,
+        }
+    )
+    atomic_write_json(path, raw)
+
+    with pytest.raises(StateStorageError):
+        StateStorageStateStore(path).get()
+
+    report = StateIntegrityAuditor(state).audit()
+    serialized = json.dumps(report.to_dict())
+    assert report.safe_to_execute is False
+    assert report.stores["state_storage"]["verification"] == "invalid"
+    assert "S-1-5-21-attacker" not in serialized

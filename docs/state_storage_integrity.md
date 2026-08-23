@@ -41,11 +41,24 @@ Before a durable state file or lock is read or mutated, Defiant:
 6. compares the pre-open path identity with `fstat` on the opened descriptor;
 7. rechecks the descriptor, path, and root identities before closing.
 
-Windows stdlib does not provide a portable ACL equivalence to the POSIX owner
-and mode checks. Windows is therefore reported as `structural_only`; symlink,
-reparse-point, type, hard-link, path/descriptor identity, root binding, and
-atomic-write checks still apply. Protect the directory with an operator-only
-NTFS ACL as a deployment control.
+Windows defaults to `structural_only`; symlink, reparse-point, type, hard-link,
+path/descriptor identity, root binding, and atomic-write checks still apply.
+v0.25 adds opt-in native `windows_private_acl` assurance. In that mode Defiant
+reads the owner and DACL without modifying them and requires:
+
+- current-process-user ownership of the root and every known state file;
+- a non-NULL root DACL protected from inherited permissions;
+- allow ACE trustees limited to the current user, LocalSystem, and Builtin
+  Administrators;
+- current-user full control on the root and files; and
+- current-user full-control inheritance for both files and directories created
+  under the root.
+
+Deny ACEs do not widen authority and are permitted, except that an explicit
+current-user deny conflicting with required full control fails closed.
+Unsupported, object, callback, malformed, or otherwise ambiguous ACE forms
+also fail closed. Child files may carry inherited DACLs, but every observed
+allow trustee remains bounded. Defiant never repairs or normalizes an ACL.
 
 ## Atomic replacement and crash posture
 
@@ -79,10 +92,41 @@ running, restrict the root to `0700` and its Defiant state files and lock to
 `0600`. Do not recursively chmod unrelated workspace content. On Windows,
 review and restrict the root's NTFS ACL with normal administrator tooling.
 
+## Enroll strict Windows ACL assurance
+
+Stop all Defiant processes, back up the state directory, and review its ACL
+before enrollment. For a dedicated current-user state root, PowerShell can use
+the built-in `icacls` utility; substitute the actual state path and inspect the
+result before restarting:
+
+```powershell
+$state = "C:\path\to\.dah"
+$currentUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+icacls $state /inheritance:r
+icacls $state /grant:r "*${currentUserSid}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"
+icacls $state /T
+```
+
+Start the owning runtime with `--require-windows-private-state-acl`. Native
+hooks use `DAH_REQUIRE_WINDOWS_PRIVATE_STATE_ACL=1`. Because the resulting
+sanitized policy is a complete-authority-profile input, an existing state root
+first reports the exact candidate hash; authorize that hash through the normal
+explicit `authority-profile-rotate` workflow, then restart with the same flag.
+Every later authority-bearing runtime, including operator reconciliation,
+must preserve the flag; omission fails closed before operational state is read.
+Read-only Doctor, Command Core, and Command Center derive the durable strict
+mode so they can diagnose drift without weakening or changing it.
+
+`state_storage.json` schema v0.2 records the strict ACL posture. The v0.1
+structural/POSIX observation remains readable, and default Windows behavior is
+unchanged until an operator explicitly enrolls strict mode.
+
 Doctor and Command Center remain read-only: they report mode, bounded hashes,
 profile binding, checked-file and orphan-temporary counts, permission posture,
-directory-sync posture, and last verification time. They cannot chmod, relink,
-move, delete, restore, accept, or repair state.
+directory-sync posture, and last verification time. Strict Windows mode adds
+only the policy identifier, protected-root status, and distinct allow-principal
+count. Paths, SIDs, account names, ACEs, and masks are withheld. These surfaces
+cannot change ACLs, relink, move, delete, restore, accept, or repair state.
 
 ## Limits
 
@@ -97,3 +141,8 @@ Use least-privilege service identities, operator-only ACLs, encrypted storage,
 backups, immutable deployment artifacts, and off-box signed observations as
 complementary controls. This release adds no DKE, Spartan, remote Command, or
 Command Center authority.
+
+ACL inspection is a point-in-time local check. Defiant compares filesystem
+identity around native inspection and repeats checks at authority boundaries,
+but it is not an OS sandbox and cannot defeat a privileged host that can alter
+the process, code, token, or complete state between checks.

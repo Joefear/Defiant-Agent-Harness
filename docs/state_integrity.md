@@ -27,6 +27,9 @@ required, a caller-supplied external signed witness and trust keys against the
 state-root identity, authority-profile history, and live evidence chain.
 v0.24 also enforces the enrolled optional maximum number of records beyond that
 witness and reports a distinct critical `evidence_witness_lag_exceeded` issue.
+v0.25 derives any durable strict Windows state ACL mode, rechecks the root and
+every known state file through the native read-only ACL inspector, and reports
+sanitized posture or a critical `state_storage_invalid` issue.
 
 Run it without initializing or modifying the state directory:
 
@@ -41,7 +44,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.15.0` and exits
+The command emits schema `defiant.state_integrity` version `0.16.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -92,6 +95,9 @@ The auditor verifies:
 - canonical state-root structure and identity, regular single-link state files,
   private POSIX ownership/modes, orphan atomic temporaries, and exact storage
   observation binding to the active authority-profile hash;
+- when enrolled, current-user Windows ownership, a protected private root DACL,
+  bounded allow trustees, current-user full control and child inheritance, and
+  the same bounded ACL posture on every known state file;
 - journal schema, canonical payload hash, operation-specific payload shape,
   exact approval/reservation/evidence bindings, and unsealed prepared evidence;
 - known-result completion authority, exact settlement, terminal evidence,

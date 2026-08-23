@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.18.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.19.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -28,8 +28,10 @@ contains:
   last verification time, and binding to the active authority profile, without
   artifact paths or individual file digests;
 - sanitized state-storage mode, root hash, profile binding, private-permission
-  and directory-sync posture, checked-file count, and orphan-temporary count,
-  without the state path or filesystem identity components;
+  and directory-sync posture, checked-file count, and orphan-temporary count;
+  strict Windows mode additionally reports only its ACL policy identifier,
+  protected-root status, and allow-principal count, without the state path,
+  filesystem identity components, SIDs, account names, ACEs, or masks;
 - sanitized control-plane isolation mode, contract/workspace hashes,
   protected-root count, overlap relationship, profile binding, and last
   verification time, without canonical paths or exception controls;

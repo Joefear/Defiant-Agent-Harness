@@ -157,6 +157,7 @@ class McpStdioProxy:
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
         max_unwitnessed_records: int | None = None,
+        require_windows_private_state_acl: bool = False,
         runtime_artifact_assurance: RuntimeArtifactAssurance | None = None,
         launch_envelope_assurance: LaunchEnvelopeAssurance | None = None,
     ):
@@ -233,6 +234,7 @@ class McpStdioProxy:
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
             max_unwitnessed_records=max_unwitnessed_records,
+            require_windows_private_state_acl=require_windows_private_state_acl,
         )
 
     def accept_line(self, line: str) -> None:
@@ -438,6 +440,7 @@ def run_stdio_proxy(
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
     max_unwitnessed_records: int | None = None,
+    require_windows_private_state_acl: bool = False,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -483,6 +486,7 @@ def run_stdio_proxy(
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
             max_unwitnessed_records=max_unwitnessed_records,
+            require_windows_private_state_acl=require_windows_private_state_acl,
             runtime_artifact_assurance=assurance,
             launch_envelope_assurance=launch_assurance,
         )
@@ -518,6 +522,7 @@ def run_http_upstream_proxy(
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
     max_unwitnessed_records: int | None = None,
+    require_windows_private_state_acl: bool = False,
     client_input: TextIO | None = None,
     client_output: TextIO | None = None,
 ) -> int:
@@ -548,6 +553,7 @@ def run_http_upstream_proxy(
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
             max_unwitnessed_records=max_unwitnessed_records,
+            require_windows_private_state_acl=require_windows_private_state_acl,
             runtime_artifact_assurance=remote_artifacts(),
             launch_envelope_assurance=remote_launch_envelope(),
         )

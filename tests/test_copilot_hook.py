@@ -12,6 +12,7 @@ from defiant_agent_harness.hooks.copilot import (
     CopilotHookGate,
     _evidence_witness_from_env,
     _max_unwitnessed_records_from_env,
+    _require_windows_private_state_acl_from_env,
 )
 from defiant_agent_harness.hooks.state import HookStateError
 
@@ -470,3 +471,13 @@ def test_hook_witness_lag_environment_is_strict(monkeypatch):
         monkeypatch.setenv("DAH_MAX_UNWITNESSED_RECORDS", invalid)
         with pytest.raises(ValueError, match="non-negative integer"):
             _max_unwitnessed_records_from_env()
+
+
+def test_hook_windows_private_state_acl_environment_is_strict(monkeypatch):
+    assert _require_windows_private_state_acl_from_env() is False
+    monkeypatch.setenv("DAH_REQUIRE_WINDOWS_PRIVATE_STATE_ACL", "1")
+    assert _require_windows_private_state_acl_from_env() is True
+    for invalid in ("", "0", "true", " 1", "1 "):
+        monkeypatch.setenv("DAH_REQUIRE_WINDOWS_PRIVATE_STATE_ACL", invalid)
+        with pytest.raises(ValueError, match="must be exactly 1"):
+            _require_windows_private_state_acl_from_env()

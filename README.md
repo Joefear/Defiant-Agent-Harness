@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.24.
+logs. A full trusted-memory/DKE system is not part of v0.25.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.24 is
+## What v0.25 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -253,6 +253,16 @@ crossed; refreshing the external witness restores authority. The bound uses
 record counts rather than pretending local wall-clock time is trusted. Doctor,
 Command Core, and the strictly read-only Command Center expose only the bound
 and current lag, never witness paths, signatures, or notes.
+
+v0.25 adds opt-in native Windows private-state ACL assurance. An owning runtime
+started with `--require-windows-private-state-acl` requires the state root and
+known state files to be owned by the current process user, limits allow ACEs to
+that user, LocalSystem, and Builtin Administrators, requires current-user full
+control, and requires a protected root DACL that propagates current-user full
+control to children. The sanitized posture is authority-profile-bound and is
+rechecked by State Integrity; it never exposes paths, SIDs, account names, or
+ACE details. The default Windows mode remains `structural_only` for compatible
+migration. Command Center remains strictly read-only.
 
 ## Install
 
@@ -589,7 +599,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.24 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.25 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -599,7 +609,8 @@ durable full-authority-profile continuity and explicit staged rotation,
 content-addressed local runtime artifact assurance with opt-in closed declared
 dependency roots,
 restricted and authority-bound local process launch envelopes,
-authority-bound state-root identity and hardened local persistence,
+authority-bound state-root identity, hardened local persistence, and optional
+profile-bound native Windows private-state ACL assurance,
 profile-bound control-plane path isolation for governed workspace tools,
 profile-bound workspace-root identity and replacement detection,
 profile-bound crash-safe evidence-head checkpointing,

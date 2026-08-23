@@ -112,6 +112,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"runtime_artifacts" in javascript
     assert b"launch_envelope" in javascript
     assert b"state_storage" in javascript
+    assert b"acl_principal_count" in javascript
+    assert b"protected ACL" in javascript
     assert b"control_plane_isolation" in javascript
     assert b"workspace_integrity" in javascript
     assert b"evidence_head" in javascript

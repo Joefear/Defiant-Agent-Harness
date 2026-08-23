@@ -44,6 +44,7 @@ from .launch_envelope import LaunchEnvelopeError, LaunchEnvelopeStateStore
 from .persistence import open_state_file, read_json
 from .runtime_artifacts import RuntimeArtifactError, RuntimeArtifactStateStore
 from .state_storage import (
+    KNOWN_STATE_FILENAMES,
     StateStorageError,
     StateStorageStateStore,
     inspect_state_storage,
@@ -56,25 +57,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.15.0"
-
-_STATE_FILENAMES = (
-    "approvals.json",
-    "authority.lock",
-    "authority_profile.json",
-    "budget.json",
-    "control_plane_isolation.json",
-    "evidence.jsonl",
-    "evidence_head.json",
-    "evidence_witness_policy.json",
-    "hook_executions.json",
-    "launch_envelope.json",
-    "operation_journal.json",
-    "operator_trust.json",
-    "runtime_artifacts.json",
-    "state_storage.json",
-    "workspace_integrity.json",
-)
+AUDIT_VERSION = "0.16.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -282,16 +265,27 @@ class StateIntegrityAuditor:
                     "root_hash": None,
                     "private_permissions": None,
                     "directory_sync": None,
+                    "acl_policy": None,
+                    "acl_protected": None,
+                    "acl_principal_count": 0,
                     "files_checked": 0,
                     "temporary_files": 0,
                     "last_verified_at": None,
                 }
                 return 0
+            state = StateStorageStateStore(assurance.root / "state_storage.json").get()
+            if state is not None and state.mode == "windows_private_acl":
+                assurance = inspect_state_storage(
+                    self.workdir,
+                    require_windows_private_acl=True,
+                )
+                if assurance is None:
+                    raise StateStorageError("state directory does not exist")
             checked, temporary = inspect_state_storage_files(
                 assurance,
                 (
-                    *_STATE_FILENAMES,
-                    *(f"{name}.lock" for name in _STATE_FILENAMES),
+                    *KNOWN_STATE_FILENAMES,
+                    *(f"{name}.lock" for name in KNOWN_STATE_FILENAMES),
                 ),
             )
             if temporary:
@@ -302,13 +296,15 @@ class StateIntegrityAuditor:
                     "state_storage",
                     "an orphan atomic-write temporary file is present",
                 )
-            state = StateStorageStateStore(assurance.root / "state_storage.json").get()
             if state is None:
                 report.stores["state_storage"] = {
                     "state": "not_recorded",
                     "verification": "migration_required",
                     "profile_hash": None,
                     **assurance.authority_dict(),
+                    "acl_policy": assurance.acl_policy,
+                    "acl_protected": assurance.acl_protected,
+                    "acl_principal_count": assurance.acl_principal_count,
                     "files_checked": checked,
                     "temporary_files": temporary,
                     "last_verified_at": None,
@@ -347,11 +343,13 @@ class StateIntegrityAuditor:
                     "state_storage.json",
                     "state storage assurance is not bound to the active authority profile",
                 )
-            report.stores["state_storage"] = state.projection(
+            projection = state.projection(
                 verification=verification,
                 files_checked=checked,
                 temporary_files=temporary,
             )
+            projection["acl_principal_count"] = assurance.acl_principal_count
+            report.stores["state_storage"] = projection
             return checked
         except (StateStorageError, RuntimeError) as exc:
             report.stores["state_storage"] = {
@@ -362,6 +360,9 @@ class StateIntegrityAuditor:
                 "root_hash": None,
                 "private_permissions": None,
                 "directory_sync": None,
+                "acl_policy": None,
+                "acl_protected": None,
+                "acl_principal_count": 0,
                 "files_checked": 0,
                 "temporary_files": 0,
                 "last_verified_at": None,
