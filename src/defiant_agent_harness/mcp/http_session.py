@@ -10,10 +10,11 @@ from typing import Any, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from ..limits import MAX_MCP_MESSAGE_BYTES
 from ..tools.registry import ToolResult
 from .session import MCP_ERROR, MCP_RESULT, McpTransportError, _result_summary
 
-MAX_HTTP_BODY_BYTES = 10 * 1024 * 1024
+MAX_HTTP_BODY_BYTES = MAX_MCP_MESSAGE_BYTES
 RESERVED_HEADERS = {
     "accept",
     "content-length",

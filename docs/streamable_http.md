@@ -57,7 +57,8 @@ The client implements the MCP `2025-06-18` Streamable HTTP contract:
 - a session DELETE is attempted when the proxy closes;
 - a `404` session response clears local session state and requires a fresh
   initialize;
-- response bodies are capped at 10 MiB;
+- each local stdio MCP message and each remote HTTP response body is capped at
+  10 MiB before JSON or SSE parsing;
 - redirects are refused so an authorization header cannot silently move to a
   different endpoint.
 

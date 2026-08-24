@@ -13,6 +13,11 @@ from typing import Any, Iterable, Protocol, TextIO
 
 from ..adapters.base import AgentAdapter, ToolCall
 from ..approvals.store import ApprovalError, PendingApproval
+from ..bounded_io import (
+    InputLimitError,
+    iter_bounded_text_lines,
+    require_bounded_text,
+)
 from ..contracts import (
     ContentRef,
     HarnessRequest,
@@ -22,6 +27,7 @@ from ..contracts import (
     sha256_of,
 )
 from ..money import money
+from ..limits import MAX_MCP_MESSAGE_BYTES
 from ..orchestrator.harness import ActionOutcome, build_harness
 from ..launch_envelope import (
     LaunchEnvelopeAssurance,
@@ -44,7 +50,7 @@ from ..tools.registry import (
 )
 from .config import McpConfigError, McpProxyConfig, McpToolConfig
 from .http_session import HttpUpstreamSession
-from .session import MCP_ERROR, MCP_RESULT, UpstreamSession
+from .session import MCP_ERROR, MCP_RESULT, McpTransportError, UpstreamSession
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
@@ -238,6 +244,13 @@ class McpStdioProxy:
         )
 
     def accept_line(self, line: str) -> None:
+        try:
+            require_bounded_text(line, MAX_MCP_MESSAGE_BYTES, "client MCP message")
+        except InputLimitError:
+            self.session.emit_message(
+                _rpc_error(None, -32600, "MCP message exceeds size limit")
+            )
+            return
         try:
             message = json.loads(line, parse_constant=_reject_constant)
         except (json.JSONDecodeError, ValueError):
@@ -500,7 +513,7 @@ def run_stdio_proxy(
         require_same_artifact_bundle(assurance, reverified)
         require_launch_target_unchanged(launch_assurance)
         session.start()
-        for line in input_stream:
+        for line in _client_lines(input_stream):
             if line.strip():
                 proxy.accept_line(line)
     finally:
@@ -557,12 +570,23 @@ def run_http_upstream_proxy(
             runtime_artifact_assurance=remote_artifacts(),
             launch_envelope_assurance=remote_launch_envelope(),
         )
-        for line in input_stream:
+        for line in _client_lines(input_stream):
             if line.strip():
                 proxy.accept_line(line)
     finally:
         session.close()
     return 0
+
+
+def _client_lines(stream: TextIO) -> Iterable[str]:
+    try:
+        yield from iter_bounded_text_lines(
+            stream,
+            MAX_MCP_MESSAGE_BYTES,
+            "client MCP message",
+        )
+    except InputLimitError as exc:
+        raise McpTransportError(str(exc)) from exc
 
 
 def _call_upstream(

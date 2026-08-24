@@ -10,6 +10,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Mapping, TextIO
 
+from ..bounded_io import InputLimitError, iter_bounded_text_lines
+from ..limits import MAX_MCP_MESSAGE_BYTES
 from ..tools.registry import ToolResult
 
 MCP_RESULT = "_defiant_mcp_result"
@@ -206,7 +208,11 @@ class UpstreamSession:
         assert self.process is not None and self.process.stdout is not None
         failure = ""
         try:
-            for line in self.process.stdout:
+            for line in iter_bounded_text_lines(
+                self.process.stdout,
+                MAX_MCP_MESSAGE_BYTES,
+                "upstream MCP message",
+            ):
                 try:
                     message = json.loads(line, parse_constant=_reject_constant)
                 except (json.JSONDecodeError, ValueError) as exc:
@@ -227,7 +233,7 @@ class UpstreamSession:
                             self._private_ids.discard(key)
                         continue
                 self._emit_raw(line if line.endswith("\n") else line + "\n")
-        except (OSError, UnicodeError) as exc:
+        except (InputLimitError, OSError, UnicodeError) as exc:
             failure = f"upstream read failed: {exc}"
         finally:
             if not failure and not self._closed:

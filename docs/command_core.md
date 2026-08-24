@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.19.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.20.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -53,7 +53,9 @@ contains:
 - known-result journal recovery state that is excluded from manual
   reconciliation counts;
 - budget balance, reservations, spend, and estimate drift;
-- a bounded list of recent operational events.
+- a bounded list of recent operational events; and
+- fixed byte ceilings for durable JSON, each evidence record, MCP messages,
+  native-hook events, and MCP configuration.
 
 Use `--request <request_id>` to project one request and `--limit <count>` to
 bound recent activity.
@@ -112,3 +114,5 @@ approval, or mutation behavior of its own. The loopback-only Command Center UI
 consumes this contract without gaining an authority path into the harness. See
 `command_center.md` for that local HTTP surface. Multi-user identity, remote
 ingestion, account authentication, and off-box evidence replication remain absent.
+The resource-limit projection is descriptive and fixed by the running build;
+it is not a runtime configuration or mutation surface.

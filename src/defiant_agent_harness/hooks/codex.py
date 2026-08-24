@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..bounded_io import read_bounded_text
+from ..limits import MAX_HOOK_EVENT_BYTES
 from .copilot import (
     CopilotHookGate,
     _evidence_witness_from_env,
@@ -93,7 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     phase = args[0] if len(args) == 1 else ""
     try:
-        event = json.load(sys.stdin, parse_constant=_reject_constant)
+        document = read_bounded_text(
+            sys.stdin,
+            MAX_HOOK_EVENT_BYTES,
+            "native hook event",
+        )
+        event = json.loads(document, parse_constant=_reject_constant)
         event_cwd = event.get("cwd") if isinstance(event, dict) else ""
         start = (
             Path(event_cwd) if isinstance(event_cwd, str) and event_cwd else Path.cwd()

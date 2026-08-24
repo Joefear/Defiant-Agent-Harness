@@ -50,6 +50,7 @@ const elements = {
   activityTableWrap: document.querySelector("#activity-table-wrap"),
   activityBody: document.querySelector("#activity-body"),
   activityEmpty: document.querySelector("#activity-empty"),
+  resourceLimits: document.querySelector("#resource-limits"),
 };
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact" });
@@ -88,6 +89,29 @@ function time(value, includeDate = false) {
   return parsed.toLocaleString([], includeDate
     ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
     : { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function bytes(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return "—";
+  if (amount % (1024 * 1024) === 0) {
+    return `${integer.format(amount / (1024 * 1024))} MiB`;
+  }
+  return `${integer.format(amount)} bytes`;
+}
+
+function renderResourceLimits(limits) {
+  if (!limits) {
+    elements.resourceLimits.textContent = "Resource ceilings unavailable";
+    return;
+  }
+  elements.resourceLimits.textContent = [
+    `Pre-parse ceilings: state ${bytes(limits.durable_json_bytes)}`,
+    `evidence record ${bytes(limits.evidence_record_bytes)}`,
+    `MCP message ${bytes(limits.mcp_message_bytes)}`,
+    `hook event ${bytes(limits.hook_event_bytes)}`,
+    `MCP config ${bytes(limits.mcp_config_bytes)}`,
+  ].join(", ");
 }
 
 function tone(value) {
@@ -420,6 +444,7 @@ function renderSnapshot(snapshot) {
     snapshot.authorization_reconciliation,
   );
   renderBudget(snapshot.budget);
+  renderResourceLimits(snapshot.resource_limits);
   renderAuthorityProfile(
     snapshot.authority_profile,
     snapshot.runtime_artifacts,

@@ -12,6 +12,8 @@ from threading import Lock, RLock, local
 from typing import Any, IO, Iterator
 from uuid import uuid4
 
+from .limits import MAX_DURABLE_JSON_BYTES
+
 
 class PersistenceError(RuntimeError):
     """Local state could not be read or mutated safely."""
@@ -459,12 +461,32 @@ def exclusive_file_lock(target: str | Path) -> Iterator[None]:
             pass
 
 
-def read_json(path: str | Path) -> dict[str, Any]:
+def read_json(
+    path: str | Path,
+    *,
+    max_bytes: int | None = None,
+) -> dict[str, Any]:
     source = Path(path)
+    maximum = MAX_DURABLE_JSON_BYTES if max_bytes is None else max_bytes
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError("JSON state byte ceiling must be a positive integer")
     try:
-        with open_state_file(source, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
+        with open_state_file(source, "rb") as fh:
+            encoded = fh.read(maximum + 1)
+        if len(encoded) > maximum:
+            raise PersistenceError(
+                f"state file exceeds {maximum} bytes: {_state_name(source)}"
+            )
+        data = json.loads(encoded, parse_constant=_reject_json_constant)
+    except PersistenceError:
+        raise
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as exc:
         raise PersistenceError(
             f"cannot read valid JSON state from {_state_name(source)}: {exc}"
         ) from exc
@@ -482,7 +504,8 @@ def atomic_write_json(path: str | Path, data: dict[str, Any]) -> None:
     tmp = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
     try:
         with open_state_file(tmp, "x", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, sort_keys=True, allow_nan=False)
+            bounded = _BoundedTextWriter(fh, MAX_DURABLE_JSON_BYTES)
+            json.dump(data, bounded, indent=2, sort_keys=True, allow_nan=False)
             fh.flush()
             os.fsync(fh.fileno())
         inspect_state_file(tmp)
@@ -509,3 +532,21 @@ def atomic_write_json(path: str | Path, data: dict[str, Any]) -> None:
             f"cannot atomically write state to {_state_name(destination)}: "
             f"{_os_detail(exc) if isinstance(exc, OSError) else exc}"
         ) from exc
+
+
+class _BoundedTextWriter:
+    def __init__(self, handle: IO[str], maximum: int):
+        self.handle = handle
+        self.maximum = maximum
+        self.written = 0
+
+    def write(self, value: str) -> int:
+        encoded = len(value.encode("utf-8"))
+        if self.written + encoded > self.maximum:
+            raise ValueError(f"JSON state exceeds {self.maximum} bytes")
+        self.written += encoded
+        return self.handle.write(value)
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number is not allowed: {value}")

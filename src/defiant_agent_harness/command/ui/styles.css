@@ -884,6 +884,12 @@ tbody tr:last-child td {
   margin: 0;
 }
 
+#resource-limits {
+  max-width: 760px;
+  margin-top: 5px;
+  font-size: 11px;
+}
+
 .refresh-button {
   padding: 9px 12px;
   border: 1px solid var(--ink);
