@@ -6,10 +6,11 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import IO, Iterator
 
 from ..contracts import EvidenceRecord, sha256_of, utc_now
 from ..evidence_head import EvidenceHeadError, EvidenceHeadStateStore
+from ..limits import MAX_EVIDENCE_RECORD_BYTES
 from ..persistence import (
     PersistenceError,
     exclusive_file_lock,
@@ -31,6 +32,10 @@ _TERMINAL_RESULTS = {
 }
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant {value}")
+
+
 class EvidenceError(RuntimeError):
     """Evidence cannot be trusted or durably extended."""
 
@@ -41,6 +46,39 @@ class ChainStatus:
     count: int
     broken_at: int | None = None
     detail: str = ""
+
+
+def iter_bounded_evidence_lines(handle: IO[bytes]) -> Iterator[tuple[int, bytes]]:
+    """Yield physical JSONL lines without allocating an oversized record."""
+
+    index = 0
+    while True:
+        line = handle.readline(MAX_EVIDENCE_RECORD_BYTES + 1)
+        if not line:
+            return
+        if len(line) > MAX_EVIDENCE_RECORD_BYTES:
+            raise EvidenceError(
+                f"record {index} exceeds {MAX_EVIDENCE_RECORD_BYTES} bytes"
+            )
+        yield index, line
+        index += 1
+
+
+def _serialized_record_line(record: EvidenceRecord) -> bytes:
+    line = (
+        json.dumps(
+            record.to_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if len(line) > MAX_EVIDENCE_RECORD_BYTES:
+        raise EvidenceError(
+            f"evidence record exceeds {MAX_EVIDENCE_RECORD_BYTES} bytes"
+        )
+    return line
 
 
 class EvidenceStore:
@@ -103,15 +141,7 @@ class EvidenceStore:
                 self._reconcile_head_unlocked()
                 previous_head = self._head_hash_unchecked()
                 record.seal(previous_head)
-                line = (
-                    json.dumps(
-                        record.to_dict(),
-                        sort_keys=True,
-                        separators=(",", ":"),
-                        allow_nan=False,
-                    ).encode("utf-8")
-                    + b"\n"
-                )
+                line = _serialized_record_line(record)
                 with open_state_file(self.path, "ab") as fh:
                     fh.write(line)
                     fh.flush()
@@ -158,15 +188,7 @@ class EvidenceStore:
                     return EvidenceRecord(**raw)
                 previous_head = self._head_hash_unchecked()
                 record.seal(previous_head)
-                line = (
-                    json.dumps(
-                        record.to_dict(),
-                        sort_keys=True,
-                        separators=(",", ":"),
-                        allow_nan=False,
-                    ).encode("utf-8")
-                    + b"\n"
-                )
+                line = _serialized_record_line(record)
                 with open_state_file(self.path, "ab") as fh:
                     fh.write(line)
                     fh.flush()
@@ -221,15 +243,30 @@ class EvidenceStore:
 
     def _raw(self) -> Iterator[dict]:
         try:
-            with open_state_file(self.path, "r", encoding="utf-8") as fh:
-                for index, line in enumerate(fh):
+            with open_state_file(self.path, "rb") as fh:
+                for index, line in iter_bounded_evidence_lines(fh):
                     if not line.strip():
                         continue
                     try:
-                        record = json.loads(line)
+                        record = json.loads(
+                            line,
+                            parse_constant=_reject_json_constant,
+                        )
                     except json.JSONDecodeError as exc:
                         raise EvidenceError(
                             f"record {index} is not valid JSON: {exc.msg}"
+                        ) from exc
+                    except RecursionError as exc:
+                        raise EvidenceError(
+                            f"record {index} exceeds JSON nesting limits"
+                        ) from exc
+                    except UnicodeError as exc:
+                        raise EvidenceError(
+                            f"record {index} is not valid UTF-8 JSON"
+                        ) from exc
+                    except ValueError as exc:
+                        raise EvidenceError(
+                            f"record {index} contains an invalid JSON value"
                         ) from exc
                     if not isinstance(record, dict):
                         raise EvidenceError(f"record {index} is not a JSON object")

@@ -44,7 +44,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.16.0` and exits
+The command emits schema `defiant.state_integrity` version `0.17.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -122,6 +122,12 @@ The auditor verifies:
 Malformed or unreadable stores are reported rather than repaired. Command Core
 and Command Center remain available as read-only diagnostic surfaces, mark the
 snapshot non-authoritative, and withhold projections from an invalid store.
+
+v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
+above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
+version `0.17.0`. Diagnostics report the boundary and ceiling without echoing
+record contents or absolute state paths; no read-only surface truncates or
+repairs the offending file.
 
 ## Execution gate
 

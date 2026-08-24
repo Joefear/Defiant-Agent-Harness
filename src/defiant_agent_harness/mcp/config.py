@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from ..bounded_io import InputLimitError, read_bounded_path_text
+from ..limits import MAX_MCP_CONFIG_BYTES
 from ..contracts import SideEffect, Trust
 from ..launch_envelope import LaunchEnvironmentConfig, LaunchEnvelopeError
 from ..money import ZERO, money
@@ -289,8 +291,19 @@ def load_proxy_config(
 ) -> McpProxyConfig:
     source = Path(path)
     try:
-        raw = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
+        document = read_bounded_path_text(
+            source,
+            MAX_MCP_CONFIG_BYTES,
+            "MCP proxy config",
+        )
+        if any(
+            isinstance(event, yaml.events.AliasEvent) for event in yaml.parse(document)
+        ):
+            raise McpConfigError("MCP proxy config YAML aliases are not supported")
+        raw = yaml.safe_load(document) or {}
+    except McpConfigError:
+        raise
+    except (InputLimitError, OSError, RecursionError, yaml.YAMLError) as exc:
         raise McpConfigError(f"cannot load MCP proxy config {source}: {exc}") from exc
     root = _mapping(raw, "config")
     _reject_unknown(root, _ROOT_KEYS, "config")

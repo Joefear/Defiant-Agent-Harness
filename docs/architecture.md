@@ -515,6 +515,22 @@ show current/max lag, and withhold paths, signatures, and notes. See
   the enrolled root or reviewing an explicit authority-profile transition;
   Command Center cannot accept a new identity.
 
+## Bounded ingestion
+
+v0.26 places fixed byte ceilings before documents cross parser boundaries.
+Aggregate durable JSON is read and written through a 64 MiB ceiling; evidence
+is binary-line scanned with a 16 MiB ceiling per physical record; MCP stdio
+messages, Streamable HTTP responses, and native-hook events are limited to
+10 MiB; and MCP YAML configuration is limited to 1 MiB. YAML aliases and JSON
+non-finite numbers are refused.
+
+Oversized durable state becomes a sanitized State Integrity failure and blocks
+new authority. Oversized live protocol input terminates or denies the affected
+operation without echoing the input. The append-only evidence chain has no
+aggregate cap: verification cost remains linear in retained history. Command
+Core projects the fixed values and Command Center renders them read-only; no
+limit editor or ingestion endpoint is introduced. See `bounded_ingestion.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

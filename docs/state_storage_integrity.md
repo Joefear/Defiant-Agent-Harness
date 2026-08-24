@@ -130,6 +130,12 @@ cannot change ACLs, relink, move, delete, restore, accept, or repair state.
 
 ## Limits
 
+Each aggregate durable JSON state file is limited to 64 MiB before decoding,
+and atomic serialization refuses output that would exceed the same ceiling.
+The append-only evidence store uses its separate 16 MiB per-record ceiling.
+Oversized state is an integrity failure requiring offline investigation or
+restore; read-only diagnostics do not truncate or repair it.
+
 This is not protection from a privileged or same-user host attacker who can
 replace the running harness, patch memory, alter code and state together, or
 restore an older complete root plus its authority history. Device/inode identity

@@ -385,6 +385,15 @@ policy boundary.
 
 **Model-level exfiltration through allowed channels.** If a rule permits summaries to be emailed, a sufficiently motivated injection can encode data into a summary. Narrower approval scopes and human review reduce this; nothing eliminates it.
 
+**Oversized or amplified parser input.** A tool result, runner event, local
+protocol peer, corrupted state file, or hostile configuration can attempt to
+force large allocation before schema validation. v0.26 bounds bytes before
+JSON, YAML, or SSE parsing at each documented boundary, rejects YAML aliases
+and non-finite JSON numbers, and fails closed with sanitized diagnostics. The
+limits are per document or evidence record; total evidence history, cumulative
+traffic, parser CPU within a permitted document, and process-wide memory still
+require deployment monitoring and OS resource controls.
+
 ## Assumptions
 
 - The operator running the harness is trusted; there is no privilege

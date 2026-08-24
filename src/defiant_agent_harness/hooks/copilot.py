@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 from ..adapters.base import AgentAdapter, ToolCall
 from ..approvals.store import ApprovalError, PendingApproval
+from ..bounded_io import read_bounded_text
 from ..contracts import (
     ContentRef,
     GuardrailDecision,
@@ -22,6 +23,7 @@ from ..contracts import (
     Trust,
     sha256_of,
 )
+from ..limits import MAX_HOOK_EVENT_BYTES
 from ..orchestrator.harness import ActionOutcome, build_harness
 from ..tools.registry import (
     ToolContractError,
@@ -814,7 +816,12 @@ def main(argv: list[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     phase = args[0] if len(args) == 1 else ""
     try:
-        event = json.load(sys.stdin, parse_constant=_reject_constant)
+        document = read_bounded_text(
+            sys.stdin,
+            MAX_HOOK_EVENT_BYTES,
+            "native hook event",
+        )
+        event = json.loads(document, parse_constant=_reject_constant)
         workspace_root = Path.cwd()
         state_root = Path(os.environ.get("DAH_HOOK_WORKDIR", ".dah-hooks"))
         witness_path, witness_keys = _evidence_witness_from_env()

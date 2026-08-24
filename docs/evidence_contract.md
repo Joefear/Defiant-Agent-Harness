@@ -109,6 +109,11 @@ evidence records or make Command Center an import/signing authority. See
 
 ## Data handling
 
+Each physical JSONL evidence record, including its newline, is limited to
+16 MiB before decoding. A larger existing record makes the chain invalid and
+blocks authority; a larger new record is refused before append. This is a
+per-record ceiling, not a cap on total append-only evidence history.
+
 Evidence records carry hashes of payload and output bodies rather than the
 bodies themselves. Operational metadata—including target paths, recipients,
 user ids, workspace ids, rule reasons, and provenance labels—remains visible.

@@ -16,6 +16,13 @@ from ..budgets.ledger import BudgetError, BudgetLedger
 from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
+from ..limits import (
+    MAX_DURABLE_JSON_BYTES,
+    MAX_EVIDENCE_RECORD_BYTES,
+    MAX_HOOK_EVENT_BYTES,
+    MAX_MCP_CONFIG_BYTES,
+    MAX_MCP_MESSAGE_BYTES,
+)
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
     JournalOperation,
@@ -34,7 +41,7 @@ from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.19.0"
+SNAPSHOT_VERSION = "0.20.0"
 
 
 class CommandError(RuntimeError):
@@ -122,6 +129,13 @@ class CommandCore:
                 "evidence_witness": audit_payload["stores"]["evidence_witness"],
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
+                "resource_limits": {
+                    "durable_json_bytes": MAX_DURABLE_JSON_BYTES,
+                    "evidence_record_bytes": MAX_EVIDENCE_RECORD_BYTES,
+                    "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
+                    "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
+                    "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
+                },
                 "operation_journal": audit_payload["stores"]["operation_journal"],
                 "evidence_integrity": {
                     "ok": integrity.ok,

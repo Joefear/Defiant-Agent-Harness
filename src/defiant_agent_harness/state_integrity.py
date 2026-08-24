@@ -16,7 +16,7 @@ from .control_plane_isolation import (
     ControlPlaneIsolationError,
     ControlPlaneIsolationStateStore,
 )
-from .evidence.store import GENESIS
+from .evidence.store import GENESIS, iter_bounded_evidence_lines
 from .evidence_head import (
     EvidenceHeadError,
     EvidenceHeadStateStore,
@@ -57,7 +57,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.16.0"
+AUDIT_VERSION = "0.17.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -69,6 +69,10 @@ _TERMINAL_RESULTS = {
 }
 _ACTIVE_APPROVALS = {"pending", "approved", "executing"}
 _TERMINAL_APPROVALS = {"rejected", "expired", "consumed"}
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant {value}")
 
 
 class StateIntegrityError(RuntimeError):
@@ -950,12 +954,15 @@ class StateIntegrityAuditor:
         seen_ids: set[str] = set()
         trusted = True
         try:
-            with open_state_file(path, "r", encoding="utf-8") as handle:
-                for index, line in enumerate(handle):
+            with open_state_file(path, "rb") as handle:
+                for index, line in iter_bounded_evidence_lines(handle):
                     if not line.strip():
                         continue
                     try:
-                        record = json.loads(line)
+                        record = json.loads(
+                            line,
+                            parse_constant=_reject_json_constant,
+                        )
                     except json.JSONDecodeError as exc:
                         raise ValueError(
                             f"record {index} is not valid JSON: {exc.msg}"

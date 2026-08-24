@@ -135,6 +135,10 @@ from the agent it is currently governing.
 
 Hooks are a Preview runner feature, not an operating-system sandbox.
 
+Each hook event is capped at 10 MiB before JSON parsing. An oversized or
+malformed event produces the runner-specific fail-closed response and a
+sanitized diagnostic; raw event content is not copied into that response.
+
 - VS Code documents command-hook timeouts as fail-open into the runner's normal
   permission flow.
 - A direct process action that emits no lifecycle event cannot be seen here.

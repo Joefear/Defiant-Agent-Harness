@@ -119,6 +119,10 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"evidence_head" in javascript
     assert b"max_unwitnessed_records" in javascript
     assert b"unwitnessed_record_count" in javascript
+    assert b"resource-limits" in body
+    assert b"renderResourceLimits" in javascript
+    assert b"durable_json_bytes" in javascript
+    assert b"#resource-limits" in css
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
