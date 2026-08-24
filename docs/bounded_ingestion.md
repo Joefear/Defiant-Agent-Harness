@@ -15,11 +15,17 @@ boundary.
 | One Streamable HTTP response | 10 MiB | Remote transport fails before JSON/SSE parsing |
 | One native-hook event document | 10 MiB | Hook returns its fail-closed response |
 | MCP proxy YAML configuration | 1 MiB | Startup refuses configuration |
+| One policy-pack YAML document | 1 MiB | Harness construction fails closed |
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.20.0` projects them under `resource_limits`, and Command Center only
+schema `0.21.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
+
+v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
+both MCP configuration and policy packs. It rejects aliases and duplicate
+mapping keys at any nesting depth before authority can be constructed. See
+`authority_configuration_integrity.md`.
 
 ## Parser discipline
 

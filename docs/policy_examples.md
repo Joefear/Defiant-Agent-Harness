@@ -2,6 +2,11 @@
 
 Rules are YAML so a consultant can read them, a client can be shown them, and a compliance reviewer can audit them without reading Python.
 
+Each pack is limited to 1 MiB and parsed with the `strict_yaml_v1` safe-loader
+profile. YAML aliases, duplicate mapping keys at any depth, invalid UTF-8, and
+unknown top-level pack fields fail closed. This ensures the reviewer and parser
+cannot silently disagree about which repeated key controls authority.
+
 ## How a decision is made
 
 1. The registry validates the tool, authoritative side-effect level, and any

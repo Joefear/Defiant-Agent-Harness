@@ -1477,6 +1477,7 @@ def build_harness(
         prepare_workspace_root,
     )
 
+    loaded_policy_packs = PolicyEngine.load_default(policy_packs)
     state_storage = prepare_state_storage(
         workdir,
         require_windows_private_acl=require_windows_private_state_acl,
@@ -1570,8 +1571,8 @@ def build_harness(
     }
     if witness_policy is not None:
         authority_inputs["evidence_head_witness"] = witness_policy.authority_dict()
-    policy = PolicyEngine.default(
-        policy_packs,
+    policy = PolicyEngine.from_loaded(
+        loaded_policy_packs,
         additional_known_tools=(registry.names() if tools is not None else None),
         authority_inputs=authority_inputs,
     )

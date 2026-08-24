@@ -8,13 +8,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import yaml
-
-from ..bounded_io import InputLimitError, read_bounded_path_text
+from ..bounded_io import InputLimitError
 from ..limits import MAX_MCP_CONFIG_BYTES
 from ..contracts import SideEffect, Trust
 from ..launch_envelope import LaunchEnvironmentConfig, LaunchEnvelopeError
 from ..money import ZERO, money
+from ..strict_yaml import StrictYamlError, load_bounded_yaml
 from ..runtime_artifacts import (
     RuntimeArtifactError,
     RuntimeArtifactPin,
@@ -291,20 +290,25 @@ def load_proxy_config(
 ) -> McpProxyConfig:
     source = Path(path)
     try:
-        document = read_bounded_path_text(
-            source,
-            MAX_MCP_CONFIG_BYTES,
-            "MCP proxy config",
+        raw = (
+            load_bounded_yaml(
+                source,
+                MAX_MCP_CONFIG_BYTES,
+                "MCP proxy config",
+            )
+            or {}
         )
-        if any(
-            isinstance(event, yaml.events.AliasEvent) for event in yaml.parse(document)
-        ):
-            raise McpConfigError("MCP proxy config YAML aliases are not supported")
-        raw = yaml.safe_load(document) or {}
     except McpConfigError:
         raise
-    except (InputLimitError, OSError, RecursionError, yaml.YAMLError) as exc:
-        raise McpConfigError(f"cannot load MCP proxy config {source}: {exc}") from exc
+    except OSError as exc:
+        detail = exc.strerror or exc.__class__.__name__
+        raise McpConfigError(
+            f"cannot read MCP proxy config {source.name}: {detail}"
+        ) from exc
+    except (InputLimitError, StrictYamlError) as exc:
+        raise McpConfigError(
+            f"cannot load MCP proxy config {source.name}: {exc}"
+        ) from exc
     root = _mapping(raw, "config")
     _reject_unknown(root, _ROOT_KEYS, "config")
 

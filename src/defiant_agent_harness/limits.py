@@ -14,3 +14,4 @@ MAX_HOOK_EVENT_BYTES = 10 * MIB
 
 # Operator-authored YAML should remain reviewable and is never a bulk payload.
 MAX_MCP_CONFIG_BYTES = 1 * MIB
+MAX_POLICY_PACK_BYTES = 1 * MIB

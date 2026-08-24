@@ -100,18 +100,25 @@ function bytes(value) {
   return `${integer.format(amount)} bytes`;
 }
 
-function renderResourceLimits(limits) {
+function renderResourceLimits(limits, configuration) {
   if (!limits) {
     elements.resourceLimits.textContent = "Resource ceilings unavailable";
     return;
   }
-  elements.resourceLimits.textContent = [
+  const details = [
     `Pre-parse ceilings: state ${bytes(limits.durable_json_bytes)}`,
     `evidence record ${bytes(limits.evidence_record_bytes)}`,
     `MCP message ${bytes(limits.mcp_message_bytes)}`,
     `hook event ${bytes(limits.hook_event_bytes)}`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,
-  ].join(", ");
+    `policy pack ${bytes(limits.policy_pack_bytes)}`,
+  ];
+  if (configuration) {
+    details.push(
+      `authority YAML ${label(configuration.parser_profile)} (aliases and duplicate keys refused)`,
+    );
+  }
+  elements.resourceLimits.textContent = details.join(", ");
 }
 
 function tone(value) {
@@ -444,7 +451,7 @@ function renderSnapshot(snapshot) {
     snapshot.authorization_reconciliation,
   );
   renderBudget(snapshot.budget);
-  renderResourceLimits(snapshot.resource_limits);
+  renderResourceLimits(snapshot.resource_limits, snapshot.authority_configuration);
   renderAuthorityProfile(
     snapshot.authority_profile,
     snapshot.runtime_artifacts,

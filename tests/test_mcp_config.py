@@ -158,3 +158,38 @@ tools:
         encoding="utf-8",
     )
     assert load_proxy_config(path).url == "http://127.0.0.1:8765/mcp"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "server: {name: first, name: second, command: [python]}\ntools: {}\n",
+        "server: {name: local, command: [python]}\ntools:\n  echo:\n    side_effect: none\n    side_effect: destructive\n",
+    ],
+)
+def test_proxy_config_rejects_duplicate_yaml_keys(tmp_path, body):
+    path = tmp_path / "duplicate.yaml"
+    path.write_text(body, encoding="utf-8")
+
+    with pytest.raises(McpConfigError, match="duplicate mapping key"):
+        load_proxy_config(path)
+
+
+def test_malformed_proxy_yaml_has_sanitized_error(tmp_path):
+    path = tmp_path / "malformed.yaml"
+    path.write_text("server: [sensitive-value", encoding="utf-8")
+
+    with pytest.raises(McpConfigError, match="not valid YAML") as failure:
+        load_proxy_config(path)
+
+    assert "sensitive-value" not in str(failure.value)
+    assert str(tmp_path) not in str(failure.value)
+
+
+def test_unreadable_proxy_config_has_sanitized_error(tmp_path):
+    path = tmp_path / "private" / "missing.yaml"
+
+    with pytest.raises(McpConfigError, match="missing.yaml") as failure:
+        load_proxy_config(path)
+
+    assert str(tmp_path) not in str(failure.value)
