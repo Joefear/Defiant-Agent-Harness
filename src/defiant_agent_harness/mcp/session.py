@@ -12,6 +12,7 @@ from typing import Any, Mapping, TextIO
 
 from ..bounded_io import InputLimitError, iter_bounded_text_lines
 from ..limits import MAX_MCP_MESSAGE_BYTES
+from ..strict_json import StrictJsonError, loads_strict_json
 from ..tools.registry import ToolResult
 
 MCP_RESULT = "_defiant_mcp_result"
@@ -214,8 +215,8 @@ class UpstreamSession:
                 "upstream MCP message",
             ):
                 try:
-                    message = json.loads(line, parse_constant=_reject_constant)
-                except (json.JSONDecodeError, ValueError) as exc:
+                    message = loads_strict_json(line, label="upstream MCP message")
+                except StrictJsonError as exc:
                     failure = f"upstream emitted invalid JSON: {exc}"
                     break
                 if isinstance(message, dict) and "id" in message:
@@ -281,7 +282,3 @@ def _result_summary(result: dict[str, Any], failed: bool) -> str:
     if summary:
         return summary[:500]
     return "upstream tool reported an error" if failed else "upstream tool succeeded"
-
-
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number: {value}")

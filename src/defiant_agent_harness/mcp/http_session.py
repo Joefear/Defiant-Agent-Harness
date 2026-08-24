@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from ..limits import MAX_MCP_MESSAGE_BYTES
+from ..strict_json import StrictJsonError, loads_strict_json
 from ..tools.registry import ToolResult
 from .session import MCP_ERROR, MCP_RESULT, McpTransportError, _result_summary
 
@@ -290,8 +291,8 @@ def _bounded_error_body(error: HTTPError) -> str:
 
 def _json_object(value: str) -> dict[str, Any]:
     try:
-        parsed = json.loads(value, parse_constant=_reject_constant)
-    except (json.JSONDecodeError, ValueError, UnicodeError) as exc:
+        parsed = loads_strict_json(value, label="upstream HTTP JSON")
+    except StrictJsonError as exc:
         raise McpTransportError(f"upstream emitted invalid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise McpTransportError("upstream HTTP body must be one JSON-RPC object")
@@ -332,7 +333,3 @@ def _failed_result(message: str) -> ToolResult:
         summary=message,
         output={MCP_ERROR: {"code": -32000, "message": message}},
     )
-
-
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number: {value}")

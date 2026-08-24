@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -50,6 +49,7 @@ from .state_storage import (
     inspect_state_storage,
     inspect_state_storage_files,
 )
+from .strict_json import loads_strict_json
 from .workspace_integrity import (
     WorkspaceIntegrityError,
     WorkspaceIntegrityStateStore,
@@ -69,10 +69,6 @@ _TERMINAL_RESULTS = {
 }
 _ACTIVE_APPROVALS = {"pending", "approved", "executing"}
 _TERMINAL_APPROVALS = {"rejected", "expired", "consumed"}
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"invalid JSON constant {value}")
 
 
 class StateIntegrityError(RuntimeError):
@@ -958,15 +954,10 @@ class StateIntegrityAuditor:
                 for index, line in iter_bounded_evidence_lines(handle):
                     if not line.strip():
                         continue
-                    try:
-                        record = json.loads(
-                            line,
-                            parse_constant=_reject_json_constant,
-                        )
-                    except json.JSONDecodeError as exc:
-                        raise ValueError(
-                            f"record {index} is not valid JSON: {exc.msg}"
-                        ) from exc
+                    record = loads_strict_json(
+                        line,
+                        label=f"evidence record {index}",
+                    )
                     if not isinstance(record, dict):
                         raise ValueError(f"record {index} is not a JSON object")
                     if record.get("previous_record_hash") != previous:

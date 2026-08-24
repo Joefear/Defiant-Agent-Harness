@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.21.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.22.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -56,8 +56,8 @@ contains:
 - a bounded list of recent operational events; and
 - fixed byte ceilings for durable JSON, each evidence record, MCP messages,
   native-hook events, MCP configuration, and each policy pack; and
-- the static authority-YAML parser profile plus explicit alias and duplicate-key
-  refusal flags.
+- the static authority-YAML and authority-JSON parser profiles plus explicit
+  alias, duplicate-key, non-finite-number, and strict-UTF-8 posture.
 
 Use `--request <request_id>` to project one request and `--limit <count>` to
 bound recent activity.

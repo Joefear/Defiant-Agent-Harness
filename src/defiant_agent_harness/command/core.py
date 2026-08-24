@@ -40,10 +40,11 @@ from ..operator_identity import (
 )
 from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
+from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.21.0"
+SNAPSHOT_VERSION = "0.22.0"
 
 
 class CommandError(RuntimeError):
@@ -140,9 +141,12 @@ class CommandCore:
                     "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
                 },
                 "authority_configuration": {
-                    "parser_profile": STRICT_YAML_PROFILE,
-                    "aliases_allowed": False,
+                    "yaml_parser_profile": STRICT_YAML_PROFILE,
+                    "json_parser_profile": STRICT_JSON_PROFILE,
+                    "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
+                    "non_finite_json_numbers_allowed": False,
+                    "json_encoding": "utf-8",
                 },
                 "operation_journal": audit_payload["stores"]["operation_journal"],
                 "evidence_integrity": {

@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from ..contracts import canonical_json, sha256_of, utc_now
+from ..strict_json import StrictJsonError, loads_strict_json
 
 EXPORT_SCHEMA = "defiant.evidence.export"
 EXPORT_VERSION = "0.2.0"
@@ -68,7 +69,7 @@ def read_passphrase(path: str | Path) -> bytes:
     try:
         with source.open("rb") as fh:
             value = fh.read(_MAX_PASSPHRASE_BYTES + 1)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise EvidenceSigningError(
             f"cannot read passphrase file {source}: {exc}"
         ) from exc
@@ -219,13 +220,11 @@ def load_export(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     try:
         text = source.read_text(encoding="utf-8")
-        value = json.loads(
-            text,
-            object_pairs_hook=_object_without_duplicates,
-            parse_constant=_reject_json_constant,
-        )
-    except (OSError, json.JSONDecodeError) as exc:
+        value = loads_strict_json(text, label="evidence export")
+    except OSError as exc:
         raise EvidenceSigningError(f"cannot read valid export {source}: {exc}") from exc
+    except StrictJsonError as exc:
+        raise EvidenceSigningError(str(exc)) from exc
     if not isinstance(value, dict):
         raise EvidenceSigningError("signed export root must be an object")
     return value
@@ -419,19 +418,6 @@ def _is_sha256(value: Any) -> bool:
         return False
     digest = value[7:]
     return len(digest) == 64 and all(ch in "0123456789abcdef" for ch in digest)
-
-
-def _object_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise EvidenceSigningError(f"duplicate JSON key in export: {key}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> Any:
-    raise EvidenceSigningError(f"non-finite JSON number is forbidden: {value}")
 
 
 def _read_limited(path: Path, maximum: int, label: str) -> bytes:

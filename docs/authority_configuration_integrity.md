@@ -35,7 +35,7 @@ second policy language or weaken strictest-wins and default-deny behavior.
 
 ## Read-only projection
 
-Command Core schema `0.21.0` reports the static parser profile, both refusal
+Command Core schema `0.22.0` reports the static parser profile, both refusal
 flags, and the policy-pack byte ceiling. Command Center renders this metadata
 read-only. Neither surface receives configuration source, uploads a pack,
 changes a limit, accepts a parser exception, rotates a profile, or launches an
@@ -50,3 +50,6 @@ and use immutable deployment controls where required. The ceiling is per file;
 in-process callers remain trusted under the existing Python boundary.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.28 extends the same ambiguity-free principle to JSON without changing this
+YAML contract. See `strict_json_integrity.md`.

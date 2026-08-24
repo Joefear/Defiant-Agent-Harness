@@ -25,6 +25,7 @@ from ..contracts import (
 )
 from ..limits import MAX_HOOK_EVENT_BYTES
 from ..orchestrator.harness import ActionOutcome, build_harness
+from ..strict_json import StrictJsonError, loads_strict_json
 from ..tools.registry import (
     ToolContractError,
     ToolRegistry,
@@ -546,8 +547,11 @@ def _tool_fields(event: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
         raise ValueError("hook input tool_name must be non-empty")
     if isinstance(tool_input, str):
         try:
-            tool_input = json.loads(tool_input, parse_constant=_reject_constant)
-        except json.JSONDecodeError as exc:
+            tool_input = loads_strict_json(
+                tool_input,
+                label="hook tool arguments",
+            )
+        except StrictJsonError as exc:
             raise ValueError("hook input tool arguments must be valid JSON") from exc
     if not isinstance(tool_input, dict):
         raise ValueError("hook input tool_input must be an object")
@@ -821,7 +825,7 @@ def main(argv: list[str] | None = None) -> int:
             MAX_HOOK_EVENT_BYTES,
             "native hook event",
         )
-        event = json.loads(document, parse_constant=_reject_constant)
+        event = loads_strict_json(document, label="native hook event")
         workspace_root = Path.cwd()
         state_root = Path(os.environ.get("DAH_HOOK_WORKDIR", ".dah-hooks"))
         witness_path, witness_keys = _evidence_witness_from_env()
@@ -850,17 +854,13 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number is not allowed: {value}")
-
-
 def _trusted_operator_keys_from_env() -> list[str]:
     raw = os.environ.get("DAH_TRUSTED_OPERATOR_KEYS", "")
     if not raw:
         return []
     try:
-        value = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        value = loads_strict_json(raw, label="trusted operator key list")
+    except StrictJsonError as exc:
         raise ValueError("DAH_TRUSTED_OPERATOR_KEYS must be a JSON array") from exc
     if not isinstance(value, list) or any(
         not isinstance(item, str) or not item.strip() for item in value
@@ -882,8 +882,8 @@ def _evidence_witness_from_env() -> tuple[str | None, list[str]]:
     if not raw_keys:
         return None, []
     try:
-        keys = json.loads(raw_keys)
-    except json.JSONDecodeError as exc:
+        keys = loads_strict_json(raw_keys, label="trusted evidence key list")
+    except StrictJsonError as exc:
         raise ValueError("DAH_TRUSTED_EVIDENCE_KEYS must be a JSON array") from exc
     if not isinstance(keys, list) or any(
         not isinstance(item, str) or not item.strip() for item in keys

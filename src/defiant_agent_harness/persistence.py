@@ -13,6 +13,7 @@ from typing import Any, IO, Iterator
 from uuid import uuid4
 
 from .limits import MAX_DURABLE_JSON_BYTES
+from .strict_json import loads_strict_json
 
 
 class PersistenceError(RuntimeError):
@@ -477,7 +478,7 @@ def read_json(
             raise PersistenceError(
                 f"state file exceeds {maximum} bytes: {_state_name(source)}"
             )
-        data = json.loads(encoded, parse_constant=_reject_json_constant)
+        data = loads_strict_json(encoded, label="state JSON")
     except PersistenceError:
         raise
     except (
@@ -546,7 +547,3 @@ class _BoundedTextWriter:
             raise ValueError(f"JSON state exceeds {self.maximum} bytes")
         self.written += encoded
         return self.handle.write(value)
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number is not allowed: {value}")

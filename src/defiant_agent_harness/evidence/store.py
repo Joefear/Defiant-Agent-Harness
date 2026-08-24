@@ -19,6 +19,7 @@ from ..persistence import (
     prepare_storage_root,
     sync_storage_directory,
 )
+from ..strict_json import StrictJsonError, loads_strict_json
 from .signing import EXPORT_SCHEMA, EXPORT_VERSION
 
 GENESIS = "sha256:" + "0" * 64
@@ -30,10 +31,6 @@ _TERMINAL_RESULTS = {
     "expired",
     "not_executed",
 }
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"invalid JSON constant {value}")
 
 
 class EvidenceError(RuntimeError):
@@ -248,25 +245,26 @@ class EvidenceStore:
                     if not line.strip():
                         continue
                     try:
-                        record = json.loads(
+                        record = loads_strict_json(
                             line,
-                            parse_constant=_reject_json_constant,
+                            label=f"evidence record {index}",
                         )
-                    except json.JSONDecodeError as exc:
+                    except StrictJsonError as exc:
+                        detail = str(exc)
+                        if "non-finite" in detail:
+                            raise EvidenceError(
+                                f"record {index} contains an invalid JSON value"
+                            ) from exc
+                        if "UTF-8" in detail:
+                            raise EvidenceError(
+                                f"record {index} is not valid UTF-8 JSON"
+                            ) from exc
+                        if "duplicate JSON key" in detail:
+                            raise EvidenceError(
+                                f"record {index} contains a duplicate JSON key"
+                            ) from exc
                         raise EvidenceError(
-                            f"record {index} is not valid JSON: {exc.msg}"
-                        ) from exc
-                    except RecursionError as exc:
-                        raise EvidenceError(
-                            f"record {index} exceeds JSON nesting limits"
-                        ) from exc
-                    except UnicodeError as exc:
-                        raise EvidenceError(
-                            f"record {index} is not valid UTF-8 JSON"
-                        ) from exc
-                    except ValueError as exc:
-                        raise EvidenceError(
-                            f"record {index} contains an invalid JSON value"
+                            f"record {index} is not valid JSON"
                         ) from exc
                     if not isinstance(record, dict):
                         raise EvidenceError(f"record {index} is not a JSON object")
