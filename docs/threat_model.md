@@ -394,6 +394,16 @@ limits are per document or evidence record; total evidence history, cumulative
 traffic, parser CPU within a permitted document, and process-wide memory still
 require deployment monitoring and OS resource controls.
 
+**Ambiguous authority YAML.** YAML normally permits aliases and many loaders
+silently accept duplicate keys using last-key-wins semantics. A malicious or
+mistaken pack could therefore show a reviewer one apparent policy while the
+parser applies another. v0.27 uses one bounded strict safe-loader for policy
+packs and MCP configuration, rejects aliases and duplicate mapping keys at any
+depth, and refuses unknown top-level policy fields before authority or an
+upstream process is created. This does not prove that a syntactically clear
+policy expresses the operator's intended business rule; review and tests remain
+deployment controls.
+
 ## Assumptions
 
 - The operator running the harness is trusted; there is no privilege

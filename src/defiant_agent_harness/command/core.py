@@ -22,6 +22,7 @@ from ..limits import (
     MAX_HOOK_EVENT_BYTES,
     MAX_MCP_CONFIG_BYTES,
     MAX_MCP_MESSAGE_BYTES,
+    MAX_POLICY_PACK_BYTES,
 )
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
@@ -39,9 +40,10 @@ from ..operator_identity import (
 )
 from ..persistence import PersistenceError, read_json
 from ..state_integrity import StateIntegrityAuditor
+from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.20.0"
+SNAPSHOT_VERSION = "0.21.0"
 
 
 class CommandError(RuntimeError):
@@ -135,6 +137,12 @@ class CommandCore:
                     "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
                     "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
+                    "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
+                },
+                "authority_configuration": {
+                    "parser_profile": STRICT_YAML_PROFILE,
+                    "aliases_allowed": False,
+                    "duplicate_keys_allowed": False,
                 },
                 "operation_journal": audit_payload["stores"]["operation_journal"],
                 "evidence_integrity": {

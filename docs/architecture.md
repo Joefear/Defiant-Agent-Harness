@@ -531,6 +531,15 @@ aggregate cap: verification cost remains linear in retained history. Command
 Core projects the fixed values and Command Center renders them read-only; no
 limit editor or ingestion endpoint is introduced. See `bounded_ingestion.md`.
 
+v0.27 applies one `strict_yaml_v1` loader to authority-bearing policy packs and
+MCP configuration. It limits each policy pack to 1 MiB, rejects aliases and
+duplicate mapping keys at every depth, and rejects unknown top-level pack
+fields. This prevents last-key-wins behavior from making machine authority
+differ from a human review. Failures occur before state/workspace initialization
+or upstream process launch and report no input snippets or absolute paths. Command
+Core and Command Center expose only the static profile and limits; neither can
+submit or accept configuration. See `authority_configuration_integrity.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

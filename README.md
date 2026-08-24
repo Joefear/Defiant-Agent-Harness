@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.26.
+logs. A full trusted-memory/DKE system is not part of v0.27.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.26 is
+## What v0.27 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -272,6 +272,15 @@ are rejected. Command Core and the strictly read-only Command Center expose the
 active ceilings without exposing input contents, paths, or a configuration
 control. Append-only evidence history remains unlimited in total; each record
 is bounded independently.
+
+v0.27 makes authority-bearing YAML unambiguous. Every policy pack is limited
+to 1 MiB before parsing, and policy packs and MCP configuration both use one
+strict safe-loader contract that rejects aliases and duplicate mapping keys at
+any depth. Policy packs also reject unknown top-level fields. Load failures are
+sanitized and fail closed before state/workspace initialization or upstream launch.
+Command Core and the strictly read-only Command Center expose the parser
+profile and policy-pack ceiling without adding an upload, editing, acceptance,
+or mutation surface.
 
 ## Install
 
@@ -608,7 +617,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.26 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.27 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -627,6 +636,8 @@ profile-bound operator-signed external evidence-head witnessing with optional
 maximum unwitnessed-record lag,
 fixed fail-closed pre-parse resource ceilings across durable state, evidence,
 MCP transports, native hooks, and MCP configuration,
+strict bounded and ambiguity-free authority YAML parsing for policy packs and
+MCP configuration,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -644,6 +655,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/evidence_head_integrity.md`,
 `docs/evidence_head_witness.md`,
 `docs/bounded_ingestion.md`,
+`docs/authority_configuration_integrity.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

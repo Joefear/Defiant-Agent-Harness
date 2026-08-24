@@ -75,6 +75,7 @@ from ..operator_identity import (
 )
 from ..operator_trust_state import OperatorTrustStateStore
 from ..persistence import AuthorityTransactionLock, PersistenceError
+from ..policy.engine import PolicyError
 from ..state_integrity import StateIntegrityAuditor
 
 DEFAULT_WORKDIR = Path(".dah")
@@ -758,6 +759,7 @@ def cmd_mcp_proxy(args) -> int:
         McpConfigError,
         McpTransportError,
         OperatorIdentityError,
+        PolicyError,
         EvidenceWitnessError,
         OSError,
     ) as exc:
@@ -791,6 +793,7 @@ def cmd_mcp_http_proxy(args) -> int:
         McpConfigError,
         McpTransportError,
         OperatorIdentityError,
+        PolicyError,
         EvidenceWitnessError,
         OSError,
     ) as exc:
@@ -1239,7 +1242,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.fn(args)
-    except (OperatorIdentityError, PersistenceError) as exc:
+    except (OperatorIdentityError, PersistenceError, PolicyError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
 

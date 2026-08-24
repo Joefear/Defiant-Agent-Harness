@@ -21,8 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from ..bounded_io import InputLimitError
 from ..contracts import (
     Decision,
     GuardrailDecision,
@@ -32,9 +31,24 @@ from ..contracts import (
     sha256_of,
     side_effect_rank,
 )
+from ..limits import MAX_POLICY_PACK_BYTES
+from ..strict_yaml import StrictYamlError, load_bounded_yaml
 
 # Strictest wins.
 _SEVERITY = {Decision.ALLOW: 0, Decision.APPROVAL_REQUIRED: 1, Decision.BLOCK: 2}
+_PACK_FIELDS = {"version", "name", "description", "known_tools", "rules"}
+
+
+class PolicyError(ValueError):
+    """Policy configuration is unreadable, ambiguous, or invalid."""
+
+
+@dataclass(frozen=True)
+class LoadedPolicyPacks:
+    """Strictly parsed policy documents awaiting authority-context binding."""
+
+    packs: tuple[dict, ...]
+    name: str
 
 
 @dataclass
@@ -135,6 +149,8 @@ class PolicyEngine:
         for pack in packs:
             if not isinstance(pack, dict):
                 raise ValueError("each policy pack must be a mapping")
+            if set(pack) - _PACK_FIELDS:
+                raise ValueError("policy pack contains unknown fields")
             versions.append(str(pack.get("version", "0")))
             known_tools = pack.get("known_tools", []) or []
             if not isinstance(known_tools, list) or any(
@@ -185,13 +201,45 @@ class PolicyEngine:
         additional_known_tools: list[str] | None = None,
         authority_inputs: dict[str, Any] | None = None,
     ) -> "PolicyEngine":
-        packs = []
+        return cls.from_loaded(
+            cls.load_files(paths),
+            additional_known_tools=additional_known_tools,
+            authority_inputs=authority_inputs,
+        )
+
+    @classmethod
+    def load_files(cls, paths: list[str | Path]) -> LoadedPolicyPacks:
+        packs: list[dict] = []
         names = []
         for p in paths:
             p = Path(p)
-            with open(p, "r", encoding="utf-8") as fh:
-                packs.append(yaml.safe_load(fh) or {})
+            try:
+                packs.append(
+                    load_bounded_yaml(
+                        p,
+                        MAX_POLICY_PACK_BYTES,
+                        "policy pack",
+                    )
+                    or {}
+                )
+            except OSError as exc:
+                detail = exc.strerror or exc.__class__.__name__
+                raise PolicyError(
+                    f"cannot read policy pack {p.name}: {detail}"
+                ) from exc
+            except (InputLimitError, StrictYamlError) as exc:
+                raise PolicyError(f"cannot load policy pack {p.name}: {exc}") from exc
             names.append(p.stem)
+        return LoadedPolicyPacks(tuple(packs), "+".join(names))
+
+    @classmethod
+    def from_loaded(
+        cls,
+        loaded: LoadedPolicyPacks,
+        additional_known_tools: list[str] | None = None,
+        authority_inputs: dict[str, Any] | None = None,
+    ) -> "PolicyEngine":
+        packs = list(loaded.packs)
         if additional_known_tools:
             packs.append(
                 {
@@ -200,11 +248,14 @@ class PolicyEngine:
                     "rules": [],
                 }
             )
-        return cls(
-            packs,
-            name="+".join(names),
-            authority_inputs=authority_inputs,
-        )
+        try:
+            return cls(
+                packs,
+                name=loaded.name,
+                authority_inputs=authority_inputs,
+            )
+        except (TypeError, ValueError) as exc:
+            raise PolicyError(f"invalid policy configuration: {exc}") from exc
 
     @classmethod
     def default(
@@ -213,16 +264,23 @@ class PolicyEngine:
         additional_known_tools: list[str] | None = None,
         authority_inputs: dict[str, Any] | None = None,
     ) -> "PolicyEngine":
+        return cls.from_loaded(
+            cls.load_default(extra_packs),
+            additional_known_tools=additional_known_tools,
+            authority_inputs=authority_inputs,
+        )
+
+    @classmethod
+    def load_default(
+        cls,
+        extra_packs: list[str] | None = None,
+    ) -> LoadedPolicyPacks:
         base = Path(__file__).parent / "rules"
         paths: list[str | Path] = [base / "default.yaml"]
         for name in extra_packs or []:
             candidate = base / f"{name}.yaml"
             paths.append(candidate if candidate.exists() else Path(name))
-        return cls.from_files(
-            paths,
-            additional_known_tools=additional_known_tools,
-            authority_inputs=authority_inputs,
-        )
+        return cls.load_files(paths)
 
     # -- evaluation ------------------------------------------------------
 

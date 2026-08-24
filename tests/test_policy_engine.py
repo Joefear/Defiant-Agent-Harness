@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+import defiant_agent_harness.policy.engine as policy_engine_module
+from defiant_agent_harness.adapters.mock import MockAgentAdapter
+from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.contracts import (
     ContentRef,
     Decision,
@@ -9,7 +12,8 @@ from defiant_agent_harness.contracts import (
     SideEffect,
     Trust,
 )
-from defiant_agent_harness.policy.engine import PolicyEngine
+from defiant_agent_harness.policy.engine import PolicyEngine, PolicyError
+from defiant_agent_harness.orchestrator.harness import build_harness
 
 
 @pytest.fixture
@@ -264,3 +268,117 @@ def test_duplicate_rule_ids_are_rejected():
 def test_invalid_rule_effect_is_rejected_at_load_time():
     with pytest.raises(ValueError):
         PolicyEngine([{"version": "test", "rules": [{"id": "bad", "effect": "maybe"}]}])
+
+
+def test_policy_pack_is_bounded_before_yaml_parse(tmp_path, monkeypatch):
+    path = tmp_path / "oversized.yaml"
+    path.write_text("sensitive" * 5, encoding="utf-8")
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PACK_BYTES", 32)
+
+    with pytest.raises(PolicyError, match="policy pack exceeds 32 bytes") as failure:
+        PolicyEngine.from_files([path])
+
+    assert "sensitive" not in str(failure.value)
+    assert str(tmp_path) not in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "version: first\nversion: second\nrules: []\n",
+        "version: test\nrules:\n  - id: duplicate\n    effect: allow\n    effect: block\n",
+    ],
+)
+def test_policy_pack_rejects_duplicate_yaml_keys(tmp_path, body):
+    path = tmp_path / "duplicate.yaml"
+    path.write_text(body, encoding="utf-8")
+
+    with pytest.raises(PolicyError, match="duplicate mapping key"):
+        PolicyEngine.from_files([path])
+
+
+def test_policy_pack_rejects_yaml_aliases(tmp_path):
+    path = tmp_path / "alias.yaml"
+    path.write_text(
+        "version: test\nknown_tools: &tools [read_file]\ncopy: *tools\nrules: []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="aliases are not supported"):
+        PolicyEngine.from_files([path])
+
+
+def test_policy_pack_rejects_unsafe_yaml_tags(tmp_path):
+    path = tmp_path / "tagged.yaml"
+    path.write_text(
+        "version: test\nrules: !!python/object/apply:builtins.list []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="not valid YAML"):
+        PolicyEngine.from_files([path])
+
+
+def test_policy_pack_rejects_unknown_top_level_fields():
+    with pytest.raises(ValueError, match="unknown fields"):
+        PolicyEngine([{"version": "test", "rules": [], "typo": True}])
+
+
+def test_malformed_policy_yaml_has_sanitized_error(tmp_path):
+    path = tmp_path / "malformed.yaml"
+    path.write_text("known_tools: [sensitive-value", encoding="utf-8")
+
+    with pytest.raises(PolicyError, match="not valid YAML") as failure:
+        PolicyEngine.from_files([path])
+
+    assert "sensitive-value" not in str(failure.value)
+    assert str(tmp_path) not in str(failure.value)
+
+
+def test_invalid_policy_preflight_creates_no_state_or_workspace(tmp_path):
+    policy = tmp_path / "duplicate.yaml"
+    policy.write_text("version: first\nversion: second\nrules: []\n", encoding="utf-8")
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+
+    with pytest.raises(PolicyError, match="duplicate mapping key"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            policy_packs=[str(policy)],
+            workspace_root=workspace,
+        )
+
+    assert not state.exists()
+    assert not workspace.exists()
+
+
+def test_cli_policy_failure_is_sanitized_and_fail_closed(tmp_path, capsys):
+    policy = tmp_path / "private" / "alias.yaml"
+    policy.parent.mkdir()
+    policy.write_text(
+        "version: test\nknown_tools: &sensitive [read_file]\ncopy: *sensitive\n",
+        encoding="utf-8",
+    )
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+
+    exit_code = main(
+        [
+            "--workdir",
+            str(state),
+            "--workspace-root",
+            str(workspace),
+            "--policy",
+            str(policy),
+            "policy",
+        ]
+    )
+
+    error = capsys.readouterr().err
+    assert exit_code == 1
+    assert "aliases are not supported" in error
+    assert "sensitive" not in error
+    assert str(tmp_path) not in error
+    assert not state.exists()
+    assert not workspace.exists()
