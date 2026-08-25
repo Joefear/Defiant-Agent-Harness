@@ -128,6 +128,12 @@ Malformed trust configuration makes hook startup fail closed. The private key
 and passphrase are never provided to a proxy, hook, Command Core, or Command
 Center.
 
+v0.32 bounds one supplied trust mapping at 1,024 key specifications, 65,536
+bytes per public-key PEM, and 8,388,608 aggregate PEM bytes. Excess count is
+refused before filesystem access; byte overflow creates no partial enrollment.
+The durable binding store enforces the same key-count ceiling. See
+`trusted_key_limits.md`.
+
 ## Read-only inspection
 
 Pass the public trust bindings to `dah doctor`, `dah command`, or

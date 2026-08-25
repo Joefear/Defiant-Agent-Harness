@@ -48,6 +48,7 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - an optional request-id focus applied through a read-only snapshot query; and
 - the fixed pre-parse byte ceilings enforced by the running harness;
 - the fixed evidence-export parse and publication ceiling; and
+- the fixed trusted-public-key count, per-key, and aggregate byte ceilings; and
 - the strict authority-YAML and authority-JSON profiles, including alias,
   structural-complexity, scalar-complexity, duplicate-key, non-finite-number,
   and strict-UTF-8 refusal posture.
@@ -56,7 +57,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.25.0`. The browser cannot raise, disable, or replace them and never receives
+`0.26.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

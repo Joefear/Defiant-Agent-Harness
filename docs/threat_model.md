@@ -361,6 +361,25 @@ forwarding. These per-token limits do not replace total byte ceilings, provide
 streaming parsing, constrain application-level decoded text, establish a CPU or
 memory quota, or contain the host process.
 
+### 24. Unbounded trusted public-key collections
+
+An operator-facing API, CLI, hook environment, corrupted durable policy, or
+offline verifier can otherwise supply a very large set of individually valid
+key paths. Loading every file, parsing every PEM, computing identifiers, and
+constructing verification maps amplifies filesystem, CPU, and memory work
+before the requested signature's key is selected.
+
+v0.32 caps one trusted set at 1,024 supplied keys, 65,536 bytes per public-key
+PEM, and 8,388,608 aggregate PEM bytes. Count is checked before path or file
+work, aggregate size before PEM parsing, and durable operator/witness metadata
+uses the same count ceiling. Failure is whole-request and creates no partial
+trust or authority.
+
+These bounds do not establish that a key is correctly trusted, distribute
+revocation, validate certificates, protect private keys, provide trusted time,
+or impose a process-wide CPU/memory quota. Authenticated key distribution and
+operator review remain deployment controls.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

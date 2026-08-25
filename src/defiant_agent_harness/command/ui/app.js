@@ -117,6 +117,9 @@ function renderResourceLimits(limits, configuration) {
     `JSON number token ${integer.format(limits.json_number_token_characters)} characters`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,
     `policy pack ${bytes(limits.policy_pack_bytes)}`,
+    `trusted keys ${integer.format(limits.trusted_public_key_count)}`,
+    `trusted key ${bytes(limits.trusted_public_key_bytes)}`,
+    `trusted key set ${bytes(limits.trusted_public_key_set_bytes)}`,
   ];
   if (configuration) {
     details.push(

@@ -117,6 +117,54 @@ def test_untrusted_key_is_rejected_and_rotation_set_is_supported(tmp_path):
     assert rotated.ok is True
 
 
+def test_export_verification_rejects_excess_keys_before_filesystem_access(
+    tmp_path, monkeypatch
+):
+    document, _, _public_key, _ = _signed(tmp_path)
+    monkeypatch.setattr(signing_module, "MAX_TRUSTED_PUBLIC_KEYS", 1)
+
+    status = verify_export(
+        document,
+        [tmp_path / "missing-one.pem", tmp_path / "missing-two.pem"],
+    )
+
+    assert status.ok is False
+    assert status.detail == "trusted public key count exceeds fixed limit of 1"
+
+
+def test_export_verification_rejects_aggregate_key_bytes(tmp_path, monkeypatch):
+    document, _, first_public, _ = _signed(tmp_path, "first")
+    _private, second_public, _key_id = _keys(tmp_path, "second")
+    maximum = first_public.stat().st_size + second_public.stat().st_size - 1
+    monkeypatch.setattr(
+        signing_module,
+        "MAX_TRUSTED_PUBLIC_KEY_SET_BYTES",
+        maximum,
+    )
+
+    status = verify_export(document, [first_public, second_public])
+
+    assert status.ok is False
+    assert status.detail == (
+        f"trusted public key set exceeds fixed {maximum}-byte ceiling"
+    )
+
+
+def test_export_verification_rejects_oversized_public_key(tmp_path, monkeypatch):
+    document, _, public_key, _ = _signed(tmp_path)
+    maximum = public_key.stat().st_size - 1
+    monkeypatch.setattr(
+        signing_module,
+        "MAX_TRUSTED_PUBLIC_KEY_BYTES",
+        maximum,
+    )
+
+    status = verify_export(document, [public_key])
+
+    assert status.ok is False
+    assert f"fixed {maximum}-byte ceiling" in status.detail
+
+
 def test_wrong_private_key_passphrase_is_rejected(tmp_path):
     private_key, _, _ = _keys(tmp_path)
 

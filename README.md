@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.31.
+logs. A full trusted-memory/DKE system is not part of v0.32.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.31 is
+## What v0.32 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -314,6 +314,14 @@ and exponents. Floating-point tokens that convert to infinity are also refused.
 The behavior is deterministic across supported Python releases, failures remain
 sanitized and fail closed, and Command Core plus the strictly read-only Command
 Center expose only the fixed posture.
+
+v0.32 bounds trusted public-key collections before filesystem and cryptographic
+work: at most 1,024 supplied keys, 64 KiB per PEM, and 8 MiB aggregate PEM
+bytes. The contract covers operator identity, signed evidence-export
+verification, external evidence witnesses, durable trust metadata, and native
+hook key-list environments. Failures are conservative and create no partial
+trust. Command Core and the strictly read-only Command Center expose only the
+fixed ceilings.
 
 ## Install
 
@@ -650,7 +658,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.31 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.32 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -677,6 +685,7 @@ fixed 64 MiB parse and publication ceilings for request evidence exports,
 fixed pre-decoder JSON nesting and lexical-token ceilings,
 fixed pre-decoder JSON string-token and number-token ceilings with finite
 floating-point conversion,
+fixed trusted-public-key count, per-key, and aggregate key-set ceilings,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -699,6 +708,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/bounded_evidence_exports.md`,
 `docs/json_structural_limits.md`,
 `docs/json_scalar_limits.md`,
+`docs/trusted_key_limits.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

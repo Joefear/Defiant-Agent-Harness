@@ -21,7 +21,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from ..contracts import canonical_json, sha256_of, utc_now
-from ..limits import MAX_EVIDENCE_EXPORT_BYTES
+from ..limits import (
+    MAX_EVIDENCE_EXPORT_BYTES,
+    MAX_TRUSTED_PUBLIC_KEYS,
+    MAX_TRUSTED_PUBLIC_KEY_BYTES,
+    MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
+)
 from ..strict_json import StrictJsonError, loads_strict_json
 
 EXPORT_SCHEMA = "defiant.evidence.export"
@@ -285,13 +290,10 @@ def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     return key
 
 
-def _load_public_key(path: str | Path) -> Ed25519PublicKey:
-    source = Path(path)
+def _public_key_from_bytes(value: bytes, source: Path) -> Ed25519PublicKey:
     try:
-        key = serialization.load_pem_public_key(
-            _read_limited(source, _MAX_KEY_BYTES, "public key")
-        )
-    except (OSError, TypeError, ValueError) as exc:
+        key = serialization.load_pem_public_key(value)
+    except (TypeError, ValueError) as exc:
         raise EvidenceSigningError(f"cannot load public key {source}") from exc
     if not isinstance(key, Ed25519PublicKey):
         raise EvidenceSigningError(f"trusted key must be Ed25519: {source}")
@@ -299,13 +301,41 @@ def _load_public_key(path: str | Path) -> Ed25519PublicKey:
 
 
 def _load_trusted_keys(paths: Iterable[str | Path]) -> dict[str, Ed25519PublicKey]:
+    bounded_paths = _bounded_trusted_key_paths(paths)
     trusted: dict[str, Ed25519PublicKey] = {}
-    for path in paths:
-        key = _load_public_key(path)
+    total_key_bytes = 0
+    for path in bounded_paths:
+        source = Path(path)
+        key_bytes = _read_limited(
+            source,
+            MAX_TRUSTED_PUBLIC_KEY_BYTES,
+            "public key",
+        )
+        total_key_bytes += len(key_bytes)
+        if total_key_bytes > MAX_TRUSTED_PUBLIC_KEY_SET_BYTES:
+            raise EvidenceSigningError(
+                "trusted public key set exceeds fixed "
+                f"{MAX_TRUSTED_PUBLIC_KEY_SET_BYTES}-byte ceiling"
+            )
+        key = _public_key_from_bytes(key_bytes, source)
         trusted[public_key_id(key)] = key
     if not trusted:
         raise EvidenceSigningError("at least one trusted public key is required")
     return trusted
+
+
+def _bounded_trusted_key_paths(
+    paths: Iterable[str | Path],
+) -> tuple[str | Path, ...]:
+    bounded: list[str | Path] = []
+    for path in paths:
+        if len(bounded) >= MAX_TRUSTED_PUBLIC_KEYS:
+            raise EvidenceSigningError(
+                f"trusted public key count exceeds fixed limit of "
+                f"{MAX_TRUSTED_PUBLIC_KEYS}"
+            )
+        bounded.append(path)
+    return tuple(bounded)
 
 
 def _validate_export_payload(payload: dict[str, Any]) -> None:

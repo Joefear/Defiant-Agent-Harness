@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.31
+## What is deliberately absent from v0.32
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -574,6 +574,14 @@ are refused after conversion. This makes scalar processing deterministic across
 supported Python releases without changing any byte or structural ceiling.
 Command Core and Command Center expose only the static posture. See
 `json_scalar_limits.md`.
+
+v0.32 bounds trusted public-key sets before path resolution, file reads, PEM
+parsing, key-id calculation, or signature verification. Operator identity,
+evidence-export verification, and external witness trust accept at most 1,024
+supplied keys, 65,536 bytes per PEM, and 8,388,608 aggregate PEM bytes. Durable
+operator and witness trust metadata enforce the same count ceiling. Command
+Core and Command Center expose only the static limits. See
+`trusted_key_limits.md`.
 
 ## Known limits
 

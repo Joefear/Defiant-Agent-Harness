@@ -23,7 +23,7 @@ from ..contracts import (
     Trust,
     sha256_of,
 )
-from ..limits import MAX_HOOK_EVENT_BYTES
+from ..limits import MAX_HOOK_EVENT_BYTES, MAX_TRUSTED_PUBLIC_KEYS
 from ..orchestrator.harness import ActionOutcome, build_harness
 from ..strict_json import StrictJsonError, loads_strict_json
 from ..tools.registry import (
@@ -868,6 +868,11 @@ def _trusted_operator_keys_from_env() -> list[str]:
         raise ValueError(
             "DAH_TRUSTED_OPERATOR_KEYS must contain non-empty key specifications"
         )
+    if len(value) > MAX_TRUSTED_PUBLIC_KEYS:
+        raise ValueError(
+            "DAH_TRUSTED_OPERATOR_KEYS exceeds fixed trusted-key count limit of "
+            f"{MAX_TRUSTED_PUBLIC_KEYS}"
+        )
     return value
 
 
@@ -893,6 +898,11 @@ def _evidence_witness_from_env() -> tuple[str | None, list[str]]:
         )
     if not keys:
         raise ValueError("DAH_TRUSTED_EVIDENCE_KEYS must contain at least one key")
+    if len(keys) > MAX_TRUSTED_PUBLIC_KEYS:
+        raise ValueError(
+            "DAH_TRUSTED_EVIDENCE_KEYS exceeds fixed trusted-key count limit of "
+            f"{MAX_TRUSTED_PUBLIC_KEYS}"
+        )
     return witness, keys
 
 

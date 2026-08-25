@@ -29,6 +29,11 @@ from .evidence_head import (
     GENESIS_HEAD,
     assess_evidence_head,
 )
+from .limits import (
+    MAX_TRUSTED_PUBLIC_KEYS,
+    MAX_TRUSTED_PUBLIC_KEY_BYTES,
+    MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
+)
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -110,10 +115,13 @@ class EvidenceWitnessPolicy:
             max_unwitnessed_records,
             "max_unwitnessed_records",
         )
-        key_paths = tuple(Path(path).resolve() for path in paths)
+        key_paths = tuple(
+            Path(path).resolve() for path in _bounded_trusted_key_paths(paths)
+        )
         if not key_paths:
             raise EvidenceWitnessError("at least one trusted witness key is required")
-        key_ids = tuple(sorted({_key_id_from_path(path) for path in key_paths}))
+        keys = _load_trusted_public_keys(key_paths)
+        key_ids = tuple(sorted({public_key_id(key) for key in keys}))
         if len(key_ids) != len(key_paths):
             raise EvidenceWitnessError("trusted witness keys must be unique")
         return cls(key_ids, key_paths, max_unwitnessed_records)
@@ -163,6 +171,11 @@ class EvidenceWitnessPolicyState:
         ):
             raise EvidenceWitnessError("trusted_key_ids must be an array")
         key_ids = tuple(_hash(value, "trusted_key_id") for value in values)
+        if len(key_ids) > MAX_TRUSTED_PUBLIC_KEYS:
+            raise EvidenceWitnessError(
+                f"trusted witness key count exceeds fixed limit of "
+                f"{MAX_TRUSTED_PUBLIC_KEYS}"
+            )
         if tuple(sorted(set(key_ids))) != key_ids:
             raise EvidenceWitnessError("trusted_key_ids must be sorted and unique")
         if mode == WITNESS_MODE and not key_ids:
@@ -509,7 +522,7 @@ def _verify_signature(
         raise EvidenceWitnessError("witness payload hash does not match attestation")
     trusted = {
         public_key_id(key): key
-        for key in map(_load_public_key, policy.trusted_key_paths)
+        for key in _load_trusted_public_keys(policy.trusted_key_paths)
     }
     if tuple(sorted(trusted)) != policy.trusted_key_ids:
         raise EvidenceWitnessError(
@@ -599,10 +612,6 @@ def _assess_position(count: int, head: str, records: list[dict[str, Any]]) -> st
     )
 
 
-def _key_id_from_path(path: Path) -> str:
-    return public_key_id(_load_public_key(path))
-
-
 def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     if not passphrase:
         raise EvidenceWitnessError("private-key passphrase must be non-empty")
@@ -618,16 +627,50 @@ def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     return key
 
 
-def _load_public_key(path: str | Path) -> Ed25519PublicKey:
+def _public_key_from_bytes(value: bytes) -> Ed25519PublicKey:
     try:
-        key = serialization.load_pem_public_key(
-            _read_limited(Path(path), _MAX_KEY_BYTES, "trusted public key")
-        )
-    except (OSError, TypeError, ValueError) as exc:
+        key = serialization.load_pem_public_key(value)
+    except (TypeError, ValueError) as exc:
         raise EvidenceWitnessError("cannot load Ed25519 trusted public key") from exc
     if not isinstance(key, Ed25519PublicKey):
         raise EvidenceWitnessError("trusted public key is not Ed25519")
     return key
+
+
+def _load_trusted_public_keys(
+    paths: Iterable[str | Path],
+) -> tuple[Ed25519PublicKey, ...]:
+    bounded_paths = _bounded_trusted_key_paths(paths)
+    keys: list[Ed25519PublicKey] = []
+    total_key_bytes = 0
+    for path in bounded_paths:
+        key_bytes = _read_limited(
+            Path(path),
+            MAX_TRUSTED_PUBLIC_KEY_BYTES,
+            "trusted public key",
+        )
+        total_key_bytes += len(key_bytes)
+        if total_key_bytes > MAX_TRUSTED_PUBLIC_KEY_SET_BYTES:
+            raise EvidenceWitnessError(
+                "trusted witness public key set exceeds fixed "
+                f"{MAX_TRUSTED_PUBLIC_KEY_SET_BYTES}-byte ceiling"
+            )
+        keys.append(_public_key_from_bytes(key_bytes))
+    return tuple(keys)
+
+
+def _bounded_trusted_key_paths(
+    paths: Iterable[str | Path],
+) -> tuple[str | Path, ...]:
+    bounded: list[str | Path] = []
+    for path in paths:
+        if len(bounded) >= MAX_TRUSTED_PUBLIC_KEYS:
+            raise EvidenceWitnessError(
+                f"trusted witness key count exceeds fixed limit of "
+                f"{MAX_TRUSTED_PUBLIC_KEYS}"
+            )
+        bounded.append(path)
+    return tuple(bounded)
 
 
 def _decode_signature(value: Any) -> bytes:
