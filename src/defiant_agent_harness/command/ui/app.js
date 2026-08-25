@@ -113,13 +113,15 @@ function renderResourceLimits(limits, configuration) {
     `hook event ${bytes(limits.hook_event_bytes)}`,
     `JSON depth ${integer.format(limits.json_nesting_depth)}`,
     `JSON lexical tokens ${integer.format(limits.json_lexical_tokens)}`,
+    `JSON string token ${integer.format(limits.json_string_token_characters)} characters`,
+    `JSON number token ${integer.format(limits.json_number_token_characters)} characters`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,
     `policy pack ${bytes(limits.policy_pack_bytes)}`,
   ];
   if (configuration) {
     details.push(
       `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused)`,
-      `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure, duplicate keys and non-finite numbers refused)`,
+      `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
   elements.resourceLimits.textContent = details.join(", ");

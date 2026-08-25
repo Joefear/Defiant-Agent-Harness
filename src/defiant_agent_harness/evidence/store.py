@@ -14,6 +14,8 @@ from ..limits import (
     MAX_EVIDENCE_RECORD_BYTES,
     MAX_JSON_LEXICAL_TOKENS,
     MAX_JSON_NESTING_DEPTH,
+    MAX_JSON_NUMBER_TOKEN_CHARACTERS,
+    MAX_JSON_STRING_TOKEN_CHARACTERS,
 )
 from ..persistence import (
     PersistenceError,
@@ -276,6 +278,18 @@ class EvidenceStore:
                             raise EvidenceError(
                                 f"record {index} exceeds maximum JSON lexical "
                                 f"token count of {MAX_JSON_LEXICAL_TOKENS}"
+                            ) from exc
+                        if "JSON string token length" in detail:
+                            raise EvidenceError(
+                                f"record {index} exceeds maximum JSON string "
+                                f"token length of "
+                                f"{MAX_JSON_STRING_TOKEN_CHARACTERS} characters"
+                            ) from exc
+                        if "JSON number token length" in detail:
+                            raise EvidenceError(
+                                f"record {index} exceeds maximum JSON number "
+                                f"token length of "
+                                f"{MAX_JSON_NUMBER_TOKEN_CHARACTERS} characters"
                             ) from exc
                         raise EvidenceError(
                             f"record {index} is not valid JSON"

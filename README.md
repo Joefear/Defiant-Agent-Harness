@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.30.
+logs. A full trusted-memory/DKE system is not part of v0.31.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.30 is
+## What v0.31 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -306,6 +306,14 @@ so punctuation inside content cannot forge structure. The existing strict
 UTF-8, duplicate-key, non-finite-number, and byte-ceiling rules remain in force.
 Command Core and the strictly read-only Command Center expose only the fixed
 posture; neither can upload input or change a limit.
+
+v0.31 advances authority JSON to `strict_json_v3`. The same pre-decoder scan
+now refuses any string token beyond 8 Mi source characters or number token
+beyond 1,024 source characters, covering keys, values, integers, fractions,
+and exponents. Floating-point tokens that convert to infinity are also refused.
+The behavior is deterministic across supported Python releases, failures remain
+sanitized and fail closed, and Command Core plus the strictly read-only Command
+Center expose only the fixed posture.
 
 ## Install
 
@@ -642,7 +650,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.30 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.31 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -667,6 +675,8 @@ strict UTF-8 and duplicate-safe JSON parsing across durable state, evidence,
 MCP transports, native hooks, and signed external documents,
 fixed 64 MiB parse and publication ceilings for request evidence exports,
 fixed pre-decoder JSON nesting and lexical-token ceilings,
+fixed pre-decoder JSON string-token and number-token ceilings with finite
+floating-point conversion,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -688,6 +698,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/strict_json_integrity.md`,
 `docs/bounded_evidence_exports.md`,
 `docs/json_structural_limits.md`,
+`docs/json_scalar_limits.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

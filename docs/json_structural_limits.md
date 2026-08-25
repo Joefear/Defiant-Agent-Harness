@@ -44,10 +44,12 @@ documents, evidence exports, and external evidence witnesses.
 
 ## Read-only projection
 
-Command Core schema `0.24.0` exposes `strict_json_v2`, the two fixed ceilings,
-and structural-preflight posture. Command Center renders those values with the
-other fixed resource limits. Neither surface accepts JSON, changes a ceiling,
-adds an exception, retries input, repairs state, or creates authority.
+Command Core schema `0.25.0` exposes the current `strict_json_v3` profile, the
+two structural ceilings, and structural-preflight posture. Command Center
+renders those values with the other fixed resource limits. Neither surface
+accepts JSON, changes a ceiling, adds an exception, retries input, repairs
+state, or creates authority. v0.31 adds independent per-scalar limits; see
+`json_scalar_limits.md`.
 
 ## Limits
 
@@ -56,5 +58,8 @@ does not provide a CPU quota, process memory cap, streaming JSON decoder,
 schema-specific collection limits, truth guarantee, or OS containment. Existing
 byte ceilings remain responsible for total document size at their respective
 boundaries; evidence-history verification remains linear in retained records.
+
+v0.31 bounds individual string and number tokens without changing these
+structural definitions or ceilings.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

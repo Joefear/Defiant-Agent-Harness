@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import queue
+import sys
 from io import StringIO
 
 import pytest
@@ -75,6 +76,73 @@ def test_strict_json_enforces_lexical_tokens_and_ignores_string_punctuation(
         loads_strict_json("[0,1,2,3]", label="authority document")
 
 
+def test_strict_json_enforces_string_token_length_before_decoder_without_echo(
+    monkeypatch,
+):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_STRING_TOKEN_CHARACTERS", 8)
+    assert loads_strict_json('{"12345678":"a\\tb"}') == {"12345678": "a\tb"}
+
+    def unexpected_decode(*_args, **_kwargs):
+        pytest.fail("oversized JSON string reached the decoder")
+
+    monkeypatch.setattr(strict_json_module.json, "loads", unexpected_decode)
+    with pytest.raises(StrictJsonError, match="string token length of 8") as failure:
+        loads_strict_json('"SENSITIVE"', label="authority document")
+
+    assert "SENSITIVE" not in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "123456789",
+        "-123456789",
+        "0.123456789",
+        "1e123456789",
+        "1E-123456789",
+    ],
+)
+def test_strict_json_enforces_number_token_length_before_decoder(
+    document,
+    monkeypatch,
+):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+
+    def unexpected_decode(*_args, **_kwargs):
+        pytest.fail("oversized JSON number reached the decoder")
+
+    monkeypatch.setattr(strict_json_module.json, "loads", unexpected_decode)
+    with pytest.raises(StrictJsonError, match="number token length of 8") as failure:
+        loads_strict_json(document, label="authority document")
+
+    assert document not in str(failure.value)
+
+
+def test_strict_json_accepts_number_at_limit_and_rejects_float_overflow(monkeypatch):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+    assert loads_strict_json("12345678") == 12345678
+
+    with pytest.raises(StrictJsonError, match="non-finite JSON number"):
+        loads_strict_json("1e999", label="authority document")
+
+
+def test_strict_json_integer_conversion_is_independent_of_runtime_digit_guard():
+    document = "9" * 1024
+
+    get_limit = getattr(sys, "get_int_max_str_digits", None)
+    set_limit = getattr(sys, "set_int_max_str_digits", None)
+    previous_limit = get_limit() if get_limit is not None else None
+    try:
+        if set_limit is not None:
+            set_limit(640)
+        parsed = loads_strict_json(document)
+    finally:
+        if set_limit is not None and previous_limit is not None:
+            set_limit(previous_limit)
+
+    assert parsed.bit_length() > 3000
+
+
 def test_durable_state_rejects_duplicate_keys_without_echo(tmp_path):
     root = prepare_storage_root(tmp_path / "state")
     path = root.path / "budget.json"
@@ -100,6 +168,20 @@ def test_durable_state_rejects_over_depth_without_echo(tmp_path, monkeypatch):
         read_json(path)
 
     assert "SENSITIVE-CONTENT" not in str(failure.value)
+    assert str(root.path) not in str(failure.value)
+
+
+def test_durable_state_rejects_oversized_string_without_echo(tmp_path, monkeypatch):
+    root = prepare_storage_root(tmp_path / "state")
+    path = root.path / "budget.json"
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_STRING_TOKEN_CHARACTERS", 8)
+    with open_state_file(path, "xb") as handle:
+        handle.write(b'{"value":"SENSITIVE"}')
+
+    with pytest.raises(PersistenceError, match="string token length of 8") as failure:
+        read_json(path)
+
+    assert "SENSITIVE" not in str(failure.value)
     assert str(root.path) not in str(failure.value)
 
 
@@ -131,6 +213,25 @@ def test_evidence_rejects_over_token_record_before_chain_interpretation(
     assert status.ok is False
     assert status.detail == "record 0 exceeds maximum JSON lexical token count of 3"
     assert "SENSITIVE-CONTENT" not in status.detail
+
+
+def test_evidence_rejects_oversized_number_before_chain_interpretation(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "evidence.jsonl"
+    EvidenceStore(path)
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+    monkeypatch.setattr(evidence_store_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+    with open_state_file(path, "ab") as handle:
+        handle.write(b'{"cost_usd":123456789}\n')
+
+    status = EvidenceStore(path).verify()
+
+    assert status.ok is False
+    assert status.detail == (
+        "record 0 exceeds maximum JSON number token length of 8 characters"
+    )
+    assert "123456789" not in status.detail
 
 
 def test_mcp_client_duplicate_method_is_parse_error_and_never_forwarded():
@@ -196,12 +297,49 @@ def test_mcp_client_over_depth_is_parse_error_and_never_forwarded(monkeypatch):
     assert session.forwarded == []
 
 
+def test_mcp_client_oversized_string_is_parse_error_and_never_forwarded(monkeypatch):
+    class CaptureSession:
+        def __init__(self):
+            self.messages = []
+            self.forwarded = []
+
+        def emit_message(self, message):
+            self.messages.append(message)
+
+        def forward_raw(self, message):
+            self.forwarded.append(message)
+
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_STRING_TOKEN_CHARACTERS", 8)
+    session = CaptureSession()
+    proxy = object.__new__(McpStdioProxy)
+    proxy.session = session
+
+    proxy.accept_line('{"jsonrpc":"2.0","id":1,"method":"SENSITIVE","params":{}}')
+
+    assert session.messages == [
+        {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32700, "message": "Parse error"},
+        }
+    ]
+    assert session.forwarded == []
+
+
 def test_http_upstream_duplicate_keys_fail_transport_without_echo():
     with pytest.raises(McpTransportError, match="duplicate JSON key") as failure:
         _json_object('{"result":{"status":"safe","status":"sensitive"}}')
 
     assert "status" not in str(failure.value)
     assert "sensitive" not in str(failure.value)
+
+
+def test_http_upstream_oversized_number_fails_transport_without_echo(monkeypatch):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+    with pytest.raises(McpTransportError, match="number token length of 8") as failure:
+        _json_object('{"result":123456789}')
+
+    assert "123456789" not in str(failure.value)
 
 
 def test_stdio_upstream_duplicate_keys_fail_pending_calls_without_forwarding():
@@ -284,6 +422,36 @@ def test_native_hook_over_depth_fails_closed_before_state_creation(
     assert "deny" in json.dumps(response).lower()
     assert "nesting depth" in stderr.getvalue()
     assert "SENSITIVE-CONTENT" not in stderr.getvalue()
+    assert not (tmp_path / ".dah-hooks").exists()
+    assert not (tmp_path / ".dah-codex-hooks").exists()
+
+
+@pytest.mark.parametrize("hook_module", [copilot_hook, codex_hook])
+def test_native_hook_oversized_number_fails_closed_before_state_creation(
+    tmp_path,
+    monkeypatch,
+    hook_module,
+):
+    stdout = StringIO()
+    stderr = StringIO()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NUMBER_TOKEN_CHARACTERS", 8)
+    monkeypatch.setattr(
+        hook_module.sys,
+        "stdin",
+        StringIO(
+            '{"tool_name":"read_file","tool_input":{"path":"safe","offset":123456789}}'
+        ),
+    )
+    monkeypatch.setattr(hook_module.sys, "stdout", stdout)
+    monkeypatch.setattr(hook_module.sys, "stderr", stderr)
+
+    assert hook_module.main(["pre"]) == 0
+
+    response = json.loads(stdout.getvalue())
+    assert "deny" in json.dumps(response).lower()
+    assert "number token length" in stderr.getvalue()
+    assert "123456789" not in stderr.getvalue()
     assert not (tmp_path / ".dah-hooks").exists()
     assert not (tmp_path / ".dah-codex-hooks").exists()
 

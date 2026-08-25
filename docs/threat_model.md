@@ -347,6 +347,20 @@ memory limit. Documents within the structural and byte ceilings still require
 the normal strict syntax, duplicate-key, finite-number, authority, and evidence
 checks.
 
+### 23. Excessive JSON scalar complexity
+
+A byte-bounded and structurally shallow document can still contain one enormous
+integer, fraction, exponent, object key, or string value. Numeric conversion can
+consume disproportionate CPU and differs across Python versions; an extreme
+finite spelling can also overflow to an infinite runtime float. v0.31 caps each
+string token at 8,388,608 source characters and each number token at 1,024
+source characters before decoding. Converted floats must remain finite.
+
+Failures are sanitized and reach no authority interpretation or upstream
+forwarding. These per-token limits do not replace total byte ceilings, provide
+streaming parsing, constrain application-level decoded text, establish a CPU or
+memory quota, or contain the host process.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
