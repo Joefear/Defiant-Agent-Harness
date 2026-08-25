@@ -380,6 +380,23 @@ revocation, validate certificates, protect private keys, provide trusted time,
 or impose a process-wide CPU/memory quota. Authenticated key distribution and
 operator review remain deployment controls.
 
+### 25. Unbounded complete policy complexity
+
+Per-file byte ceilings do not bound the number of policy files, and compact
+rules can contain many glob patterns, payload terms, sensitivity labels, or
+redactions. Those collections amplify ruleset construction and hashing, then
+repeat matcher work for every governed action.
+
+v0.33 caps one complete ruleset at 64 packs, 4,096 rules, 4,096 known-tool
+patterns, 4,096 items in one rule list field, and 65,536 rule list items in
+aggregate. The pack count is checked before file access; all other counts are
+checked before rule construction or ruleset hashing. Registry-provided known
+tools participate, and failure creates no partial authority.
+
+The ceilings do not prove policy correctness, impose a wall-clock or process
+resource quota, or contain a compromised host. Reviewed rules and OS resource
+controls remain necessary.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

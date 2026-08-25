@@ -106,7 +106,7 @@ function renderResourceLimits(limits, configuration) {
     return;
   }
   const details = [
-    `Pre-parse ceilings: state ${bytes(limits.durable_json_bytes)}`,
+    `Resource ceilings: state ${bytes(limits.durable_json_bytes)}`,
     `evidence record ${bytes(limits.evidence_record_bytes)}`,
     `evidence export ${bytes(limits.evidence_export_bytes)}`,
     `MCP message ${bytes(limits.mcp_message_bytes)}`,
@@ -117,6 +117,11 @@ function renderResourceLimits(limits, configuration) {
     `JSON number token ${integer.format(limits.json_number_token_characters)} characters`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,
     `policy pack ${bytes(limits.policy_pack_bytes)}`,
+    `policy packs ${integer.format(limits.policy_pack_count)}`,
+    `policy rules ${integer.format(limits.policy_rule_count)}`,
+    `policy known tools ${integer.format(limits.policy_known_tool_count)}`,
+    `policy rule field items ${integer.format(limits.policy_rule_field_items)}`,
+    `policy rule list items ${integer.format(limits.policy_rule_list_items)}`,
     `trusted keys ${integer.format(limits.trusted_public_key_count)}`,
     `trusted key ${bytes(limits.trusted_public_key_bytes)}`,
     `trusted key set ${bytes(limits.trusted_public_key_set_bytes)}`,

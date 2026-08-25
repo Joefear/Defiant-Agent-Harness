@@ -38,3 +38,12 @@ MAX_HOOK_EVENT_BYTES = 10 * MIB
 # Operator-authored YAML should remain reviewable and is never a bulk payload.
 MAX_MCP_CONFIG_BYTES = 1 * MIB
 MAX_POLICY_PACK_BYTES = 1 * MIB
+
+# Policy is evaluated for every governed action. Bound the complete loaded
+# ruleset, not only each YAML file, so many individually valid packs cannot
+# amplify matching, normalization, or hashing without limit.
+MAX_POLICY_PACKS = 64
+MAX_POLICY_RULES = 4_096
+MAX_POLICY_KNOWN_TOOLS = 4_096
+MAX_POLICY_RULE_FIELD_ITEMS = 4_096
+MAX_POLICY_RULE_LIST_ITEMS = 65_536

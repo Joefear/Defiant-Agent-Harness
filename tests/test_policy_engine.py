@@ -282,6 +282,155 @@ def test_policy_pack_is_bounded_before_yaml_parse(tmp_path, monkeypatch):
     assert str(tmp_path) not in str(failure.value)
 
 
+def test_policy_pack_count_is_bounded_before_file_access(tmp_path, monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PACKS", 1)
+
+    with pytest.raises(PolicyError, match="pack count exceeds maximum of 1"):
+        PolicyEngine.load_files(
+            [tmp_path / "does-not-exist.yaml", tmp_path / "also-missing.yaml"]
+        )
+
+
+def test_registry_pack_is_counted_before_policy_file_access(tmp_path, monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PACKS", 1)
+
+    with pytest.raises(PolicyError, match="pack count exceeds maximum of 1"):
+        PolicyEngine.from_files(
+            [tmp_path / "does-not-exist.yaml"],
+            additional_known_tools=["registry_tool"],
+        )
+
+
+def test_default_pack_count_precedes_extra_pack_path_probes(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PACKS", 1)
+
+    def unexpected_path_probe(_path):
+        raise AssertionError("extra policy path was probed before count preflight")
+
+    monkeypatch.setattr(policy_engine_module.Path, "exists", unexpected_path_probe)
+
+    with pytest.raises(PolicyError, match="pack count exceeds maximum of 1"):
+        PolicyEngine.load_default(["extra"])
+
+
+def test_policy_rule_count_is_bounded_before_rule_construction(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULES", 1)
+    pack = {
+        "version": "test",
+        "rules": [
+            {"id": "first", "effect": "allow"},
+            {"id": "second", "effect": "not-a-valid-effect"},
+        ],
+    }
+
+    with pytest.raises(ValueError, match="rule count exceeds maximum of 1"):
+        PolicyEngine([pack])
+
+
+def test_known_tool_patterns_are_bounded_across_packs(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_KNOWN_TOOLS", 2)
+    packs = [
+        {"version": "one", "known_tools": ["read_*", "write_*"]},
+        {"version": "two", "known_tools": ["send_*"]},
+    ]
+
+    with pytest.raises(ValueError, match="tool pattern count exceeds maximum of 2"):
+        PolicyEngine(packs)
+
+
+def test_policy_rule_field_items_are_bounded_before_matching(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULE_FIELD_ITEMS", 2)
+    pack = {
+        "version": "test",
+        "rules": [
+            {
+                "id": "too-many-targets",
+                "targets": ["one", "two", "three"],
+                "effect": "block",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="targets count exceeds maximum of 2"):
+        PolicyEngine([pack])
+
+
+def test_policy_rule_list_items_are_bounded_across_rules(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULE_LIST_ITEMS", 3)
+    pack = {
+        "version": "test",
+        "rules": [
+            {"id": "first", "tools": ["a", "b"], "effect": "block"},
+            {"id": "second", "targets": ["c", "d"], "effect": "block"},
+        ],
+    }
+
+    with pytest.raises(ValueError, match="list item count exceeds maximum of 3"):
+        PolicyEngine([pack])
+
+
+def test_additional_registry_tools_cannot_bypass_policy_bounds(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_KNOWN_TOOLS", 1)
+    loaded = policy_engine_module.LoadedPolicyPacks(
+        ({"version": "test", "known_tools": ["existing"], "rules": []},),
+        "test",
+    )
+
+    with pytest.raises(PolicyError, match="tool pattern count exceeds maximum of 1"):
+        PolicyEngine.from_loaded(loaded, additional_known_tools=["registry_tool"])
+
+
+def test_duplicate_registry_tools_count_as_supplied(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_KNOWN_TOOLS", 1)
+    loaded = policy_engine_module.LoadedPolicyPacks(
+        ({"version": "test", "rules": []},),
+        "test",
+    )
+
+    with pytest.raises(PolicyError, match="tool pattern count exceeds maximum of 1"):
+        PolicyEngine.from_loaded(
+            loaded,
+            additional_known_tools=["same_tool", "same_tool"],
+        )
+
+
+def test_policy_complexity_exact_boundaries_are_accepted(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PACKS", 2)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULES", 2)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_KNOWN_TOOLS", 2)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULE_FIELD_ITEMS", 2)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_RULE_LIST_ITEMS", 4)
+    packs = [
+        {
+            "version": "one",
+            "known_tools": ["read_*"],
+            "rules": [
+                {
+                    "id": "first",
+                    "tools": ["read_*", "list_*"],
+                    "effect": "allow",
+                }
+            ],
+        },
+        {
+            "version": "two",
+            "known_tools": ["write_*"],
+            "rules": [
+                {
+                    "id": "second",
+                    "targets": ["workspace/*", "scratch/*"],
+                    "effect": "block",
+                }
+            ],
+        },
+    ]
+
+    engine = PolicyEngine(packs)
+
+    assert len(engine.rules) == 2
+    assert len(engine.known_tools) == 2
+
+
 @pytest.mark.parametrize(
     "body",
     [

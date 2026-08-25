@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.32
+## What is deliberately absent from v0.33
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -582,6 +582,13 @@ supplied keys, 65,536 bytes per PEM, and 8,388,608 aggregate PEM bytes. Durable
 operator and witness trust metadata enforce the same count ceiling. Command
 Core and Command Center expose only the static limits. See
 `trusted_key_limits.md`.
+
+v0.33 bounds the complete loaded policy ruleset before rule construction,
+normalization, hashing, or evaluation. A ruleset may contain at most 64 packs,
+4,096 rules, 4,096 known-tool patterns, 4,096 items in one rule list field, and
+65,536 rule list items in aggregate. Registry-provided additional known tools
+use the same totals. Command Core and Command Center expose only the static
+limits. See `policy_complexity_limits.md`.
 
 ## Known limits
 
