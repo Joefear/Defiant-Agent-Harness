@@ -21,6 +21,8 @@ from ..limits import (
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
     MAX_HOOK_EVENT_BYTES,
+    MAX_JSON_LEXICAL_TOKENS,
+    MAX_JSON_NESTING_DEPTH,
     MAX_MCP_CONFIG_BYTES,
     MAX_MCP_MESSAGE_BYTES,
     MAX_POLICY_PACK_BYTES,
@@ -45,7 +47,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.23.0"
+SNAPSHOT_VERSION = "0.24.0"
 
 
 class CommandError(RuntimeError):
@@ -139,12 +141,15 @@ class CommandCore:
                     "evidence_record_bytes": MAX_EVIDENCE_RECORD_BYTES,
                     "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
+                    "json_lexical_tokens": MAX_JSON_LEXICAL_TOKENS,
+                    "json_nesting_depth": MAX_JSON_NESTING_DEPTH,
                     "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
                     "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
                 },
                 "authority_configuration": {
                     "yaml_parser_profile": STRICT_YAML_PROFILE,
                     "json_parser_profile": STRICT_JSON_PROFILE,
+                    "json_structural_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

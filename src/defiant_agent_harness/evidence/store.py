@@ -10,7 +10,11 @@ from typing import IO, Iterator
 
 from ..contracts import EvidenceRecord, sha256_of, utc_now
 from ..evidence_head import EvidenceHeadError, EvidenceHeadStateStore
-from ..limits import MAX_EVIDENCE_RECORD_BYTES
+from ..limits import (
+    MAX_EVIDENCE_RECORD_BYTES,
+    MAX_JSON_LEXICAL_TOKENS,
+    MAX_JSON_NESTING_DEPTH,
+)
 from ..persistence import (
     PersistenceError,
     exclusive_file_lock,
@@ -262,6 +266,16 @@ class EvidenceStore:
                         if "duplicate JSON key" in detail:
                             raise EvidenceError(
                                 f"record {index} contains a duplicate JSON key"
+                            ) from exc
+                        if "JSON nesting depth" in detail:
+                            raise EvidenceError(
+                                f"record {index} exceeds maximum JSON nesting "
+                                f"depth of {MAX_JSON_NESTING_DEPTH}"
+                            ) from exc
+                        if "JSON lexical token count" in detail:
+                            raise EvidenceError(
+                                f"record {index} exceeds maximum JSON lexical "
+                                f"token count of {MAX_JSON_LEXICAL_TOKENS}"
                             ) from exc
                         raise EvidenceError(
                             f"record {index} is not valid JSON"

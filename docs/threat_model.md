@@ -334,6 +334,19 @@ The bound applies to one request-scoped handoff artifact, not the live
 append-only evidence chain. It does not provide a CPU quota, streaming
 verification, confidentiality, retention, or host containment.
 
+### 22. Excessive JSON structural complexity
+
+A byte-bounded JSON document can still contain deeply nested containers or a
+large number of tiny values that amplify decoder recursion, allocations, and
+validation work. v0.30 performs a string- and escape-aware lexical scan before
+object construction. Input with more than 64 nested containers or 1,000,000
+lexical tokens fails closed without reaching `json.loads()` or echoing content.
+
+The scan is not a schema validator, CPU quota, streaming decoder, or process
+memory limit. Documents within the structural and byte ceilings still require
+the normal strict syntax, duplicate-key, finite-number, authority, and evidence
+checks.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

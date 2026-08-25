@@ -126,6 +126,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy_pack_bytes" in javascript
     assert b"authority_configuration" in javascript
     assert b"json_parser_profile" in javascript
+    assert b"json_nesting_depth" in javascript
+    assert b"json_lexical_tokens" in javascript
+    assert b"bounded structure" in javascript
     assert b"duplicate keys refused" in javascript
     assert b"#resource-limits" in css
 
