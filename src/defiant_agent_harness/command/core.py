@@ -27,7 +27,12 @@ from ..limits import (
     MAX_JSON_STRING_TOKEN_CHARACTERS,
     MAX_MCP_CONFIG_BYTES,
     MAX_MCP_MESSAGE_BYTES,
+    MAX_POLICY_KNOWN_TOOLS,
     MAX_POLICY_PACK_BYTES,
+    MAX_POLICY_PACKS,
+    MAX_POLICY_RULE_FIELD_ITEMS,
+    MAX_POLICY_RULE_LIST_ITEMS,
+    MAX_POLICY_RULES,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -52,7 +57,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.26.0"
+SNAPSHOT_VERSION = "0.27.0"
 
 
 class CommandError(RuntimeError):
@@ -152,6 +157,11 @@ class CommandCore:
                     "json_string_token_characters": MAX_JSON_STRING_TOKEN_CHARACTERS,
                     "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
                     "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
+                    "policy_pack_count": MAX_POLICY_PACKS,
+                    "policy_rule_count": MAX_POLICY_RULES,
+                    "policy_known_tool_count": MAX_POLICY_KNOWN_TOOLS,
+                    "policy_rule_field_items": MAX_POLICY_RULE_FIELD_ITEMS,
+                    "policy_rule_list_items": MAX_POLICY_RULE_LIST_ITEMS,
                     "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
                     "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
                     "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,

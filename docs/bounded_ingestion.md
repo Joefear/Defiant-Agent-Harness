@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.26.0` projects them under `resource_limits`, and Command Center only
+schema `0.27.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for

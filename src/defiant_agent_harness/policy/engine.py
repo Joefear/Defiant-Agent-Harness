@@ -31,12 +31,26 @@ from ..contracts import (
     sha256_of,
     side_effect_rank,
 )
-from ..limits import MAX_POLICY_PACK_BYTES
+from ..limits import (
+    MAX_POLICY_KNOWN_TOOLS,
+    MAX_POLICY_PACK_BYTES,
+    MAX_POLICY_PACKS,
+    MAX_POLICY_RULE_FIELD_ITEMS,
+    MAX_POLICY_RULE_LIST_ITEMS,
+    MAX_POLICY_RULES,
+)
 from ..strict_yaml import StrictYamlError, load_bounded_yaml
 
 # Strictest wins.
 _SEVERITY = {Decision.ALLOW: 0, Decision.APPROVAL_REQUIRED: 1, Decision.BLOCK: 2}
 _PACK_FIELDS = {"version", "name", "description", "known_tools", "rules"}
+_RULE_LIST_FIELDS = (
+    "tools",
+    "targets",
+    "payload_contains",
+    "sensitivities",
+    "redactions",
+)
 
 
 class PolicyError(ValueError):
@@ -132,6 +146,60 @@ def _payload_text(payload: Any) -> str:
     return str(payload)
 
 
+def _validate_policy_complexity(packs: list[dict]) -> None:
+    """Reject oversized rulesets before Rule construction or ruleset hashing."""
+
+    if len(packs) > MAX_POLICY_PACKS:
+        raise ValueError(f"policy pack count exceeds maximum of {MAX_POLICY_PACKS}")
+
+    known_tool_count = 0
+    rule_count = 0
+    rule_list_item_count = 0
+    for pack in packs:
+        if not isinstance(pack, dict):
+            raise ValueError("each policy pack must be a mapping")
+
+        known_tools = pack.get("known_tools", []) or []
+        if isinstance(known_tools, list):
+            known_tool_count += len(known_tools)
+            if known_tool_count > MAX_POLICY_KNOWN_TOOLS:
+                raise ValueError(
+                    "known tool pattern count exceeds maximum of "
+                    f"{MAX_POLICY_KNOWN_TOOLS}"
+                )
+
+        rules = pack.get("rules", []) or []
+        if not isinstance(rules, list):
+            continue
+        rule_count += len(rules)
+        if rule_count > MAX_POLICY_RULES:
+            raise ValueError(f"policy rule count exceeds maximum of {MAX_POLICY_RULES}")
+
+        for raw in rules:
+            if not isinstance(raw, dict):
+                continue
+            for field_name in _RULE_LIST_FIELDS:
+                values = raw.get(field_name, [])
+                if not isinstance(values, list):
+                    continue
+                if len(values) > MAX_POLICY_RULE_FIELD_ITEMS:
+                    raise ValueError(
+                        f"policy rule {field_name} count exceeds maximum of "
+                        f"{MAX_POLICY_RULE_FIELD_ITEMS}"
+                    )
+                rule_list_item_count += len(values)
+                if rule_list_item_count > MAX_POLICY_RULE_LIST_ITEMS:
+                    raise ValueError(
+                        "policy rule list item count exceeds maximum of "
+                        f"{MAX_POLICY_RULE_LIST_ITEMS}"
+                    )
+
+
+def _validate_policy_pack_input_count(count: int) -> None:
+    if count > MAX_POLICY_PACKS:
+        raise PolicyError(f"policy pack count exceeds maximum of {MAX_POLICY_PACKS}")
+
+
 class PolicyEngine:
     def __init__(
         self,
@@ -139,6 +207,7 @@ class PolicyEngine:
         name: str = "custom",
         authority_inputs: dict[str, Any] | None = None,
     ):
+        _validate_policy_complexity(packs)
         self.name = name
         self.version = "0"
         self.rules: list[Rule] = []
@@ -201,6 +270,9 @@ class PolicyEngine:
         additional_known_tools: list[str] | None = None,
         authority_inputs: dict[str, Any] | None = None,
     ) -> "PolicyEngine":
+        _validate_policy_pack_input_count(
+            len(paths) + (1 if additional_known_tools else 0)
+        )
         return cls.from_loaded(
             cls.load_files(paths),
             additional_known_tools=additional_known_tools,
@@ -209,6 +281,7 @@ class PolicyEngine:
 
     @classmethod
     def load_files(cls, paths: list[str | Path]) -> LoadedPolicyPacks:
+        _validate_policy_pack_input_count(len(paths))
         packs: list[dict] = []
         names = []
         for p in paths:
@@ -244,7 +317,7 @@ class PolicyEngine:
             packs.append(
                 {
                     "version": "registry-v1",
-                    "known_tools": sorted(set(additional_known_tools)),
+                    "known_tools": sorted(additional_known_tools),
                     "rules": [],
                 }
             )
@@ -264,6 +337,9 @@ class PolicyEngine:
         additional_known_tools: list[str] | None = None,
         authority_inputs: dict[str, Any] | None = None,
     ) -> "PolicyEngine":
+        _validate_policy_pack_input_count(
+            1 + len(extra_packs or []) + (1 if additional_known_tools else 0)
+        )
         return cls.from_loaded(
             cls.load_default(extra_packs),
             additional_known_tools=additional_known_tools,
@@ -275,6 +351,7 @@ class PolicyEngine:
         cls,
         extra_packs: list[str] | None = None,
     ) -> LoadedPolicyPacks:
+        _validate_policy_pack_input_count(1 + len(extra_packs or []))
         base = Path(__file__).parent / "rules"
         paths: list[str | Path] = [base / "default.yaml"]
         for name in extra_packs or []:

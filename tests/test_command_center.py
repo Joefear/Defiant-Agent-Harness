@@ -124,6 +124,11 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
     assert b"policy_pack_bytes" in javascript
+    assert b"policy_pack_count" in javascript
+    assert b"policy_rule_count" in javascript
+    assert b"policy_known_tool_count" in javascript
+    assert b"policy_rule_field_items" in javascript
+    assert b"policy_rule_list_items" in javascript
     assert b"trusted_public_key_count" in javascript
     assert b"trusted_public_key_bytes" in javascript
     assert b"trusted_public_key_set_bytes" in javascript

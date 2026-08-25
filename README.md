@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.32.
+logs. A full trusted-memory/DKE system is not part of v0.33.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.32 is
+## What v0.33 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -322,6 +322,13 @@ verification, external evidence witnesses, durable trust metadata, and native
 hook key-list environments. Failures are conservative and create no partial
 trust. Command Core and the strictly read-only Command Center expose only the
 fixed ceilings.
+
+v0.33 bounds complete policy-ruleset complexity before rule construction,
+normalization, hashing, or action evaluation: at most 64 packs, 4,096 rules,
+4,096 known-tool patterns, 4,096 items in one rule list field, and 65,536 rule
+list items in aggregate. Registry-provided tool classifications participate in
+the same totals. Command Core and the strictly read-only Command Center expose
+only these fixed ceilings.
 
 ## Install
 
@@ -658,7 +665,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.32 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.33 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -686,6 +693,8 @@ fixed pre-decoder JSON nesting and lexical-token ceilings,
 fixed pre-decoder JSON string-token and number-token ceilings with finite
 floating-point conversion,
 fixed trusted-public-key count, per-key, and aggregate key-set ceilings,
+fixed complete-policy pack, rule, known-tool, per-field, and aggregate-list
+complexity ceilings,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
