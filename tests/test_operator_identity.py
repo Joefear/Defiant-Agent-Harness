@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+import defiant_agent_harness.operator_identity as operator_identity_module
 from defiant_agent_harness.approvals.store import ApprovalError, ApprovalStore
 from defiant_agent_harness.adapters.mock import MockAgentAdapter, SCRIPTS
 from defiant_agent_harness.cli.main import main
@@ -222,6 +223,34 @@ def test_rotation_accepts_old_and_new_keys_for_the_same_operator(tmp_path):
 
     assert store.decision_identity(store.get(old.approval_id)).ok
     assert store.decision_identity(store.get(new.approval_id)).ok
+
+
+def test_operator_trust_rejects_excess_key_specs_before_filesystem_access(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(operator_identity_module, "MAX_TRUSTED_PUBLIC_KEYS", 1)
+
+    with pytest.raises(OperatorIdentityError, match="fixed limit of 1"):
+        OperatorTrustPolicy.from_specs(
+            [
+                f"alice={tmp_path / 'missing-one.pem'}",
+                f"bob={tmp_path / 'missing-two.pem'}",
+            ]
+        )
+
+
+def test_operator_trust_rejects_aggregate_key_bytes(tmp_path, monkeypatch):
+    _first_private, first_public, first_spec, _trust = _keys(tmp_path, "first")
+    _second_private, second_public, second_spec, _trust = _keys(tmp_path, "second")
+    maximum = first_public.stat().st_size + second_public.stat().st_size - 1
+    monkeypatch.setattr(
+        operator_identity_module,
+        "MAX_TRUSTED_PUBLIC_KEY_SET_BYTES",
+        maximum,
+    )
+
+    with pytest.raises(OperatorIdentityError, match=f"{maximum}-byte ceiling"):
+        OperatorTrustPolicy.from_specs([first_spec, second_spec])
 
 
 def test_reconciliation_requires_a_distinct_bound_attestation(tmp_path):

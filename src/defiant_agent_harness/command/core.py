@@ -28,6 +28,9 @@ from ..limits import (
     MAX_MCP_CONFIG_BYTES,
     MAX_MCP_MESSAGE_BYTES,
     MAX_POLICY_PACK_BYTES,
+    MAX_TRUSTED_PUBLIC_KEYS,
+    MAX_TRUSTED_PUBLIC_KEY_BYTES,
+    MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
 )
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
@@ -49,7 +52,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.25.0"
+SNAPSHOT_VERSION = "0.26.0"
 
 
 class CommandError(RuntimeError):
@@ -149,6 +152,9 @@ class CommandCore:
                     "json_string_token_characters": MAX_JSON_STRING_TOKEN_CHARACTERS,
                     "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
                     "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
+                    "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
+                    "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
+                    "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
                 },
                 "authority_configuration": {
                     "yaml_parser_profile": STRICT_YAML_PROFILE,

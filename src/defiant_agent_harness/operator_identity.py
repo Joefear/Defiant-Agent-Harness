@@ -18,6 +18,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from .contracts import canonical_json, sha256_of, utc_now
+from .limits import (
+    MAX_TRUSTED_PUBLIC_KEYS,
+    MAX_TRUSTED_PUBLIC_KEY_BYTES,
+    MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
+)
 
 if TYPE_CHECKING:
     from .approvals.store import PendingApproval
@@ -185,13 +190,21 @@ class OperatorTrustPolicy:
     def __init__(self, keys: dict[str, dict[str, Ed25519PublicKey]]):
         if not keys:
             raise OperatorIdentityError("at least one trusted operator key is required")
+        if sum(len(operator_keys) for operator_keys in keys.values()) > (
+            MAX_TRUSTED_PUBLIC_KEYS
+        ):
+            raise OperatorIdentityError(
+                f"trusted operator key count exceeds fixed limit of "
+                f"{MAX_TRUSTED_PUBLIC_KEYS}"
+            )
         self._keys = keys
 
     @classmethod
     def from_specs(cls, specs: Iterable[str | Path]) -> "OperatorTrustPolicy":
         keys: dict[str, dict[str, Ed25519PublicKey]] = {}
         key_owners: dict[str, str] = {}
-        for raw_spec in specs:
+        total_key_bytes = 0
+        for raw_spec in _bounded_trust_specs(specs):
             spec = str(raw_spec)
             operator, separator, raw_path = spec.partition("=")
             operator = operator.strip()
@@ -201,7 +214,19 @@ class OperatorTrustPolicy:
                     "trusted operator keys must use IDENTITY=PUBLIC_KEY.pem"
                 )
             operator = _bounded_text(operator, "operator", _MAX_OPERATOR_CHARS)
-            key = _load_public_key(raw_path)
+            source = Path(raw_path)
+            key_bytes = _read_limited(
+                source,
+                "public key",
+                maximum=MAX_TRUSTED_PUBLIC_KEY_BYTES,
+            )
+            total_key_bytes += len(key_bytes)
+            if total_key_bytes > MAX_TRUSTED_PUBLIC_KEY_SET_BYTES:
+                raise OperatorIdentityError(
+                    "trusted operator public key set exceeds fixed "
+                    f"{MAX_TRUSTED_PUBLIC_KEY_SET_BYTES}-byte ceiling"
+                )
+            key = _public_key_from_bytes(key_bytes, source)
             key_id = public_key_id(key)
             previous = key_owners.get(key_id)
             if previous is not None and previous != operator:
@@ -736,7 +761,7 @@ def validate_external_trust_specs(
 ) -> None:
     """Refuse trust roots stored inside mutable harness state."""
     root = Path(state_root).resolve()
-    for raw_spec in specs:
+    for raw_spec in _bounded_trust_specs(specs):
         spec = str(raw_spec)
         _, separator, raw_path = spec.partition("=")
         if not separator or not raw_path.strip():
@@ -961,11 +986,10 @@ def _load_private_key(path: str | Path, passphrase: bytes) -> Ed25519PrivateKey:
     return key
 
 
-def _load_public_key(path: str | Path) -> Ed25519PublicKey:
-    source = Path(path)
+def _public_key_from_bytes(value: bytes, source: Path) -> Ed25519PublicKey:
     try:
-        key = serialization.load_pem_public_key(_read_limited(source, "public key"))
-    except (OSError, TypeError, ValueError) as exc:
+        key = serialization.load_pem_public_key(value)
+    except (TypeError, ValueError) as exc:
         raise OperatorIdentityError(
             f"cannot load operator public key {source}"
         ) from exc
@@ -974,15 +998,34 @@ def _load_public_key(path: str | Path) -> Ed25519PublicKey:
     return key
 
 
-def _read_limited(path: Path, label: str) -> bytes:
+def _read_limited(
+    path: Path,
+    label: str,
+    *,
+    maximum: int = _MAX_KEY_BYTES,
+) -> bytes:
     try:
         with path.open("rb") as handle:
-            value = handle.read(_MAX_KEY_BYTES + 1)
+            value = handle.read(maximum + 1)
     except OSError as exc:
         raise OperatorIdentityError(f"cannot read {label} {path}") from exc
-    if len(value) > _MAX_KEY_BYTES:
+    if len(value) > maximum:
         raise OperatorIdentityError(f"{label} file is too large: {path}")
     return value
+
+
+def _bounded_trust_specs(
+    specs: Iterable[str | Path],
+) -> tuple[str | Path, ...]:
+    bounded: list[str | Path] = []
+    for spec in specs:
+        if len(bounded) >= MAX_TRUSTED_PUBLIC_KEYS:
+            raise OperatorIdentityError(
+                f"trusted operator key count exceeds fixed limit of "
+                f"{MAX_TRUSTED_PUBLIC_KEYS}"
+            )
+        bounded.append(spec)
+    return tuple(bounded)
 
 
 def _statement_bytes(statement: dict[str, Any]) -> bytes:

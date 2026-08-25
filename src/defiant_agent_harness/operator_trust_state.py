@@ -13,6 +13,7 @@ from .operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
 )
+from .limits import MAX_TRUSTED_PUBLIC_KEYS
 from .persistence import (
     atomic_write_json,
     exclusive_file_lock,
@@ -40,7 +41,6 @@ _STATE_FIELDS = {
 _TRANSITION_FIELDS = {"attestation", "bindings"}
 _MAX_STATE_BYTES = 1024 * 1024
 _MAX_OPERATORS = 256
-_MAX_KEYS = 1024
 _MAX_TRANSITIONS = 1024
 
 
@@ -437,7 +437,7 @@ def _bindings(value: Any, field: str) -> dict[str, list[str]]:
             raise OperatorTrustStateError(f"{field} key ids must be sorted and unique")
         normalized[operator] = unique
         key_count += len(unique)
-        if key_count > _MAX_KEYS:
+        if key_count > MAX_TRUSTED_PUBLIC_KEYS:
             raise OperatorTrustStateError(f"{field} key limit exceeded")
     if list(normalized) != sorted(normalized):
         raise OperatorTrustStateError(f"{field} operators must be sorted")

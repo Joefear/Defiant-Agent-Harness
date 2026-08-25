@@ -11,13 +11,14 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.25.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.26.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
 - record, request, action, decision, and execution-status counts;
 - exact-decimal aggregate cost and observed ruleset hashes;
 - fixed pre-parse and publication ceilings, including the evidence-export cap;
+- fixed trusted-public-key count, per-key byte, and aggregate key-set ceilings;
 - approval status counts, reconciliation-required state, and safe metadata for
   currently actionable items;
 - durable operator-trust generation, mapping hash, operator/key counts, and

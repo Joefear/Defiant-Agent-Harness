@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import defiant_agent_harness.hooks.copilot as copilot_hook_module
 from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.evidence.store import EvidenceStore
@@ -13,6 +14,7 @@ from defiant_agent_harness.hooks.copilot import (
     _evidence_witness_from_env,
     _max_unwitnessed_records_from_env,
     _require_windows_private_state_acl_from_env,
+    _trusted_operator_keys_from_env,
 )
 from defiant_agent_harness.hooks.state import HookStateError
 
@@ -459,6 +461,24 @@ def test_hook_evidence_witness_environment_is_strict(monkeypatch):
         "C:/secure/head.json",
         ["C:/secure/evidence-public.pem"],
     )
+
+
+def test_hook_trusted_key_lists_enforce_count_before_gate_creation(monkeypatch):
+    monkeypatch.setattr(copilot_hook_module, "MAX_TRUSTED_PUBLIC_KEYS", 1)
+    monkeypatch.setenv(
+        "DAH_TRUSTED_OPERATOR_KEYS",
+        json.dumps(["alice=C:/one.pem", "bob=C:/two.pem"]),
+    )
+    with pytest.raises(ValueError, match="count limit of 1"):
+        _trusted_operator_keys_from_env()
+
+    monkeypatch.setenv("DAH_EVIDENCE_HEAD_WITNESS", "C:/secure/head.json")
+    monkeypatch.setenv(
+        "DAH_TRUSTED_EVIDENCE_KEYS",
+        json.dumps(["C:/one.pem", "C:/two.pem"]),
+    )
+    with pytest.raises(ValueError, match="count limit of 1"):
+        _evidence_witness_from_env()
 
 
 def test_hook_witness_lag_environment_is_strict(monkeypatch):

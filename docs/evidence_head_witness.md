@@ -45,6 +45,11 @@ signature, deployment root, authority-profile history, and live chain position.
 The chain may equal or validly extend the witness. A shorter or divergent chain
 fails closed.
 
+Trusted witness sets are bounded at 1,024 supplied public keys, 65,536 bytes
+per PEM, and 8,388,608 aggregate PEM bytes. v0.32 applies the count before path
+or cryptographic work and validates durable witness key identifiers against the
+same ceiling. See `trusted_key_limits.md`.
+
 To evaluate a configured freshness ceiling without changing state, put the
 global option before the verification subcommand:
 

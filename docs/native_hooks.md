@@ -104,6 +104,11 @@ different value fails closed rather than weakening the enrolled policy.
 Private keys and passphrases never enter the hook environment. See
 `evidence_head_witness.md`.
 
+Both trusted-key JSON arrays are limited to 1,024 entries before gate creation.
+The shared operator and witness loaders then enforce 65,536 bytes per public
+key and 8,388,608 aggregate key-set bytes. Limit failure creates no hook state
+or authority. See `trusted_key_limits.md`.
+
 On Windows, an owning native-hook runtime can require the v0.25 private state
 ACL policy by setting `DAH_REQUIRE_WINDOWS_PRIVATE_STATE_ACL=1`. The value must
 be exactly `1`; malformed values fail closed. Once that posture is enrolled in

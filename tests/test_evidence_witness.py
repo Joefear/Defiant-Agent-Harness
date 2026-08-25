@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+import defiant_agent_harness.evidence_witness as witness_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
@@ -17,6 +18,7 @@ from defiant_agent_harness.evidence.signing import generate_key_pair
 from defiant_agent_harness.evidence_witness import (
     EvidenceWitnessError,
     EvidenceWitnessPolicy,
+    EvidenceWitnessPolicyState,
     EvidenceWitnessPolicyStore,
     WITNESS_MODE,
     assess_witness,
@@ -262,6 +264,47 @@ def test_witness_lag_policy_rejects_non_integer_or_negative_values(tmp_path, val
             [public],
             max_unwitnessed_records=value,
         )
+
+
+def test_witness_policy_rejects_excess_keys_before_filesystem_access(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(witness_module, "MAX_TRUSTED_PUBLIC_KEYS", 1)
+
+    with pytest.raises(EvidenceWitnessError, match="fixed limit of 1"):
+        EvidenceWitnessPolicy.from_paths(
+            [tmp_path / "missing-one.pem", tmp_path / "missing-two.pem"]
+        )
+
+
+def test_witness_policy_rejects_aggregate_key_bytes(tmp_path, monkeypatch):
+    _first_private, first_public = _keys(tmp_path, "first")
+    _second_private, second_public = _keys(tmp_path, "second")
+    maximum = first_public.stat().st_size + second_public.stat().st_size - 1
+    monkeypatch.setattr(
+        witness_module,
+        "MAX_TRUSTED_PUBLIC_KEY_SET_BYTES",
+        maximum,
+    )
+
+    with pytest.raises(EvidenceWitnessError, match=f"{maximum}-byte ceiling"):
+        EvidenceWitnessPolicy.from_paths([first_public, second_public])
+
+
+def test_durable_witness_policy_rejects_excess_key_ids(monkeypatch):
+    monkeypatch.setattr(witness_module, "MAX_TRUSTED_PUBLIC_KEYS", 1)
+    raw = {
+        "schema_name": "defiant.evidence.head_witness_policy",
+        "schema_version": "0.2.0",
+        "profile_hash": "sha256:" + "a" * 64,
+        "mode": "signed_external_required",
+        "trusted_key_ids": ["sha256:" + "1" * 64, "sha256:" + "2" * 64],
+        "max_unwitnessed_records": None,
+        "recorded_at": "2026-08-25T12:00:00Z",
+    }
+
+    with pytest.raises(EvidenceWitnessError, match="fixed limit of 1"):
+        EvidenceWitnessPolicyState.from_dict(raw)
 
 
 def test_v1_witness_policy_state_remains_readable_and_unbounded(tmp_path):

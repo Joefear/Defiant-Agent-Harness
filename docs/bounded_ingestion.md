@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.25.0` projects them under `resource_limits`, and Command Center only
+schema `0.26.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
@@ -45,6 +45,9 @@ strict UTF-8 decoding and before the existing strict JSON decoder. See
 v0.31 adds fixed per-scalar JSON ceilings before conversion: 8,388,608 source
 characters per string token and 1,024 source characters per number token. See
 `json_scalar_limits.md`.
+
+v0.32 separately bounds operator-supplied trusted public-key collections before
+filesystem and cryptographic work. See `trusted_key_limits.md`.
 
 ## Parser discipline
 

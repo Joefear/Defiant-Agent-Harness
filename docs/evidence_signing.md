@@ -82,6 +82,11 @@ The signer identity is still an assertion bound into the signature. A verifier
 must map the pinned public-key identifier to an accountable person or service
 through its own identity and key-custody process.
 
+v0.32 bounds each verification trust set at 1,024 supplied public keys, 65,536
+bytes per PEM, and 8,388,608 aggregate PEM bytes. An excessive count fails
+before any key file is opened; per-key or aggregate overflow invalidates the
+whole verification rather than ignoring a key. See `trusted_key_limits.md`.
+
 ## Rotation and revocation
 
 Generate a new pair instead of overwriting an old one. During an intentional
