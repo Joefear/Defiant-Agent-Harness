@@ -321,6 +321,19 @@ The parser reports no rejected key, value, or source snippet. This removes
 representation ambiguity but cannot establish that a unique document is true,
 correctly classified, or produced by an honest upstream.
 
+### 21. Oversized request evidence exports
+
+An offline verifier that reads an entire attacker-supplied export before
+checking its size can suffer avoidable memory amplification. v0.29 reads no
+more than 64 MiB plus one byte before rejecting an export file, prior to UTF-8
+decoding or strict JSON parsing. File/stdout publication and direct in-memory
+sign/verify entry points enforce the same fixed ceiling and do not emit partial
+documents or content-bearing size diagnostics.
+
+The bound applies to one request-scoped handoff artifact, not the live
+append-only evidence chain. It does not provide a CPU quota, streaming
+verification, confidentiality, retention, or host containment.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
@@ -364,7 +377,8 @@ immutable image digests, and OS policy.
 export with Ed25519 only after the complete live chain verifies. Verification
 requires an independently pinned public key and rejects payload, signer, note,
 timestamp, schema, signature, or key-id tampering. The export cannot appoint its
-own trust key.
+own trust key. v0.29 also refuses exports beyond the fixed 64 MiB ceiling before
+file parsing or cryptographic verification.
 
 **Signing-key theft.** Encryption protects a private-key file at rest, not while
 an authorized signer is using it. A stolen private key can produce valid

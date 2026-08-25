@@ -39,6 +39,7 @@ from ..command.server import CommandCenterError, CommandCenterServer, command_ce
 from ..contracts import HarnessRequest, Sensitivity
 from ..evidence.signing import (
     EvidenceSigningError,
+    encode_export,
     generate_key_pair,
     load_export,
     read_passphrase,
@@ -428,7 +429,7 @@ def cmd_export(args) -> int:
             write_export(args.output, document)
             print(f"wrote evidence export {args.output}")
         else:
-            print(json.dumps(document, indent=2, sort_keys=True))
+            print(encode_export(document).decode("utf-8"), end="")
         return 0
     except (EvidenceError, EvidenceSigningError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)

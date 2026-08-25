@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from ..contracts import canonical_json, sha256_of, utc_now
+from ..limits import MAX_EVIDENCE_EXPORT_BYTES
 from ..strict_json import StrictJsonError, loads_strict_json
 
 EXPORT_SCHEMA = "defiant.evidence.export"
@@ -138,6 +139,7 @@ def sign_export(
 ) -> dict[str, Any]:
     """Return a signed copy of a trustworthy evidence export payload."""
 
+    encode_export(payload, pretty=False)
     _validate_export_payload(payload)
     if "attestation" in payload:
         raise EvidenceSigningError("refusing to sign an already attested export")
@@ -162,6 +164,7 @@ def sign_export(
         **statement,
         "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
     }
+    encode_export(document)
     return document
 
 
@@ -174,6 +177,7 @@ def verify_export(
     try:
         if not isinstance(document, dict):
             raise EvidenceSigningError("signed export root must be an object")
+        encode_export(document, pretty=False)
         attestation = document.get("attestation")
         if not isinstance(attestation, dict):
             raise EvidenceSigningError("signed export is missing its attestation")
@@ -219,8 +223,13 @@ def verify_export(
 def load_export(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     try:
-        text = source.read_text(encoding="utf-8")
-        value = loads_strict_json(text, label="evidence export")
+        content = _read_limited(
+            source,
+            MAX_EVIDENCE_EXPORT_BYTES,
+            "evidence export",
+            disclose_path=False,
+        )
+        value = loads_strict_json(content, label="evidence export")
     except OSError as exc:
         raise EvidenceSigningError(f"cannot read valid export {source}: {exc}") from exc
     except StrictJsonError as exc:
@@ -232,13 +241,26 @@ def load_export(path: str | Path) -> dict[str, Any]:
 
 def write_export(path: str | Path, document: dict[str, Any]) -> None:
     destination = Path(path)
+    _write_new(destination, encode_export(document), 0o600)
+
+
+def encode_export(document: dict[str, Any], *, pretty: bool = True) -> bytes:
+    """Serialize one export and refuse output beyond the fixed byte ceiling."""
+
     try:
-        encoded = (
+        text = (
             json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
-        ).encode("utf-8")
-    except (TypeError, ValueError, OverflowError) as exc:
+            if pretty
+            else canonical_json(document)
+        )
+        encoded = text.encode("utf-8")
+    except (TypeError, UnicodeError, ValueError, OverflowError) as exc:
         raise EvidenceSigningError("evidence export is not valid JSON") from exc
-    _write_new(destination, encoded, 0o600)
+    if len(encoded) > MAX_EVIDENCE_EXPORT_BYTES:
+        raise EvidenceSigningError(
+            f"evidence export exceeds fixed {MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
+        )
+    return encoded
 
 
 def public_key_id(key: Ed25519PublicKey) -> str:
@@ -420,14 +442,24 @@ def _is_sha256(value: Any) -> bool:
     return len(digest) == 64 and all(ch in "0123456789abcdef" for ch in digest)
 
 
-def _read_limited(path: Path, maximum: int, label: str) -> bytes:
+def _read_limited(
+    path: Path,
+    maximum: int,
+    label: str,
+    *,
+    disclose_path: bool = True,
+) -> bytes:
     try:
         with path.open("rb") as fh:
             content = fh.read(maximum + 1)
     except OSError as exc:
-        raise EvidenceSigningError(f"cannot read {label} {path}") from exc
+        suffix = f" {path}" if disclose_path else ""
+        raise EvidenceSigningError(f"cannot read {label}{suffix}") from exc
     if len(content) > maximum:
-        raise EvidenceSigningError(f"{label} file is too large: {path}")
+        suffix = f": {path}" if disclose_path else ""
+        raise EvidenceSigningError(
+            f"{label} exceeds fixed {maximum}-byte ceiling{suffix}"
+        )
     return content
 
 
