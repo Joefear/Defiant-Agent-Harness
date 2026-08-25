@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.25
+## What is deliberately absent from v0.29
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -549,6 +549,14 @@ authority; transport ambiguity is never forwarded; hook ambiguity fails before
 state creation. Diagnostics do not echo rejected keys or values. Command Core
 and Command Center expose the static posture only. See
 `strict_json_integrity.md`.
+
+v0.29 bounds every request-scoped evidence export at 64 MiB. File verification
+rejects the document before UTF-8 decoding or JSON parsing, while file/stdout
+publication and direct sign/verify entry points enforce the same fixed limit.
+Oversized exports are neither truncated nor partially published. The live
+append-only evidence history keeps its existing unlimited aggregate and linear
+verification behavior. Command Core and Command Center expose only the static
+ceiling. See `bounded_evidence_exports.md`.
 
 ## Known limits
 

@@ -7,6 +7,11 @@ MIB = 1024 * 1024
 MAX_DURABLE_JSON_BYTES = 64 * MIB
 MAX_EVIDENCE_RECORD_BYTES = 16 * MIB
 
+# Request-scoped handoff artifacts are bounded independently from the live,
+# append-only evidence history. The limit applies before parsing and before an
+# export is published or emitted.
+MAX_EVIDENCE_EXPORT_BYTES = 64 * MIB
+
 # MCP HTTP already uses the same 10 MiB response ceiling. Apply it symmetrically
 # to local stdio and native-hook event documents.
 MAX_MCP_MESSAGE_BYTES = 10 * MIB

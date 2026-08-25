@@ -18,10 +18,10 @@ The shared profile:
   value, source snippet, target, payload, or absolute state path.
 
 At boundaries covered by v0.26, the existing byte ceilings remain pre-parse.
-`strict_json_v1` does not raise those limits or add a second input path. Signed
-export verification retains its existing whole-document behavior and has no
-aggregate export-file ceiling; deployments must bound intake according to
-their evidence-retention and review workflow.
+`strict_json_v1` does not raise those limits or add a second input path. v0.29
+adds a 64 MiB aggregate ceiling before signed-export file parsing and applies
+the same bound before export publication and direct sign/verify work. See
+`bounded_evidence_exports.md`.
 
 ## Failure behavior
 
@@ -39,7 +39,7 @@ than choosing an interpretation.
 
 ## Read-only projection
 
-Command Core schema `0.22.0` exposes `strict_json_v1`, strict UTF-8, duplicate-key
+Command Core schema `0.23.0` exposes `strict_json_v1`, strict UTF-8, duplicate-key
 refusal, and non-finite-number refusal beside the existing YAML posture. Command
 Center renders this static metadata read-only. Neither surface accepts JSON,
 changes a parser option, repairs state, retries a transport, or creates

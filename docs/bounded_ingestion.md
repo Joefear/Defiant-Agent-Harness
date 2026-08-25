@@ -11,6 +11,7 @@ boundary.
 | --- | ---: | --- |
 | Aggregate durable JSON state file | 64 MiB | Store is invalid; authority blocks |
 | One physical evidence JSONL record | 16 MiB | Existing chain is invalid or new append is refused |
+| One request evidence export | 64 MiB | Refused before parsing, signing, verification, or publication |
 | One MCP stdio message | 10 MiB | Client/upstream transport terminates fail closed |
 | One Streamable HTTP response | 10 MiB | Remote transport fails before JSON/SSE parsing |
 | One native-hook event document | 10 MiB | Hook returns its fail-closed response |
@@ -19,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.22.0` projects them under `resource_limits`, and Command Center only
+schema `0.23.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
@@ -31,6 +32,10 @@ v0.28 adds the shared `strict_json_v1` profile to durable state, evidence,
 MCP, HTTP, native-hook, signed-export, and witness JSON ingress. Duplicate keys
 at any depth, non-finite numbers, and non-UTF-8 byte documents are refused. See
 `strict_json_integrity.md`.
+
+v0.29 closes the aggregate signed-export gap with a 64 MiB ceiling before file
+parsing and before export publication. Direct in-memory signing and verification
+enforce the same bound. See `bounded_evidence_exports.md`.
 
 ## Parser discipline
 

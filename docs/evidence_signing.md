@@ -72,6 +72,12 @@ set. The command exits non-zero for malformed JSON, duplicate keys, non-finite
 numbers, payload or attestation tampering, unsupported schemas or algorithms,
 an invalid signature, or an untrusted key.
 
+v0.29 limits each serialized export to 64 MiB. Verification reads at most the
+ceiling plus one byte and rejects oversized input before decoding or parsing.
+Export file/stdout publication and direct `sign_export()`/`verify_export()`
+entry points enforce the same ceiling. Oversized documents are not truncated,
+silently segmented, or partially published. See `bounded_evidence_exports.md`.
+
 The signer identity is still an assertion bound into the signature. A verifier
 must map the pinned public-key identifier to an accountable person or service
 through its own identity and key-custody process.

@@ -108,6 +108,7 @@ function renderResourceLimits(limits, configuration) {
   const details = [
     `Pre-parse ceilings: state ${bytes(limits.durable_json_bytes)}`,
     `evidence record ${bytes(limits.evidence_record_bytes)}`,
+    `evidence export ${bytes(limits.evidence_export_bytes)}`,
     `MCP message ${bytes(limits.mcp_message_bytes)}`,
     `hook event ${bytes(limits.hook_event_bytes)}`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,

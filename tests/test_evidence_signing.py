@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from defiant_agent_harness.evidence import signing as signing_module
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.contracts import Decision, EvidenceRecord, ResultStatus
 from defiant_agent_harness.evidence.signing import (
@@ -180,6 +181,80 @@ def test_duplicate_json_keys_are_rejected_before_verification(tmp_path):
 
     with pytest.raises(EvidenceSigningError, match="duplicate JSON key"):
         load_export(path)
+
+
+def test_export_load_is_bounded_before_json_parsing(tmp_path, monkeypatch):
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b"SENSITIVE-CONTENT-SENSITIVE-CONTENT")
+    monkeypatch.setattr(signing_module, "MAX_EVIDENCE_EXPORT_BYTES", 32)
+
+    def unexpected_parse(*_args, **_kwargs):
+        pytest.fail("oversized export reached the JSON parser")
+
+    monkeypatch.setattr(signing_module, "loads_strict_json", unexpected_parse)
+
+    with pytest.raises(EvidenceSigningError, match="fixed 32-byte ceiling") as error:
+        load_export(path)
+
+    assert "SENSITIVE-CONTENT" not in str(error.value)
+
+
+def test_export_load_accepts_exact_byte_ceiling(tmp_path, monkeypatch):
+    path = tmp_path / "bounded.json"
+    content = b"{}" + (b" " * 30)
+    path.write_bytes(content)
+    monkeypatch.setattr(signing_module, "MAX_EVIDENCE_EXPORT_BYTES", len(content))
+
+    assert load_export(path) == {}
+
+
+def test_export_serialization_refuses_oversize_without_partial_file(
+    tmp_path, monkeypatch
+):
+    destination = tmp_path / "oversized.json"
+    monkeypatch.setattr(signing_module, "MAX_EVIDENCE_EXPORT_BYTES", 32)
+
+    with pytest.raises(EvidenceSigningError, match="fixed 32-byte ceiling"):
+        write_export(destination, {"content": "sensitive-export-content"})
+
+    assert not destination.exists()
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_direct_sign_and_verify_entry_points_enforce_export_ceiling(
+    tmp_path, monkeypatch
+):
+    document, private_key, public_key, _ = _signed(tmp_path)
+    monkeypatch.setattr(signing_module, "MAX_EVIDENCE_EXPORT_BYTES", 32)
+
+    with pytest.raises(EvidenceSigningError, match="fixed 32-byte ceiling"):
+        sign_export(
+            _payload(tmp_path / "other-state"),
+            private_key,
+            PASSPHRASE,
+            signer="operator-7",
+            note="bounded handoff",
+        )
+
+    status = verify_export(document, [public_key])
+    assert status.ok is False
+    assert status.detail == "evidence export exceeds fixed 32-byte ceiling"
+
+
+def test_cli_export_refuses_oversized_stdout_without_partial_document(
+    tmp_path, monkeypatch, capsys
+):
+    state = tmp_path / "state"
+    record = EvidenceStore(state / "evidence.jsonl").append(_record())
+    monkeypatch.setattr(signing_module, "MAX_EVIDENCE_EXPORT_BYTES", 32)
+
+    exit_code = main(["--workdir", str(state), "export", record.request_id])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "fixed 32-byte ceiling" in captured.err
+    assert record.request_id not in captured.err
 
 
 def test_broken_chain_cannot_be_signed(tmp_path):
