@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.27.0"
+    assert output["schema_version"] == "0.28.0"
     assert output["resource_limits"] == {
         "durable_json_bytes": 64 * 1024 * 1024,
         "evidence_export_bytes": 64 * 1024 * 1024,
@@ -181,9 +181,11 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "trusted_public_key_count": 1024,
         "trusted_public_key_bytes": 64 * 1024,
         "trusted_public_key_set_bytes": 8 * 1024 * 1024,
+        "yaml_nesting_depth": 64,
+        "yaml_nodes": 100_000,
     }
     assert output["authority_configuration"] == {
-        "yaml_parser_profile": "strict_yaml_v1",
+        "yaml_parser_profile": "strict_yaml_v2",
         "json_parser_profile": "strict_json_v3",
         "json_structural_preflight": True,
         "json_scalar_preflight": True,

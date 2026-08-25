@@ -2,7 +2,7 @@
 
 Defiant v0.27 makes the interpretation of operator-authored authority YAML
 explicit and fail closed. Policy packs and MCP proxy configuration use the same
-`strict_yaml_v1` parser profile before a harness or upstream process is created.
+`strict_yaml_v2` parser profile before a harness or upstream process is created.
 
 ## Parser contract
 
@@ -10,6 +10,8 @@ The profile:
 
 - decodes strict UTF-8 only;
 - limits each MCP configuration and each policy pack to 1 MiB before parsing;
+- limits mapping/sequence nesting to 64 and scalar/collection nodes to 100,000
+  before construction;
 - uses PyYAML safe construction, so arbitrary Python object tags are refused;
 - rejects every YAML alias;
 - rejects duplicate mapping keys at any nesting depth instead of accepting a
@@ -35,7 +37,7 @@ second policy language or weaken strictest-wins and default-deny behavior.
 
 ## Read-only projection
 
-Command Core schema `0.27.0` reports the static parser profile, both refusal
+Command Core schema `0.28.0` reports the static parser profile, both refusal
 flags, and the policy-pack byte ceiling. Command Center renders this metadata
 read-only. Neither surface receives configuration source, uploads a pack,
 changes a limit, accepts a parser exception, rotates a profile, or launches an
@@ -56,3 +58,6 @@ YAML contract. See `strict_json_integrity.md`.
 
 v0.33 adds complete-ruleset collection ceilings without changing the YAML
 parser profile or per-file byte limit. See `policy_complexity_limits.md`.
+
+v0.34 advances the parser profile to `strict_yaml_v2` by adding fixed
+pre-construction depth and node ceilings. See `yaml_structural_limits.md`.

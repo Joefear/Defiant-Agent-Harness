@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.33
+## What is deliberately absent from v0.34
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -589,6 +589,13 @@ normalization, hashing, or evaluation. A ruleset may contain at most 64 packs,
 65,536 rule list items in aggregate. Registry-provided additional known tools
 use the same totals. Command Core and Command Center expose only the static
 limits. See `policy_complexity_limits.md`.
+
+v0.34 advances authority YAML to `strict_yaml_v2`. Its event-stream preflight
+refuses more than 64 nested mappings/sequences or 100,000 scalar/collection
+nodes before PyYAML constructs a policy pack or MCP configuration. Exact limits
+remain accepted; existing byte, alias, duplicate-key, UTF-8, and safe-loader
+controls remain in force. Command Core and Command Center expose only the
+static posture. See `yaml_structural_limits.md`.
 
 ## Known limits
 

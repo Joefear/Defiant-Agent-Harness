@@ -36,6 +36,8 @@ from ..limits import (
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
+    MAX_YAML_NESTING_DEPTH,
+    MAX_YAML_NODES,
 )
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
@@ -57,7 +59,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.27.0"
+SNAPSHOT_VERSION = "0.28.0"
 
 
 class CommandError(RuntimeError):
@@ -165,6 +167,8 @@ class CommandCore:
                     "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
                     "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
                     "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
+                    "yaml_nesting_depth": MAX_YAML_NESTING_DEPTH,
+                    "yaml_nodes": MAX_YAML_NODES,
                 },
                 "authority_configuration": {
                     "yaml_parser_profile": STRICT_YAML_PROFILE,

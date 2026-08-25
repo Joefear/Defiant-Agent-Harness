@@ -125,6 +125,8 @@ function renderResourceLimits(limits, configuration) {
     `trusted keys ${integer.format(limits.trusted_public_key_count)}`,
     `trusted key ${bytes(limits.trusted_public_key_bytes)}`,
     `trusted key set ${bytes(limits.trusted_public_key_set_bytes)}`,
+    `YAML depth ${integer.format(limits.yaml_nesting_depth)}`,
+    `YAML nodes ${integer.format(limits.yaml_nodes)}`,
   ];
   if (configuration) {
     details.push(
