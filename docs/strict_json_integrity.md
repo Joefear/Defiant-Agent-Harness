@@ -10,6 +10,11 @@ v0.30 advances that shared contract to `strict_json_v2`. Before the decoder
 constructs Python objects, a lexical scan rejects more than 64 nested containers
 or more than 1,000,000 lexical tokens. See `json_structural_limits.md`.
 
+v0.31 advances the contract to `strict_json_v3`. The same scan rejects strings
+over 8,388,608 source characters and number tokens over 1,024 source characters
+before conversion. A finite JSON spelling that overflows to a non-finite
+runtime float is also refused. See `json_scalar_limits.md`.
+
 ## Parser contract
 
 The shared profile:
@@ -18,6 +23,7 @@ The shared profile:
 - rejects duplicate object keys at every nesting depth;
 - rejects `NaN`, positive infinity, and negative infinity;
 - rejects excessive nesting or lexical-token counts before object construction;
+- rejects excessive string and number token lengths before object construction;
 - fails closed on malformed JSON; and
 - reports only the boundary and a sanitized reason, never a rejected key,
   value, source snippet, target, payload, or absolute state path.
@@ -44,8 +50,8 @@ than choosing an interpretation.
 
 ## Read-only projection
 
-Command Core schema `0.24.0` exposes `strict_json_v2`, strict UTF-8,
-structural-preflight limits, duplicate-key refusal, and non-finite-number
+Command Core schema `0.25.0` exposes `strict_json_v3`, strict UTF-8, structural
+and scalar-preflight limits, duplicate-key refusal, and non-finite-number
 refusal beside the existing YAML posture. Command Center renders this static
 metadata read-only. Neither surface accepts JSON, changes a parser option or
 limit, repairs state, retries a transport, or creates authority.

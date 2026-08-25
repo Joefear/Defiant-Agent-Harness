@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.30
+## What is deliberately absent from v0.31
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -565,6 +565,15 @@ prevents content punctuation from affecting the count. Input within the fixed
 ceilings still passes through the existing syntax, duplicate-key, and
 non-finite-number checks. Command Core and Command Center expose only the static
 posture. See `json_structural_limits.md`.
+
+v0.31 advances the shared JSON profile to `strict_json_v3`. The lexical pass
+also caps each string token at 8,388,608 source characters and each number token
+at 1,024 source characters before conversion. Number tokens include sign,
+fraction, and exponent syntax; finite-looking floats that convert to infinity
+are refused after conversion. This makes scalar processing deterministic across
+supported Python releases without changing any byte or structural ceiling.
+Command Core and Command Center expose only the static posture. See
+`json_scalar_limits.md`.
 
 ## Known limits
 
