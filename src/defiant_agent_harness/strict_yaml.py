@@ -6,12 +6,21 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.events import (
+    AliasEvent,
+    MappingEndEvent,
+    MappingStartEvent,
+    ScalarEvent,
+    SequenceEndEvent,
+    SequenceStartEvent,
+)
 from yaml.nodes import MappingNode
 from yaml.resolver import BaseResolver
 
 from .bounded_io import read_bounded_path_text
+from .limits import MAX_YAML_NESTING_DEPTH, MAX_YAML_NODES
 
-STRICT_YAML_PROFILE = "strict_yaml_v1"
+STRICT_YAML_PROFILE = "strict_yaml_v2"
 
 
 class StrictYamlError(ValueError):
@@ -49,6 +58,30 @@ _StrictSafeLoader.add_constructor(
 )
 
 
+def _preflight_yaml_structure(document: str, label: str) -> None:
+    depth = 0
+    nodes = 0
+    for event in yaml.parse(document):
+        if isinstance(event, AliasEvent):
+            raise StrictYamlError(f"{label} YAML aliases are not supported")
+        if isinstance(event, (MappingStartEvent, SequenceStartEvent)):
+            depth += 1
+            nodes += 1
+            if depth > MAX_YAML_NESTING_DEPTH:
+                raise StrictYamlError(
+                    f"{label} YAML nesting exceeds maximum depth of "
+                    f"{MAX_YAML_NESTING_DEPTH}"
+                )
+        elif isinstance(event, ScalarEvent):
+            nodes += 1
+        elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
+            depth -= 1
+        if nodes > MAX_YAML_NODES:
+            raise StrictYamlError(
+                f"{label} YAML node count exceeds maximum of {MAX_YAML_NODES}"
+            )
+
+
 def load_bounded_yaml(
     path: str | Path,
     maximum: int,
@@ -58,10 +91,7 @@ def load_bounded_yaml(
 
     document = read_bounded_path_text(path, maximum, label)
     try:
-        if any(
-            isinstance(event, yaml.events.AliasEvent) for event in yaml.parse(document)
-        ):
-            raise StrictYamlError(f"{label} YAML aliases are not supported")
+        _preflight_yaml_structure(document, label)
         return yaml.load(document, Loader=_StrictSafeLoader)
     except StrictYamlError:
         raise

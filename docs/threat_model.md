@@ -397,6 +397,24 @@ The ceilings do not prove policy correctness, impose a wall-clock or process
 resource quota, or contain a compromised host. Reviewed rules and OS resource
 controls remain necessary.
 
+### 26. Deep or node-heavy authority YAML
+
+Per-document byte limits do not directly bound nesting depth or the number of
+small mapping, sequence, key, and value nodes. Without a structural preflight,
+PyYAML can recurse or allocate a large constructed graph before policy or MCP
+schema validation rejects the document.
+
+v0.34 caps authority YAML at 64 nested mappings/sequences and 100,000 scalar or
+collection nodes. Parser events are counted before safe construction. Policy
+failure precedes state/workspace initialization; MCP failure precedes upstream
+creation. Exact limits pass, failures are sanitized, and aliases remain
+refused.
+
+These ceilings do not impose process-wide resource quotas, stream construction,
+or establish that accepted authority is correct. The 1 MiB document limit,
+complete-policy collection limits, deployment review, and OS controls remain
+separate defenses.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

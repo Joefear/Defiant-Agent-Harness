@@ -132,6 +132,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"trusted_public_key_count" in javascript
     assert b"trusted_public_key_bytes" in javascript
     assert b"trusted_public_key_set_bytes" in javascript
+    assert b"yaml_nesting_depth" in javascript
+    assert b"yaml_nodes" in javascript
     assert b"authority_configuration" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript

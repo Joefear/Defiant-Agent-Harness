@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+import defiant_agent_harness.strict_yaml as strict_yaml_module
 from defiant_agent_harness.contracts import SideEffect, Trust
 from defiant_agent_harness.mcp.config import McpConfigError, load_proxy_config
 
@@ -193,3 +194,18 @@ def test_unreadable_proxy_config_has_sanitized_error(tmp_path):
         load_proxy_config(path)
 
     assert str(tmp_path) not in str(failure.value)
+
+
+def test_proxy_config_rejects_structural_complexity_before_validation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(strict_yaml_module, "MAX_YAML_NESTING_DEPTH", 2)
+    path = tmp_path / "nested.yaml"
+    path.write_text(
+        "server: {name: local, command: [[python]]}\n"
+        "tools: {echo: {side_effect: none}}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(McpConfigError, match="nesting exceeds maximum depth of 2"):
+        load_proxy_config(path)

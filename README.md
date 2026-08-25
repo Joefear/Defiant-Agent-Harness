@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.33.
+logs. A full trusted-memory/DKE system is not part of v0.34.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.33 is
+## What v0.34 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -329,6 +329,12 @@ normalization, hashing, or action evaluation: at most 64 packs, 4,096 rules,
 list items in aggregate. Registry-provided tool classifications participate in
 the same totals. Command Core and the strictly read-only Command Center expose
 only these fixed ceilings.
+
+v0.34 advances authority YAML to `strict_yaml_v2`. Policy packs and MCP proxy
+configuration now refuse more than 64 nested mappings/sequences or more than
+100,000 scalar/collection nodes before safe construction. Existing byte,
+strict-UTF-8, alias, duplicate-key, and safe-tag rules remain in force. Command
+Core and the strictly read-only Command Center expose only the fixed posture.
 
 ## Install
 
@@ -665,7 +671,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.33 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.34 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -686,6 +692,7 @@ fixed fail-closed pre-parse resource ceilings across durable state, evidence,
 MCP transports, native hooks, and MCP configuration,
 strict bounded and ambiguity-free authority YAML parsing for policy packs and
 MCP configuration,
+fixed pre-construction YAML nesting and node-count ceilings,
 strict UTF-8 and duplicate-safe JSON parsing across durable state, evidence,
 MCP transports, native hooks, and signed external documents,
 fixed 64 MiB parse and publication ceilings for request evidence exports,

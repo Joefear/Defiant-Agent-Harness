@@ -36,8 +36,12 @@ MAX_MCP_MESSAGE_BYTES = 10 * MIB
 MAX_HOOK_EVENT_BYTES = 10 * MIB
 
 # Operator-authored YAML should remain reviewable and is never a bulk payload.
+# Structural preflight counts each scalar plus each mapping/sequence start as
+# one node before PyYAML constructs the authority document.
 MAX_MCP_CONFIG_BYTES = 1 * MIB
 MAX_POLICY_PACK_BYTES = 1 * MIB
+MAX_YAML_NESTING_DEPTH = 64
+MAX_YAML_NODES = 100_000
 
 # Policy is evaluated for every governed action. Bound the complete loaded
 # ruleset, not only each YAML file, so many individually valid packs cannot

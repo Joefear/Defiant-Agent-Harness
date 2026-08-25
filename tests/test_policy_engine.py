@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import defiant_agent_harness.policy.engine as policy_engine_module
+import defiant_agent_harness.strict_yaml as strict_yaml_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.contracts import (
@@ -491,6 +492,30 @@ def test_invalid_policy_preflight_creates_no_state_or_workspace(tmp_path):
     workspace = tmp_path / "workspace"
 
     with pytest.raises(PolicyError, match="duplicate mapping key"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            policy_packs=[str(policy)],
+            workspace_root=workspace,
+        )
+
+    assert not state.exists()
+    assert not workspace.exists()
+
+
+def test_structurally_complex_policy_creates_no_state_or_workspace(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(strict_yaml_module, "MAX_YAML_NESTING_DEPTH", 2)
+    policy = tmp_path / "nested.yaml"
+    policy.write_text(
+        "version: test\nrules:\n  - id: nested\n    tools: [[read_file]]\n",
+        encoding="utf-8",
+    )
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+
+    with pytest.raises(PolicyError, match="nesting exceeds maximum depth of 2"):
         build_harness(
             state,
             MockAgentAdapter(),

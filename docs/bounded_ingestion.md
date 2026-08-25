@@ -20,13 +20,17 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.27.0` projects them under `resource_limits`, and Command Center only
+schema `0.28.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
 both MCP configuration and policy packs. It rejects aliases and duplicate
 mapping keys at any nesting depth before authority can be constructed. See
 `authority_configuration_integrity.md`.
+
+v0.34 advances that boundary to `strict_yaml_v2`, adding a pre-construction
+maximum depth of 64 mappings/sequences and maximum 100,000 scalar/collection
+nodes. See `yaml_structural_limits.md`.
 
 v0.28 adds the shared `strict_json_v1` profile to durable state, evidence,
 MCP, HTTP, native-hook, signed-export, and witness JSON ingress. Duplicate keys
