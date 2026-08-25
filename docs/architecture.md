@@ -540,6 +540,16 @@ or upstream process launch and report no input snippets or absolute paths. Comma
 Core and Command Center expose only the static profile and limits; neither can
 submit or accept configuration. See `authority_configuration_integrity.md`.
 
+v0.28 applies `strict_json_v1` to authority-relevant JSON ingress. Durable
+state, evidence records, MCP client and upstream traffic, Streamable HTTP JSON
+and SSE data, native-hook events and embedded arguments, operator key lists,
+signed exports, and external witnesses reject duplicate keys at every depth,
+non-finite numbers, and non-UTF-8 byte input. Durable ambiguity blocks
+authority; transport ambiguity is never forwarded; hook ambiguity fails before
+state creation. Diagnostics do not echo rejected keys or values. Command Core
+and Command Center expose the static posture only. See
+`strict_json_integrity.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

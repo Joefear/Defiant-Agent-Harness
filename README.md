@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.27.
+logs. A full trusted-memory/DKE system is not part of v0.28.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.27 is
+## What v0.28 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -281,6 +281,14 @@ sanitized and fail closed before state/workspace initialization or upstream laun
 Command Core and the strictly read-only Command Center expose the parser
 profile and policy-pack ceiling without adding an upload, editing, acceptance,
 or mutation surface.
+
+v0.28 makes authority-relevant JSON unambiguous. Durable state, evidence,
+MCP stdio and HTTP traffic, native-hook events and embedded arguments, operator
+key lists, signed exports, and external witnesses share one strict UTF-8 parser
+that rejects duplicate keys at every depth and non-finite numbers. Durable
+ambiguity blocks authority, upstream ambiguity is never forwarded, and hook
+ambiguity fails closed. Diagnostics do not echo rejected keys or values.
+Command Core and Command Center expose only the static parser posture.
 
 ## Install
 
@@ -617,7 +625,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.27 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.28 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -638,6 +646,8 @@ fixed fail-closed pre-parse resource ceilings across durable state, evidence,
 MCP transports, native hooks, and MCP configuration,
 strict bounded and ambiguity-free authority YAML parsing for policy packs and
 MCP configuration,
+strict UTF-8 and duplicate-safe JSON parsing across durable state, evidence,
+MCP transports, native hooks, and signed external documents,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -656,6 +666,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/evidence_head_witness.md`,
 `docs/bounded_ingestion.md`,
 `docs/authority_configuration_integrity.md`,
+`docs/strict_json_integrity.md`,
 `docs/state_integrity.md`,
 `docs/evidence_signing.md`,
 `docs/operator_identity.md`,

@@ -10,6 +10,7 @@ from typing import Any
 
 from ..bounded_io import read_bounded_text
 from ..limits import MAX_HOOK_EVENT_BYTES
+from ..strict_json import loads_strict_json
 from .copilot import (
     CopilotHookGate,
     _evidence_witness_from_env,
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             MAX_HOOK_EVENT_BYTES,
             "native hook event",
         )
-        event = json.loads(document, parse_constant=_reject_constant)
+        event = loads_strict_json(document, label="native hook event")
         event_cwd = event.get("cwd") if isinstance(event, dict) else ""
         start = (
             Path(event_cwd) if isinstance(event_cwd, str) and event_cwd else Path.cwd()
@@ -185,10 +186,6 @@ def _codex_deny_output(reason: str) -> dict[str, Any]:
             "permissionDecisionReason": reason,
         }
     }
-
-
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number is not allowed: {value}")
 
 
 if __name__ == "__main__":

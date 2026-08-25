@@ -115,7 +115,8 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.parser_profile)} (aliases and duplicate keys refused)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused)`,
+      `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, duplicate keys and non-finite numbers refused)`,
     );
   }
   elements.resourceLimits.textContent = details.join(", ");

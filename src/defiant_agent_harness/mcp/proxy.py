@@ -29,6 +29,7 @@ from ..contracts import (
 from ..money import money
 from ..limits import MAX_MCP_MESSAGE_BYTES
 from ..orchestrator.harness import ActionOutcome, build_harness
+from ..strict_json import StrictJsonError, loads_strict_json
 from ..launch_envelope import (
     LaunchEnvelopeAssurance,
     build_launch_envelope,
@@ -252,8 +253,8 @@ class McpStdioProxy:
             )
             return
         try:
-            message = json.loads(line, parse_constant=_reject_constant)
-        except (json.JSONDecodeError, ValueError):
+            message = loads_strict_json(line, label="client MCP message")
+        except StrictJsonError:
             self.session.emit_message(_rpc_error(None, -32700, "Parse error"))
             return
         if not isinstance(message, dict):
@@ -738,7 +739,3 @@ def _approval_response(
 def _latest_evidence_id(harness, action_id: str) -> str:
     records = harness.evidence.by_action(action_id)
     return records[-1]["record_id"] if records else ""
-
-
-def _reject_constant(value: str) -> None:
-    raise ValueError(f"non-finite JSON number: {value}")

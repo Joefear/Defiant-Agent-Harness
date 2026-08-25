@@ -47,13 +47,14 @@ Press `Ctrl+C` in the serving terminal to stop it.
   tool results;
 - an optional request-id focus applied through a read-only snapshot query; and
 - the fixed pre-parse byte ceilings enforced by the running harness; and
-- the strict authority-YAML profile and its alias/duplicate-key refusal.
+- the strict authority-YAML and authority-JSON profiles, including alias,
+  duplicate-key, non-finite-number, and strict-UTF-8 refusal posture.
 
 The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.21.0`. The browser cannot raise, disable, or replace them and never receives
+`0.22.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

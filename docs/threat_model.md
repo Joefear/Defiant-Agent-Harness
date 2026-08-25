@@ -308,6 +308,19 @@ privileged host that can replace the process, token, code, and state together.
 Default Windows deployments remain visibly `structural_only` until explicitly
 enrolled.
 
+### 20. Ambiguous JSON objects at authority and transport boundaries
+
+Standard JSON decoders commonly accept duplicate object keys and retain the
+last value. A reviewed method, decision, status, cost, or target can therefore
+differ from the value a runtime interprets. v0.28 uses one strict JSON profile
+for durable state, evidence, MCP and HTTP traffic, native-hook inputs, signed
+exports, and external witnesses. Duplicate keys at every depth, non-finite
+numbers, and non-UTF-8 byte input fail closed before field interpretation.
+
+The parser reports no rejected key, value, or source snippet. This removes
+representation ambiguity but cannot establish that a unique document is true,
+correctly classified, or produced by an honest upstream.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

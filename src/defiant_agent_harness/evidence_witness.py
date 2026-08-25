@@ -38,6 +38,7 @@ from .persistence import (
     read_json,
 )
 from .state_storage import StateStorageStateStore
+from .strict_json import StrictJsonError, loads_strict_json
 
 WITNESS_SCHEMA = "defiant.evidence.head_witness"
 WITNESS_VERSION = "0.1.0"
@@ -469,12 +470,8 @@ def load_witness(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     try:
         raw = _read_limited(source, _MAX_DOCUMENT_BYTES, "evidence witness")
-        value = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_object_without_duplicates,
-            parse_constant=_reject_json_constant,
-        )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = loads_strict_json(raw, label="evidence witness")
+    except (OSError, StrictJsonError) as exc:
         raise EvidenceWitnessError(
             f"cannot read valid evidence witness {source}"
         ) from exc
@@ -692,19 +689,6 @@ def _timestamp(value: Any, field: str) -> str:
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def _object_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise EvidenceWitnessError(f"duplicate JSON key in witness: {key}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> Any:
-    raise EvidenceWitnessError(f"non-finite JSON number is forbidden: {value}")
 
 
 def _read_limited(path: Path, maximum: int, label: str) -> bytes:

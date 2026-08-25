@@ -1,0 +1,55 @@
+# Strict JSON integrity
+
+Defiant v0.28 applies one `strict_json_v1` parser profile to authority-relevant
+JSON input. Durable state, evidence JSONL records, MCP client and upstream
+messages, Streamable HTTP JSON/SSE data, native-hook events and embedded tool
+arguments, operator key-list environment inputs, signed evidence exports, and
+external evidence witnesses no longer accept ambiguous duplicate keys.
+
+## Parser contract
+
+The shared profile:
+
+- accepts text or bytes and requires bytes to be strict UTF-8;
+- rejects duplicate object keys at every nesting depth;
+- rejects `NaN`, positive infinity, and negative infinity;
+- fails closed on malformed or excessively nested JSON; and
+- reports only the boundary and a sanitized reason, never a rejected key,
+  value, source snippet, target, payload, or absolute state path.
+
+At boundaries covered by v0.26, the existing byte ceilings remain pre-parse.
+`strict_json_v1` does not raise those limits or add a second input path. Signed
+export verification retains its existing whole-document behavior and has no
+aggregate export-file ceiling; deployments must bound intake according to
+their evidence-retention and review workflow.
+
+## Failure behavior
+
+Ambiguous durable JSON invalidates the affected store and blocks new authority.
+An ambiguous evidence record invalidates the chain before its fields or hash are
+interpreted. A duplicate-key MCP client request returns JSON-RPC parse error
+`-32700`; an ambiguous stdio or HTTP upstream response fails the transport and
+is never forwarded. Native hooks return their existing fail-closed response
+before creating state or invoking the shared gate.
+
+This matters even when both values appear harmless. Last-key-wins behavior can
+make a reviewed `method`, `decision`, `status`, `cost`, or target differ from the
+value the runtime uses. Defiant therefore refuses the whole document rather
+than choosing an interpretation.
+
+## Read-only projection
+
+Command Core schema `0.22.0` exposes `strict_json_v1`, strict UTF-8, duplicate-key
+refusal, and non-finite-number refusal beside the existing YAML posture. Command
+Center renders this static metadata read-only. Neither surface accepts JSON,
+changes a parser option, repairs state, retries a transport, or creates
+authority.
+
+## Limits
+
+Strict parsing removes representation ambiguity; it does not prove that a
+unique document is truthful, correctly classified, or authorized. In-process
+Python remains trusted, evidence verification remains linear in retained
+history, and OS/process containment remains a deployment responsibility.
+
+This release adds no DKE, Spartan, remote Command, or Command Center authority.
