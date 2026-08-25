@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.29
+## What is deliberately absent from v0.30
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -557,6 +557,14 @@ Oversized exports are neither truncated nor partially published. The live
 append-only evidence history keeps its existing unlimited aggregate and linear
 verification behavior. Command Core and Command Center expose only the static
 ceiling. See `bounded_evidence_exports.md`.
+
+v0.30 advances the shared JSON profile to `strict_json_v2`. After strict UTF-8
+decoding and before object construction, one non-materializing lexical pass caps
+container nesting at 64 and lexical tokens at 1,000,000. String and escape state
+prevents content punctuation from affecting the count. Input within the fixed
+ceilings still passes through the existing syntax, duplicate-key, and
+non-finite-number checks. Command Core and Command Center expose only the static
+posture. See `json_structural_limits.md`.
 
 ## Known limits
 

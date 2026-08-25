@@ -12,6 +12,12 @@ MAX_EVIDENCE_RECORD_BYTES = 16 * MIB
 # export is published or emitted.
 MAX_EVIDENCE_EXPORT_BYTES = 64 * MIB
 
+# The shared strict JSON loader scans structure before constructing Python
+# objects. Count container nesting and lexical value/container/string starts;
+# punctuation inside strings is ignored.
+MAX_JSON_NESTING_DEPTH = 64
+MAX_JSON_LEXICAL_TOKENS = 1_000_000
+
 # MCP HTTP already uses the same 10 MiB response ceiling. Apply it symmetrically
 # to local stdio and native-hook event documents.
 MAX_MCP_MESSAGE_BYTES = 10 * MIB

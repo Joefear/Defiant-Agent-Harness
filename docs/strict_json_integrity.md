@@ -6,6 +6,10 @@ messages, Streamable HTTP JSON/SSE data, native-hook events and embedded tool
 arguments, operator key-list environment inputs, signed evidence exports, and
 external evidence witnesses no longer accept ambiguous duplicate keys.
 
+v0.30 advances that shared contract to `strict_json_v2`. Before the decoder
+constructs Python objects, a lexical scan rejects more than 64 nested containers
+or more than 1,000,000 lexical tokens. See `json_structural_limits.md`.
+
 ## Parser contract
 
 The shared profile:
@@ -13,15 +17,16 @@ The shared profile:
 - accepts text or bytes and requires bytes to be strict UTF-8;
 - rejects duplicate object keys at every nesting depth;
 - rejects `NaN`, positive infinity, and negative infinity;
-- fails closed on malformed or excessively nested JSON; and
+- rejects excessive nesting or lexical-token counts before object construction;
+- fails closed on malformed JSON; and
 - reports only the boundary and a sanitized reason, never a rejected key,
   value, source snippet, target, payload, or absolute state path.
 
 At boundaries covered by v0.26, the existing byte ceilings remain pre-parse.
-`strict_json_v1` does not raise those limits or add a second input path. v0.29
-adds a 64 MiB aggregate ceiling before signed-export file parsing and applies
-the same bound before export publication and direct sign/verify work. See
-`bounded_evidence_exports.md`.
+The strict JSON profile does not raise those limits or add a second input path.
+v0.29 adds a 64 MiB aggregate ceiling before signed-export file parsing and
+applies the same bound before export publication and direct sign/verify work.
+See `bounded_evidence_exports.md`.
 
 ## Failure behavior
 
@@ -39,11 +44,11 @@ than choosing an interpretation.
 
 ## Read-only projection
 
-Command Core schema `0.23.0` exposes `strict_json_v1`, strict UTF-8, duplicate-key
-refusal, and non-finite-number refusal beside the existing YAML posture. Command
-Center renders this static metadata read-only. Neither surface accepts JSON,
-changes a parser option, repairs state, retries a transport, or creates
-authority.
+Command Core schema `0.24.0` exposes `strict_json_v2`, strict UTF-8,
+structural-preflight limits, duplicate-key refusal, and non-finite-number
+refusal beside the existing YAML posture. Command Center renders this static
+metadata read-only. Neither surface accepts JSON, changes a parser option or
+limit, repairs state, retries a transport, or creates authority.
 
 ## Limits
 

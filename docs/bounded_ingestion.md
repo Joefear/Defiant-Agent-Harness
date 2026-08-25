@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.23.0` projects them under `resource_limits`, and Command Center only
+schema `0.24.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
@@ -36,6 +36,11 @@ at any depth, non-finite numbers, and non-UTF-8 byte documents are refused. See
 v0.29 closes the aggregate signed-export gap with a 64 MiB ceiling before file
 parsing and before export publication. Direct in-memory signing and verification
 enforce the same bound. See `bounded_evidence_exports.md`.
+
+v0.30 adds fixed shared JSON structural ceilings before object construction:
+64 nested containers and 1,000,000 lexical tokens. These limits apply after
+strict UTF-8 decoding and before the existing strict JSON decoder. See
+`json_structural_limits.md`.
 
 ## Parser discipline
 

@@ -8,6 +8,8 @@ import pytest
 
 import defiant_agent_harness.hooks.codex as codex_hook
 import defiant_agent_harness.hooks.copilot as copilot_hook
+import defiant_agent_harness.evidence.store as evidence_store_module
+import defiant_agent_harness.strict_json as strict_json_module
 from defiant_agent_harness.evidence.store import EvidenceStore
 from defiant_agent_harness.mcp.http_session import McpTransportError, _json_object
 from defiant_agent_harness.mcp.proxy import McpStdioProxy
@@ -44,6 +46,35 @@ def test_strict_json_requires_utf8_and_finite_numbers():
         loads_strict_json('{"value":NaN}', label="authority document")
 
 
+def test_strict_json_enforces_depth_before_decoder_without_echo(monkeypatch):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NESTING_DEPTH", 3)
+    assert loads_strict_json('[[["within-limit"]]]') == [[["within-limit"]]]
+
+    def unexpected_decode(*_args, **_kwargs):
+        pytest.fail("over-depth JSON reached the decoder")
+
+    monkeypatch.setattr(strict_json_module.json, "loads", unexpected_decode)
+    with pytest.raises(StrictJsonError, match="nesting depth of 3") as failure:
+        loads_strict_json('[[[["SENSITIVE-CONTENT"]]]]', label="authority document")
+
+    assert "SENSITIVE-CONTENT" not in str(failure.value)
+
+
+def test_strict_json_enforces_lexical_tokens_and_ignores_string_punctuation(
+    monkeypatch,
+):
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_LEXICAL_TOKENS", 4)
+    document = '["{[,]}", "escaped \\" quote", 1]'
+    assert loads_strict_json(document) == ["{[,]}", 'escaped " quote', 1]
+
+    def unexpected_decode(*_args, **_kwargs):
+        pytest.fail("over-token JSON reached the decoder")
+
+    monkeypatch.setattr(strict_json_module.json, "loads", unexpected_decode)
+    with pytest.raises(StrictJsonError, match="lexical token count of 4"):
+        loads_strict_json("[0,1,2,3]", label="authority document")
+
+
 def test_durable_state_rejects_duplicate_keys_without_echo(tmp_path):
     root = prepare_storage_root(tmp_path / "state")
     path = root.path / "budget.json"
@@ -58,6 +89,20 @@ def test_durable_state_rejects_duplicate_keys_without_echo(tmp_path):
     assert str(root.path) not in str(failure.value)
 
 
+def test_durable_state_rejects_over_depth_without_echo(tmp_path, monkeypatch):
+    root = prepare_storage_root(tmp_path / "state")
+    path = root.path / "budget.json"
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NESTING_DEPTH", 2)
+    with open_state_file(path, "xb") as handle:
+        handle.write(b'{"outer":{"SENSITIVE-CONTENT":{}}}')
+
+    with pytest.raises(PersistenceError, match="nesting depth of 2") as failure:
+        read_json(path)
+
+    assert "SENSITIVE-CONTENT" not in str(failure.value)
+    assert str(root.path) not in str(failure.value)
+
+
 def test_evidence_rejects_duplicate_keys_before_chain_interpretation(tmp_path):
     path = tmp_path / "evidence.jsonl"
     EvidenceStore(path)
@@ -69,6 +114,23 @@ def test_evidence_rejects_duplicate_keys_before_chain_interpretation(tmp_path):
     assert status.ok is False
     assert status.detail == "record 0 contains a duplicate JSON key"
     assert "sensitive" not in status.detail
+
+
+def test_evidence_rejects_over_token_record_before_chain_interpretation(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "evidence.jsonl"
+    EvidenceStore(path)
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_LEXICAL_TOKENS", 3)
+    monkeypatch.setattr(evidence_store_module, "MAX_JSON_LEXICAL_TOKENS", 3)
+    with open_state_file(path, "ab") as handle:
+        handle.write(b'["SENSITIVE-CONTENT",0,1]\n')
+
+    status = EvidenceStore(path).verify()
+
+    assert status.ok is False
+    assert status.detail == "record 0 exceeds maximum JSON lexical token count of 3"
+    assert "SENSITIVE-CONTENT" not in status.detail
 
 
 def test_mcp_client_duplicate_method_is_parse_error_and_never_forwarded():
@@ -90,6 +152,38 @@ def test_mcp_client_duplicate_method_is_parse_error_and_never_forwarded():
     proxy.accept_line(
         '{"jsonrpc":"2.0","id":1,"method":"tools/call",'
         '"method":"tools/list","params":{}}'
+    )
+
+    assert session.messages == [
+        {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32700, "message": "Parse error"},
+        }
+    ]
+    assert session.forwarded == []
+
+
+def test_mcp_client_over_depth_is_parse_error_and_never_forwarded(monkeypatch):
+    class CaptureSession:
+        def __init__(self):
+            self.messages = []
+            self.forwarded = []
+
+        def emit_message(self, message):
+            self.messages.append(message)
+
+        def forward_raw(self, message):
+            self.forwarded.append(message)
+
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NESTING_DEPTH", 2)
+    session = CaptureSession()
+    proxy = object.__new__(McpStdioProxy)
+    proxy.session = session
+
+    proxy.accept_line(
+        '{"jsonrpc":"2.0","id":1,"method":"tools/list",'
+        '"params":{"SENSITIVE-CONTENT":{}}}'
     )
 
     assert session.messages == [
@@ -159,6 +253,37 @@ def test_native_hook_duplicate_keys_fail_closed_before_state_creation(
     assert "deny" in json.dumps(response).lower()
     assert "duplicate JSON key" in stderr.getvalue()
     assert "sensitive" not in stderr.getvalue()
+    assert not (tmp_path / ".dah-hooks").exists()
+    assert not (tmp_path / ".dah-codex-hooks").exists()
+
+
+@pytest.mark.parametrize("hook_module", [copilot_hook, codex_hook])
+def test_native_hook_over_depth_fails_closed_before_state_creation(
+    tmp_path,
+    monkeypatch,
+    hook_module,
+):
+    stdout = StringIO()
+    stderr = StringIO()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(strict_json_module, "MAX_JSON_NESTING_DEPTH", 2)
+    monkeypatch.setattr(
+        hook_module.sys,
+        "stdin",
+        StringIO(
+            '{"tool_name":"read_file","tool_input":'
+            '{"path":"safe","SENSITIVE-CONTENT":{}}}'
+        ),
+    )
+    monkeypatch.setattr(hook_module.sys, "stdout", stdout)
+    monkeypatch.setattr(hook_module.sys, "stderr", stderr)
+
+    assert hook_module.main(["pre"]) == 0
+
+    response = json.loads(stdout.getvalue())
+    assert "deny" in json.dumps(response).lower()
+    assert "nesting depth" in stderr.getvalue()
+    assert "SENSITIVE-CONTENT" not in stderr.getvalue()
     assert not (tmp_path / ".dah-hooks").exists()
     assert not (tmp_path / ".dah-codex-hooks").exists()
 

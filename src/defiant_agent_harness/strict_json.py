@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-STRICT_JSON_PROFILE = "strict_json_v1"
+from .limits import MAX_JSON_LEXICAL_TOKENS, MAX_JSON_NESTING_DEPTH
+
+STRICT_JSON_PROFILE = "strict_json_v2"
 
 
 class StrictJsonError(ValueError):
@@ -17,7 +19,7 @@ def loads_strict_json(
     *,
     label: str = "JSON input",
 ) -> Any:
-    """Decode one JSON document without duplicate keys or non-finite numbers."""
+    """Decode unambiguous JSON after bounded structural preflight."""
 
     if isinstance(document, (bytes, bytearray)):
         try:
@@ -29,6 +31,7 @@ def loads_strict_json(
     else:
         raise TypeError("strict JSON input must be text or bytes")
 
+    _preflight_structure(text, label)
     try:
         return json.loads(
             text,
@@ -52,3 +55,53 @@ def _unique_object(pairs: list[tuple[str, Any]], label: str) -> dict[str, Any]:
 
 def _reject_constant(_value: str, label: str) -> None:
     raise StrictJsonError(f"{label} contains a non-finite JSON number")
+
+
+def _preflight_structure(text: str, label: str) -> None:
+    depth = 0
+    tokens = 0
+    in_string = False
+    escaped = False
+    in_scalar = False
+
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+
+        if in_scalar:
+            if character.isspace() or character in '{}[],:"':
+                in_scalar = False
+            else:
+                continue
+
+        if character == '"':
+            in_string = True
+            tokens += 1
+        elif character in "[{":
+            depth += 1
+            tokens += 1
+            if depth > MAX_JSON_NESTING_DEPTH:
+                raise StrictJsonError(
+                    f"{label} exceeds maximum JSON nesting depth of "
+                    f"{MAX_JSON_NESTING_DEPTH}"
+                )
+        elif character in "]}":
+            if depth:
+                depth -= 1
+        elif character.isspace() or character in ",:":
+            continue
+        else:
+            in_scalar = True
+            tokens += 1
+
+        if tokens > MAX_JSON_LEXICAL_TOKENS:
+            raise StrictJsonError(
+                f"{label} exceeds maximum JSON lexical token count of "
+                f"{MAX_JSON_LEXICAL_TOKENS}"
+            )
