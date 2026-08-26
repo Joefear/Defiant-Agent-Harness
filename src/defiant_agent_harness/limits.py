@@ -88,6 +88,10 @@ MAX_ACTION_HASH_NODES = 1_100_000
 MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
 MAX_ACTION_HASH_NUMBER_CHARACTERS = 1_024
 MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB
+# Python's JSON encoder emits one complete escaped string as a single chunk.
+# Refuse a token that cannot fit in the complete canonical byte ceiling before
+# the encoder can materialize that expanded chunk in memory.
+MAX_ACTION_HASH_STRING_TOKEN_BYTES = MAX_ACTION_HASH_CANONICAL_BYTES
 
 # A ToolCall exists before an adapter can construct a ProposedAction. Bound its
 # explicit transport identity fields independently, then apply the complete

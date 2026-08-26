@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.43
+## What is deliberately absent from v0.44
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -672,6 +672,14 @@ before fixed-point expansion. Accepted canonical bytes and hashes do not change.
 Command Core and Command Center expose only static posture. See
 `canonical_number_limits.md`.
 
+v0.44 preflights the exact escaped byte width of each canonical JSON string
+token. The guard accounts for quotation marks, short escapes, BMP escapes, and
+paired non-BMP escapes before `JSONEncoder` can materialize one expanded string
+chunk. It adds no new canonical form and preserves all accepted hashes. Tool
+calls, action fingerprints, and tool results map the shared sanitized failure
+to their own resource-limit aliases. Command Core and Command Center expose
+only static posture. See `canonical_string_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -687,6 +695,10 @@ Command Core and Command Center expose only static posture. See
   prevents unbounded decimal rendering during canonical hashing. It does not
   cap arithmetic performed before a value reaches Defiant or cumulative work
   across many accepted values.
+- **Canonical-string limits are per token, not process quotas.** v0.44 prevents
+  one rejected string from first expanding beyond the complete canonical byte
+  ceiling. Total traffic and repeated accepted hashing still require deployment
+  monitoring and OS resource controls.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

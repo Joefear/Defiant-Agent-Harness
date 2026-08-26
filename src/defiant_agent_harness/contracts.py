@@ -29,6 +29,7 @@ from .limits import (
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
+    MAX_ACTION_HASH_STRING_TOKEN_BYTES,
     MAX_PROVENANCE_REFS,
     MAX_PROVENANCE_TEXT_CHARACTERS,
     MAX_PROVENANCE_TEXT_ITEM_CHARACTERS,
@@ -61,6 +62,7 @@ def canonical_json(obj: Any) -> str:
         _enum_safe(obj),
         sort_keys=True,
         separators=(",", ":"),
+        ensure_ascii=True,
         allow_nan=False,
     )
 
@@ -97,6 +99,7 @@ def action_sha256_of(obj: Any) -> str:
     encoder = json.JSONEncoder(
         sort_keys=True,
         separators=(",", ":"),
+        ensure_ascii=True,
         allow_nan=False,
         default=_action_hash_default,
     )
@@ -840,6 +843,50 @@ def _validate_action_hash_scalar(value: str) -> None:
             f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
             limit_enforced="action_hash_scalar_characters",
         )
+    _validate_action_hash_string_token(value)
+
+
+def _validate_action_hash_string_token(value: str) -> None:
+    # ``JSONEncoder(ensure_ascii=True)`` emits the opening and closing quotes,
+    # printable ASCII verbatim, short escapes for five controls plus quote and
+    # backslash, six-byte ``\uXXXX`` escapes for other BMP code points, and
+    # two such escapes for non-BMP code points. Count that exact ASCII byte
+    # length without constructing the escaped token.
+    used = 2
+    if used > MAX_ACTION_HASH_STRING_TOKEN_BYTES:
+        _raise_action_hash_string_token_limit()
+    if (
+        value.isascii()
+        and value.isprintable()
+        and '"' not in value
+        and "\\" not in value
+    ):
+        used += len(value)
+        if used > MAX_ACTION_HASH_STRING_TOKEN_BYTES:
+            _raise_action_hash_string_token_limit()
+        return
+
+    for character in value:
+        codepoint = ord(character)
+        if character in {'"', "\\", "\b", "\f", "\n", "\r", "\t"}:
+            width = 2
+        elif 0x20 <= codepoint <= 0x7E:
+            width = 1
+        elif codepoint <= 0xFFFF:
+            width = 6
+        else:
+            width = 12
+        if width > MAX_ACTION_HASH_STRING_TOKEN_BYTES - used:
+            _raise_action_hash_string_token_limit()
+        used += width
+
+
+def _raise_action_hash_string_token_limit() -> None:
+    raise ActionHashLimitError(
+        "action hash canonical string token exceeds maximum of "
+        f"{MAX_ACTION_HASH_STRING_TOKEN_BYTES} bytes",
+        limit_enforced="action_hash_string_token_bytes",
+    )
 
 
 def _validate_action_hash_integer(value: int) -> None:

@@ -46,7 +46,7 @@ execution for a request it could not safely accept.
 
 ## Read-only projection
 
-Command Core schema `0.37.0` publishes all eight fixed ceilings under
+Command Core schema `0.38.0` publishes all eight fixed ceilings under
 `resource_limits` and reports `request_contract_preflight: true`. Command
 Center renders only this static posture. Neither surface can submit or edit a
 request, change a ceiling, accept an exception, approve, or execute.
