@@ -286,6 +286,13 @@ def test_tool_result_maps_canonical_string_token_failure(monkeypatch):
             {"a": 1, "secret": 2},
             "mapping_entries",
         ),
+        (
+            "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS",
+            0,
+            None,
+            {"a": 1, "b": 2},
+            "mapping_sort_work_units",
+        ),
         ("MAX_ACTION_HASH_CANONICAL_BYTES", 4, None, False, "canonical_bytes"),
     ],
 )

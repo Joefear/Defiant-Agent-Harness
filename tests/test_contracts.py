@@ -408,6 +408,84 @@ def test_action_hash_mapping_limit_applies_to_each_nested_mapping(monkeypatch):
     assert exc.value.limit_enforced == "action_hash_mapping_entries"
 
 
+def test_action_hash_accepts_exact_mapping_sort_work_and_rejects_next(monkeypatch):
+    value = {"aa": 1, "bb": 2}
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 8)
+
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 7)
+    with pytest.raises(ActionHashLimitError, match="mapping sort work") as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
+
+
+def test_action_hash_mapping_sort_work_scales_with_comparison_rounds(monkeypatch):
+    value = {"a": 1, "b": 2, "c": 3, "d": 4}
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 24)
+
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 23)
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
+
+
+@pytest.mark.parametrize(
+    ("value", "exact"),
+    [
+        ({1: "a", 22: "b"}, 7),
+        ({False: "a", True: "b"}, 13),
+        ({1.25: "a", 2.5: "b"}, 11),
+        ({"é": "a", "😀": "b"}, 22),
+    ],
+)
+def test_action_hash_mapping_sort_work_uses_exact_canonical_key_widths(
+    value, exact, monkeypatch
+):
+    monkeypatch.setattr(
+        contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", exact
+    )
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(
+        contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", exact - 1
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
+
+
+def test_action_hash_mapping_sort_work_is_aggregate_and_pre_encoder(monkeypatch):
+    value = {"x": {"a": 1, "b": 2}, "y": {"c": 3, "d": 4}}
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 18)
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 17)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive over-budget mapping")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
+
+
+def test_action_hash_single_entry_mapping_requires_no_sort_work(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 0)
+    value = {"only": "value"}
+
+    assert action_sha256_of(value) == sha256_of(value)
+
+
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
 

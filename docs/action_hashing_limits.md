@@ -12,6 +12,7 @@ Each action-controlled fingerprint accepts at most:
 - 64 levels of mapping/sequence/scalar nesting;
 - 1,100,000 visited nodes, including mapping keys;
 - 65,536 entries in any one mapping;
+- 67,108,864 aggregate canonical mapping sort-work units;
 - 8,388,608 characters in any one string;
 - 67,108,864 bytes in any one escaped canonical string token;
 - 1,024 characters in any canonical integer, float, or decimal token; and
@@ -54,7 +55,7 @@ the streaming counter remains a second check.
 
 ## Read-only projection
 
-Command Core schema `0.40.0` publishes the fixed ceilings under
+Command Core schema `0.41.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -92,5 +93,10 @@ v0.46 adds a fixed per-mapping entry ceiling before key traversal or sorting.
 This deliberately refuses some mappings accepted by earlier releases while
 preserving canonical bytes and hashes for values within the ceiling. See
 `canonical_mapping_limits.md`.
+
+v0.47 charges each canonical mapping key byte once per idealized logarithmic
+comparison round against one aggregate budget before encoder sorting. This is a
+new compatibility ceiling; accepted canonical hashes remain unchanged. See
+`canonical_mapping_sort_work.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

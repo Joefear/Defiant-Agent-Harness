@@ -89,6 +89,10 @@ MAX_ACTION_HASH_NODES = 1_100_000
 # from approaching the broader node allowance even when the encoded value fits
 # the complete byte ceiling.
 MAX_ACTION_HASH_MAPPING_ENTRIES = 65_536
+# Charge every canonical key-token byte once per idealized comparison round and
+# share the budget across all mappings in one fingerprint. This bounds long,
+# common-prefix key amplification in addition to mapping cardinality.
+MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS = 64 * MIB
 MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
 MAX_ACTION_HASH_NUMBER_CHARACTERS = 1_024
 MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB

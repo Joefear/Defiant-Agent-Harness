@@ -656,6 +656,15 @@ existing aggregate node and byte ceilings still apply across nested mappings.
 Accepted mappings still sort, and this remains a per-fingerprint control rather
 than a CPU timeout or cumulative quota.
 
+**Long canonical key comparison amplification.** The v0.46 entry ceiling still
+allowed an accepted value to devote much of its canonical byte allowance to
+long keys with shared prefixes, whose text may be inspected across repeated
+sort comparisons. v0.47 charges every exact canonical key-token byte once per
+idealized logarithmic comparison round against one 67,108,864-unit budget
+shared by all mappings. A breach fails before encoder sorting. The cost model
+is deterministic and version-stable, not an exact Timsort comparison counter,
+wall-clock timeout, or cumulative process quota.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

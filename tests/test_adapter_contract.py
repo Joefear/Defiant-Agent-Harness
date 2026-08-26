@@ -112,6 +112,15 @@ def test_tool_call_accepts_exact_canonical_byte_bound_and_maps_next(monkeypatch)
     assert exc.value.limit_enforced == "tool_call_canonical_bytes"
 
 
+def test_tool_call_maps_canonical_mapping_sort_work_failure(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 0)
+
+    with pytest.raises(ToolCallLimitError) as exc:
+        ToolCall("tool")
+
+    assert exc.value.limit_enforced == "tool_call_mapping_sort_work_units"
+
+
 def test_tool_call_maps_canonical_number_failure(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
 

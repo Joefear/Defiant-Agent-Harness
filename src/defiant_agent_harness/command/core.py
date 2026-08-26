@@ -19,6 +19,7 @@ from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
     MAX_ACTION_HASH_MAPPING_ENTRIES,
+    MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS,
     MAX_ACTION_HASH_NESTING_DEPTH,
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
@@ -89,7 +90,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.40.0"
+SNAPSHOT_VERSION = "0.41.0"
 
 
 class CommandError(RuntimeError):
@@ -183,6 +184,9 @@ class CommandCore:
                         MAX_TOOL_CALL_IDENTIFIER_CHARACTERS
                     ),
                     "tool_call_mapping_entries": MAX_ACTION_HASH_MAPPING_ENTRIES,
+                    "tool_call_mapping_sort_work_units": (
+                        MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS
+                    ),
                     "tool_call_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
                     "tool_call_nodes": MAX_ACTION_HASH_NODES,
                     "tool_call_number_characters": (MAX_ACTION_HASH_NUMBER_CHARACTERS),
@@ -193,6 +197,9 @@ class CommandCore:
                     "tool_call_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_mapping_entries": MAX_ACTION_HASH_MAPPING_ENTRIES,
+                    "action_hash_mapping_sort_work_units": (
+                        MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS
+                    ),
                     "action_hash_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
                     "action_hash_nodes": MAX_ACTION_HASH_NODES,
                     "action_hash_number_characters": (
@@ -223,6 +230,9 @@ class CommandCore:
                     ),
                     "tool_result_output_mapping_entries": (
                         MAX_ACTION_HASH_MAPPING_ENTRIES
+                    ),
+                    "tool_result_output_mapping_sort_work_units": (
+                        MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS
                     ),
                     "durable_json_bytes": MAX_DURABLE_JSON_BYTES,
                     "evidence_export_bytes": MAX_EVIDENCE_EXPORT_BYTES,
@@ -298,6 +308,7 @@ class CommandCore:
                     "canonical_string_preflight": True,
                     "canonical_value_preflight": True,
                     "canonical_mapping_preflight": True,
+                    "canonical_mapping_sort_preflight": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

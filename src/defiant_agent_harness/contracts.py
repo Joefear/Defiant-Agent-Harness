@@ -26,6 +26,7 @@ from typing import Any, Iterable
 from .limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
     MAX_ACTION_HASH_MAPPING_ENTRIES,
+    MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS,
     MAX_ACTION_HASH_NESTING_DEPTH,
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
@@ -765,6 +766,7 @@ def _validate_action_hash_structure(obj: Any) -> None:
 
     nodes = 0
     canonical_bytes = 0
+    mapping_sort_work = 0
     active_containers: set[int] = set()
 
     def claim_node(depth: int) -> None:
@@ -789,33 +791,50 @@ def _validate_action_hash_structure(obj: Any) -> None:
             _raise_action_hash_canonical_limit()
         canonical_bytes += width
 
-    def visit_key(value: Any, depth: int) -> None:
+    def consume_mapping_sort_work(width: int, rounds: int) -> None:
+        nonlocal mapping_sort_work
+        if not rounds:
+            return
+        remaining = MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS - mapping_sort_work
+        if width > remaining // rounds:
+            raise ActionHashLimitError(
+                "action hash mapping sort work exceeds maximum of "
+                f"{MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS} units",
+                limit_enforced="action_hash_mapping_sort_work_units",
+            )
+        mapping_sort_work += width * rounds
+
+    def visit_key(value: Any, depth: int) -> int:
         claim_node(depth)
         if isinstance(value, enum.Enum):
-            visit_key(value.value, depth)
-            return
+            return visit_key(value.value, depth)
         if isinstance(value, Decimal):
-            consume(_validate_action_hash_string_token(_bounded_money_text(value)))
-            return
+            width = _validate_action_hash_string_token(_bounded_money_text(value))
+            consume(width)
+            return width
         if isinstance(value, str):
-            consume(_validate_action_hash_scalar(value))
-            return
+            width = _validate_action_hash_scalar(value)
+            consume(width)
+            return width
         if isinstance(value, bool):
-            consume(6 if value else 7)
-            return
+            width = 6 if value else 7
+            consume(width)
+            return width
         if value is None:
             consume(6)
-            return
+            return 6
         if isinstance(value, int):
-            consume(_validate_action_hash_integer(value) + 2)
-            return
+            width = _validate_action_hash_integer(value) + 2
+            consume(width)
+            return width
         if isinstance(value, float):
             if not math.isfinite(value):
                 raise ValueError("action hash input contains a non-finite number")
             text = float.__repr__(value)
             _validate_action_hash_number_text(text)
-            consume(len(text) + 2)
-            return
+            width = len(text) + 2
+            consume(width)
+            return width
         _action_hash_default(value)
 
     def visit(value: Any, depth: int) -> None:
@@ -846,12 +865,14 @@ def _validate_action_hash_structure(obj: Any) -> None:
             consume(len(text))
             return
         if isinstance(value, dict):
-            if dict.__len__(value) > MAX_ACTION_HASH_MAPPING_ENTRIES:
+            entry_count = dict.__len__(value)
+            if entry_count > MAX_ACTION_HASH_MAPPING_ENTRIES:
                 raise ActionHashLimitError(
                     "action hash mapping exceeds maximum entry count of "
                     f"{MAX_ACTION_HASH_MAPPING_ENTRIES}",
                     limit_enforced="action_hash_mapping_entries",
                 )
+            sort_rounds = (entry_count - 1).bit_length()
             marker = id(value)
             if marker in active_containers:
                 raise ValueError("action hash input contains a cyclic container")
@@ -863,7 +884,8 @@ def _validate_action_hash_structure(obj: Any) -> None:
                         consume(1)
                     # Keys are part of the canonical surface even though JSON's
                     # encoder visits them differently from mapping values.
-                    visit_key(key, depth + 1)
+                    key_width = visit_key(key, depth + 1)
+                    consume_mapping_sort_work(key_width, sort_rounds)
                     consume(1)
                     visit(child, depth + 1)
             finally:
