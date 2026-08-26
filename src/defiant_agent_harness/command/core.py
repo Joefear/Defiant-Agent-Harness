@@ -31,8 +31,12 @@ from ..limits import (
     MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES,
     MAX_MCP_MESSAGE_BYTES,
     MAX_POLICY_KNOWN_TOOLS,
+    MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
+    MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH,
+    MAX_POLICY_MATCH_PAYLOAD_NODES,
     MAX_POLICY_PACK_BYTES,
     MAX_POLICY_PACKS,
+    MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS,
     MAX_POLICY_RULE_FIELD_ITEMS,
     MAX_POLICY_RULE_LIST_ITEMS,
     MAX_POLICY_RULES,
@@ -64,7 +68,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.30.0"
+SNAPSHOT_VERSION = "0.31.0"
 
 
 class CommandError(RuntimeError):
@@ -176,6 +180,16 @@ class CommandCore:
                     "policy_rule_list_items": MAX_POLICY_RULE_LIST_ITEMS,
                     "policy_text_item_characters": (MAX_POLICY_TEXT_ITEM_CHARACTERS),
                     "policy_text_characters": MAX_POLICY_TEXT_CHARACTERS,
+                    "policy_match_payload_nesting_depth": (
+                        MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH
+                    ),
+                    "policy_match_payload_nodes": MAX_POLICY_MATCH_PAYLOAD_NODES,
+                    "policy_match_payload_characters": (
+                        MAX_POLICY_MATCH_PAYLOAD_CHARACTERS
+                    ),
+                    "policy_payload_match_work_units": (
+                        MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS
+                    ),
                     "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
                     "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
                     "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -189,6 +203,7 @@ class CommandCore:
                     "json_scalar_preflight": True,
                     "mcp_collection_preflight": True,
                     "policy_text_preflight": True,
+                    "policy_payload_match_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

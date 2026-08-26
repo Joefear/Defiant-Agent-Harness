@@ -254,6 +254,231 @@ def test_ruleset_hash_includes_authoritative_tool_contract():
     assert first.ruleset_hash != changed.ruleset_hash
 
 
+# -- governed payload matching limits ---------------------------------------
+
+
+def payload_engine(*rules):
+    return PolicyEngine(
+        [
+            {
+                "version": "payload-test",
+                "known_tools": ["inspect"],
+                "rules": list(rules),
+            }
+        ]
+    )
+
+
+def test_payload_text_is_materialized_once_for_all_matching_rules(monkeypatch):
+    engine = payload_engine(
+        {"id": "first", "payload_contains": ["absent"], "effect": "allow"},
+        {"id": "second", "payload_contains": ["needle"], "effect": "block"},
+    )
+    original = policy_engine_module._bounded_payload_text
+    calls = 0
+
+    def counted(payload):
+        nonlocal calls
+        calls += 1
+        return original(payload)
+
+    monkeypatch.setattr(policy_engine_module, "_bounded_payload_text", counted)
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "needle"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["second"]
+    assert calls == 1
+
+
+def test_payload_text_exact_character_boundary_preserves_matching(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_CHARACTERS", 5)
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["bcd"], "effect": "block"}
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "ABCDE"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["contains"]
+
+
+def test_oversized_payload_text_fails_closed_without_disclosure(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_CHARACTERS", 5)
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["never"], "effect": "allow"}
+    )
+
+    decision = engine.evaluate(act("inspect", "private-target", {"value": "SECRET"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "maximum of 5 characters" in decision.reason
+    assert "SECRET" not in decision.reason
+    assert "SECRET" not in repr(decision.decision_inputs)
+    assert "private-target" not in repr(decision.decision_inputs)
+    assert decision.decision_inputs["limit_enforced"] == "policy_payload_matching"
+
+
+def test_payload_node_limit_fails_closed_before_scalar_conversion(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_NODES", 2)
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["never"], "effect": "allow"}
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"outer": ["PRIVATE-SCALAR"]}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "node count exceeds maximum of 2" in decision.reason
+    assert "PRIVATE-SCALAR" not in repr(decision.to_dict())
+
+
+def test_payload_nesting_limit_fails_closed(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH", 2
+    )
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["never"], "effect": "allow"}
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"outer": ["PRIVATE"]}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "nesting exceeds maximum depth of 2" in decision.reason
+    assert "PRIVATE" not in repr(decision.to_dict())
+
+
+def test_payload_structural_exact_boundaries_are_accepted(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH", 3
+    )
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_NODES", 3)
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["needle"], "effect": "block"}
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"outer": ["needle"]}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["contains"]
+
+
+def test_payload_substring_work_is_bounded_across_rules(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS", 9)
+    engine = payload_engine(
+        {"id": "first", "payload_contains": ["x"], "effect": "allow"},
+        {"id": "second", "payload_contains": ["y"], "effect": "allow"},
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "abcd"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "substring work exceeds maximum of 9 units" in decision.reason
+
+
+def test_payload_substring_work_exact_boundary_is_accepted(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS", 10)
+    engine = payload_engine(
+        {"id": "first", "payload_contains": ["x"], "effect": "block"},
+        {"id": "second", "payload_contains": ["y"], "effect": "block"},
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "abcd"}))
+
+    assert decision.decision is Decision.ALLOW
+    assert decision.policy_ids == ["default_deny"]
+
+
+def test_payload_without_substring_rules_is_not_materialized(monkeypatch):
+    engine = payload_engine({"id": "allow", "tools": ["inspect"], "effect": "allow"})
+
+    def unexpected_materialization(_payload):
+        raise AssertionError("payload was materialized without substring rules")
+
+    monkeypatch.setattr(
+        policy_engine_module, "_bounded_payload_text", unexpected_materialization
+    )
+
+    assert (
+        engine.evaluate(act("inspect", "record", {"value": "anything"})).decision
+        is Decision.ALLOW
+    )
+
+
+def test_payload_for_unrelated_substring_rule_is_not_materialized(monkeypatch):
+    engine = payload_engine(
+        {
+            "id": "other-tool",
+            "tools": ["other"],
+            "payload_contains": ["needle"],
+            "effect": "block",
+        },
+        {"id": "allow", "tools": ["inspect"], "effect": "allow"},
+    )
+
+    def unexpected_materialization(_payload):
+        raise AssertionError("payload was materialized for an inapplicable rule")
+
+    monkeypatch.setattr(
+        policy_engine_module, "_bounded_payload_text", unexpected_materialization
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "ordinary payload"}))
+
+    assert decision.decision is Decision.ALLOW
+
+
+def test_unknown_tool_is_refused_before_payload_materialization(monkeypatch):
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["needle"], "effect": "block"}
+    )
+
+    def unexpected_materialization(_payload):
+        raise AssertionError("unknown-tool refusal traversed the payload")
+
+    monkeypatch.setattr(
+        policy_engine_module, "_bounded_payload_text", unexpected_materialization
+    )
+
+    decision = engine.evaluate(act("unclassified", "record", {"value": "anything"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["unknown_tool"]
+
+
+def test_payload_flattening_preserves_nested_empty_separator_semantics():
+    engine = payload_engine(
+        {
+            "id": "separator",
+            "payload_contains": [" needle"],
+            "effect": "block",
+        }
+    )
+
+    decision = engine.evaluate(
+        act("inspect", "record", {"empty": [], "value": "needle"})
+    )
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["separator"]
+
+
+def test_case_normalization_expansion_is_included_in_character_limit(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_CHARACTERS", 1)
+    engine = payload_engine(
+        {"id": "contains", "payload_contains": ["i"], "effect": "allow"}
+    )
+
+    decision = engine.evaluate(act("inspect", "record", {"value": "\u0130"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "normalized policy match payload text" in decision.reason
+
+
 def test_duplicate_rule_ids_are_rejected():
     pack = {
         "version": "test",

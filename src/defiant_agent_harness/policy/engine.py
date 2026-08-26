@@ -33,8 +33,12 @@ from ..contracts import (
 )
 from ..limits import (
     MAX_POLICY_KNOWN_TOOLS,
+    MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
+    MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH,
+    MAX_POLICY_MATCH_PAYLOAD_NODES,
     MAX_POLICY_PACK_BYTES,
     MAX_POLICY_PACKS,
+    MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS,
     MAX_POLICY_RULE_FIELD_ITEMS,
     MAX_POLICY_RULE_LIST_ITEMS,
     MAX_POLICY_RULES,
@@ -67,6 +71,10 @@ _RULE_TEXT_FIELDS = (
 
 class PolicyError(ValueError):
     """Policy configuration is unreadable, ambiguous, or invalid."""
+
+
+class PolicyMatchLimitError(RuntimeError):
+    """A governed action exceeded deterministic policy-matching ceilings."""
 
 
 @dataclass(frozen=True)
@@ -115,7 +123,41 @@ class Rule:
             ):
                 raise ValueError(f"policy rule {self.id}: {field_name} must be strings")
 
-    def matches(self, action: ProposedAction, context: dict) -> bool:
+    def matches(
+        self,
+        action: ProposedAction,
+        context: dict,
+        *,
+        payload_text: str = "",
+        payload_match_budget: _PayloadMatchBudget | None = None,
+    ) -> bool:
+        if not self.matches_payload_prefix(action):
+            return False
+        if self.payload_contains:
+            if payload_match_budget is None:
+                raise PolicyMatchLimitError(
+                    "payload substring matching requires bounded evaluation state"
+                )
+            found = False
+            for term in self.payload_contains:
+                lowered_term = term.lower()
+                payload_match_budget.charge(len(payload_text) + len(lowered_term))
+                if lowered_term in payload_text:
+                    found = True
+                    break
+            if not found:
+                return False
+        if self.max_payload_trust is not None:
+            allowed = Trust(self.max_payload_trust)
+            if not _trust_satisfies(action.payload_trust, allowed):
+                return False
+        if self.sensitivities:
+            if str(context.get("sensitivity", "")) not in self.sensitivities:
+                return False
+        return True
+
+    def matches_payload_prefix(self, action: ProposedAction) -> bool:
+        """Whether evaluation reaches this rule's payload condition."""
         if self.tools and not any(
             fnmatch.fnmatch(action.tool_name, p) for p in self.tools
         ):
@@ -128,17 +170,6 @@ class Rule:
             fnmatch.fnmatch(action.target, p) for p in self.targets
         ):
             return False
-        if self.payload_contains:
-            blob = _payload_text(action.payload).lower()
-            if not any(term.lower() in blob for term in self.payload_contains):
-                return False
-        if self.max_payload_trust is not None:
-            allowed = Trust(self.max_payload_trust)
-            if not _trust_satisfies(action.payload_trust, allowed):
-                return False
-        if self.sensitivities:
-            if str(context.get("sensitivity", "")) not in self.sensitivities:
-                return False
         return True
 
 
@@ -150,12 +181,91 @@ def _trust_satisfies(actual: Trust, required_max: Trust) -> bool:
     return _TRUST_RANK[actual] > _TRUST_RANK[required_max]
 
 
-def _payload_text(payload: Any) -> str:
-    if isinstance(payload, dict):
-        return " ".join(_payload_text(v) for v in payload.values())
-    if isinstance(payload, (list, tuple)):
-        return " ".join(_payload_text(v) for v in payload)
-    return str(payload)
+@dataclass
+class _PayloadMatchBudget:
+    used: int = 0
+
+    def charge(self, units: int) -> None:
+        if units > MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS - self.used:
+            raise PolicyMatchLimitError(
+                "policy payload substring work exceeds maximum of "
+                f"{MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS} units"
+            )
+        self.used += units
+
+
+def _bounded_payload_text(payload: Any) -> str:
+    """Flatten payload values once while preserving legacy join semantics."""
+
+    parts: list[str] = []
+    character_count = 0
+    node_count = 0
+
+    def append(value: str) -> None:
+        nonlocal character_count
+        if len(value) > MAX_POLICY_MATCH_PAYLOAD_CHARACTERS - character_count:
+            raise PolicyMatchLimitError(
+                "policy match payload text exceeds maximum of "
+                f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters"
+            )
+        parts.append(value)
+        character_count += len(value)
+
+    def visit(value: Any, depth: int) -> None:
+        nonlocal node_count
+        if depth > MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH:
+            raise PolicyMatchLimitError(
+                "policy match payload nesting exceeds maximum depth of "
+                f"{MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH}"
+            )
+        node_count += 1
+        if node_count > MAX_POLICY_MATCH_PAYLOAD_NODES:
+            raise PolicyMatchLimitError(
+                "policy match payload node count exceeds maximum of "
+                f"{MAX_POLICY_MATCH_PAYLOAD_NODES}"
+            )
+        if isinstance(value, dict):
+            for index, child in enumerate(value.values()):
+                if index:
+                    append(" ")
+                visit(child, depth + 1)
+            return
+        if isinstance(value, (list, tuple)):
+            for index, child in enumerate(value):
+                if index:
+                    append(" ")
+                visit(child, depth + 1)
+            return
+        append(str(value))
+
+    visit(payload, 1)
+    lowered = "".join(parts).lower()
+    if len(lowered) > MAX_POLICY_MATCH_PAYLOAD_CHARACTERS:
+        raise PolicyMatchLimitError(
+            "normalized policy match payload text exceeds maximum of "
+            f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters"
+        )
+    return lowered
+
+
+def _policy_match_limit_decision(
+    error: PolicyMatchLimitError,
+    engine: PolicyEngine,
+    action: ProposedAction,
+) -> GuardrailDecision:
+    return GuardrailDecision(
+        decision=Decision.BLOCK,
+        reason=str(error),
+        policy_ids=["policy_match_limit"],
+        policy_version=engine.version,
+        ruleset_hash=engine.ruleset_hash,
+        decision_inputs={
+            "tool_name": action.tool_name,
+            "side_effect_level": action.side_effect_level.value,
+            "policy_name": engine.name,
+            "limit_enforced": "policy_payload_matching",
+        },
+    )
 
 
 def _validate_policy_complexity(packs: list[dict]) -> None:
@@ -431,7 +541,27 @@ class PolicyEngine:
                 },
             )
 
-        matched = [r for r in self.rules if r.matches(action, context)]
+        try:
+            payload_rules_present = any(
+                rule.payload_contains and rule.matches_payload_prefix(action)
+                for rule in self.rules
+            )
+            payload_text = (
+                _bounded_payload_text(action.payload) if payload_rules_present else ""
+            )
+            payload_match_budget = _PayloadMatchBudget()
+            matched = [
+                rule
+                for rule in self.rules
+                if rule.matches(
+                    action,
+                    context,
+                    payload_text=payload_text,
+                    payload_match_budget=payload_match_budget,
+                )
+            ]
+        except PolicyMatchLimitError as exc:
+            return _policy_match_limit_decision(exc, self, action)
 
         if matched:
             worst = max(matched, key=lambda r: _SEVERITY[Decision(r.effect)])

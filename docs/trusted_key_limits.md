@@ -43,7 +43,7 @@ boundary already applies.
 
 ## Read-only projection
 
-Command Core schema `0.30.0` exposes the three fixed ceilings under
+Command Core schema `0.31.0` exposes the three fixed ceilings under
 `resource_limits`. Command Center renders them with the existing static parser
 and ingestion posture. Neither surface accepts keys, uploads PEM, edits a trust
 set, enrolls or rotates trust, verifies an export on behalf of the browser, or

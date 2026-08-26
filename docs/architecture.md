@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.36
+## What is deliberately absent from v0.37
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -614,6 +614,15 @@ rule construction, normalization, authority hashing, or action evaluation.
 Command Core and Command Center expose only the static limits. See
 `policy_text_limits.md`.
 
+v0.37 bounds governed-action payload substring matching. When any loaded rule
+uses `payload_contains`, the engine flattens and case-normalizes the payload
+once, preserving the existing value-order and separator semantics. The shared
+view is capped at 64 levels, 100,000 nodes, and 1,048,576 characters; substring
+tests share 67,108,864 deterministic work units across the decision. Any breach
+returns a sanitized `policy_match_limit` block through the normal evidence
+path. Command Core and Command Center expose only the fixed static posture. See
+`policy_payload_matching_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -621,6 +630,9 @@ Command Core and Command Center expose only the static limits. See
   directory must be access-controlled and is not suitable for evidence export.
 - **Evidence is append-only by convention at the filesystem layer.** Anyone with write access to the file can truncate it; the chain makes alteration and deletion *detectable*, not impossible. Off-box replication is the answer, and it belongs to Command.
 - **Deterministic phrase matching is bypassable by paraphrase.** See above.
+- **Glob and hashing work remain separately bounded deployment concerns.**
+  v0.37 bounds payload materialization and substring searches, not tool/target
+  glob evaluation or action payload hashing.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
 - **MCP has no standard actual-cost field.** The proxy settles successful paid
   calls at the conservative configured estimate unless a later adapter can

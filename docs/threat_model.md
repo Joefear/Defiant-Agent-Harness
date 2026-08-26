@@ -453,6 +453,23 @@ matcher budget, prove policy correctness, or contain a compromised host.
 Adversarial policy tests, deployment review, monitoring, and OS resource
 controls remain necessary.
 
+### 29. Governed payload substring amplification
+
+A valid action can carry deeply nested, node-heavy, or long payload values.
+Before v0.37, every applicable `payload_contains` rule independently flattened
+and normalized that payload, multiplying allocation and search work by the
+number of rules even though policy authority itself was bounded.
+
+v0.37 constructs one shared searchable view per decision and caps its depth at
+64, nodes at 100,000, and normalized text at 1,048,576 characters. Individual
+substring tests consume a shared 67,108,864-unit budget. A breach fails closed
+as `policy_match_limit`, records sanitized blocked evidence, and never creates
+an approval or invokes the tool.
+
+This does not bound action hashing, tool/target glob work, process-wide
+resources, or a compromised host. Those remain separate deployment and future
+hardening concerns.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

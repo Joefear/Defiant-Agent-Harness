@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.36.
+logs. A full trusted-memory/DKE system is not part of v0.37.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.36 is
+## What v0.37 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -351,6 +351,13 @@ pattern, term, or redaction may contain at most 4,096 constructed characters,
 and one complete loaded ruleset may contain at most 8,388,608. Duplicates and
 the synthetic registry tool pack count as supplied. Command Core and the
 strictly read-only Command Center expose only the fixed ceilings and posture.
+
+v0.37 bounds governed payload substring matching. A payload is flattened and
+case-normalized once per decision, with fixed ceilings of 64 levels, 100,000
+nodes, and 1 MiB of searchable text. All `payload_contains` tests share a
+64 MiB aggregate work budget. Exceeding any ceiling fails closed with sanitized
+blocked evidence and no execution or approval. Command Core and the strictly
+read-only Command Center expose only the fixed ceilings and posture.
 
 ## Install
 
@@ -687,7 +694,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.36 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.37 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -720,6 +727,8 @@ fixed trusted-public-key count, per-key, and aggregate key-set ceilings,
 fixed complete-policy pack, rule, known-tool, per-field, and aggregate-list
 complexity ceilings,
 fixed per-item and complete-ruleset policy text ceilings,
+fixed single-pass governed-payload depth, node, text, and aggregate substring
+matching ceilings,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct
@@ -745,6 +754,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/trusted_key_limits.md`,
 `docs/policy_complexity_limits.md`,
 `docs/policy_text_limits.md`,
+`docs/policy_payload_matching_limits.md`,
 `docs/yaml_structural_limits.md`,
 `docs/mcp_configuration_limits.md`,
 `docs/state_integrity.md`,

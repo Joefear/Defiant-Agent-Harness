@@ -61,3 +61,11 @@ MAX_POLICY_RULE_LIST_ITEMS = 65_536
 # synthetic registry pack, before Rule construction or authority hashing.
 MAX_POLICY_TEXT_ITEM_CHARACTERS = 4_096
 MAX_POLICY_TEXT_CHARACTERS = 8 * MIB
+
+# Payload substring rules operate on a flattened, case-normalized view of the
+# governed action. Bound that one-time materialization and the aggregate search
+# work across every applicable rule in one policy decision.
+MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH = 64
+MAX_POLICY_MATCH_PAYLOAD_NODES = 100_000
+MAX_POLICY_MATCH_PAYLOAD_CHARACTERS = 1 * MIB
+MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS = 64 * MIB
