@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.43.
+logs. A full trusted-memory/DKE system is not part of v0.44.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.43 is
+## What v0.44 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -413,6 +413,16 @@ rendering can allocate their expanded form. Existing accepted hashes remain unch
 Command Core and the strictly read-only Command Center expose only the fixed
 ceiling and fail-closed posture.
 
+v0.44 closes the corresponding canonical-string expansion gap. A direct
+in-memory string may satisfy the character ceiling yet expand beyond the
+complete canonical byte ceiling when JSON escapes control, non-ASCII, or
+non-BMP code points. Defiant now counts the exact escaped token width before
+calling the encoder, rejects an impossible token without materializing it, and
+preserves every previously accepted canonical hash. Tool calls, action
+fingerprints, and tool-result output share this protection. Command Core and
+the strictly read-only Command Center expose only the fixed ceiling and
+fail-closed posture.
+
 ## Install
 
 ```bash
@@ -748,7 +758,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.43 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.44 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -785,6 +795,7 @@ fixed single-pass governed-payload depth, node, text, and aggregate substring
 matching ceilings,
 fixed lazy tool-name/target glob-subject and decision-wide glob-work ceilings,
 fixed bounded canonical action fingerprints with a final live capability check,
+fixed pre-render canonical-string token byte ceilings,
 fixed pre-encoding canonical-number token ceilings,
 fixed governed-request and provenance metadata complexity ceilings,
 fixed bounded and sealed pre-adapter tool-call translation,
@@ -817,6 +828,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/policy_payload_matching_limits.md`,
 `docs/policy_glob_matching_limits.md`,
 `docs/action_hashing_limits.md`,
+`docs/canonical_string_limits.md`,
 `docs/canonical_number_limits.md`,
 `docs/governed_request_limits.md`,
 `docs/tool_call_limits.md`,

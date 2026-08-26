@@ -628,6 +628,16 @@ metadata before expansion.
 Non-finite floats remain refused. This bounds rendering at Defiant's canonical
 boundary, not arithmetic performed earlier or cumulative process resources.
 
+**Canonical JSON string escape expansion.** Strict transport ceilings and the
+shared scalar-character ceiling bound source values, but before v0.44 one
+8,388,608-character in-memory string could still expand beyond the complete
+67,108,864-byte canonical ceiling when `ensure_ascii` emitted paired escapes
+for non-BMP code points. The streaming byte counter refused the value only
+after Python materialized that expanded token. v0.44 counts the exact canonical
+token width without rendering it and fails closed before the encoder. This is
+a per-token allocation defense, not a cumulative CPU/memory quota or process
+sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

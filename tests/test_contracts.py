@@ -324,6 +324,48 @@ def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     assert "secret" not in str(exc.value)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "plain ASCII",
+        'quote " and backslash \\',
+        "line\nbreak",
+        "\x00\x1f\x7f",
+        "café",
+        "😀",
+    ],
+)
+def test_action_hash_string_preflight_preserves_canonical_hashes(value, monkeypatch):
+    exact = len(canonical_json(value).encode("utf-8"))
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", exact)
+
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(
+        contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", exact - 1
+    )
+    with pytest.raises(ActionHashLimitError, match="canonical string token") as exc:
+        action_sha256_of(value)
+    assert exc.value.limit_enforced == "action_hash_string_token_bytes"
+
+
+def test_action_hash_rejects_expanded_string_before_encoder(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", 13)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive oversized string")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of("😀secret")
+
+    assert exc.value.limit_enforced == "action_hash_string_token_bytes"
+    assert "secret" not in str(exc.value)
+
+
 def test_action_hash_accepts_exact_integer_tokens_and_rejects_next(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
 

@@ -22,6 +22,7 @@ from ..limits import (
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
+    MAX_ACTION_HASH_STRING_TOKEN_BYTES,
     MAX_DURABLE_JSON_BYTES,
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
@@ -87,7 +88,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.37.0"
+SNAPSHOT_VERSION = "0.38.0"
 
 
 class CommandError(RuntimeError):
@@ -184,6 +185,9 @@ class CommandCore:
                     "tool_call_nodes": MAX_ACTION_HASH_NODES,
                     "tool_call_number_characters": (MAX_ACTION_HASH_NUMBER_CHARACTERS),
                     "tool_call_scalar_characters": (MAX_ACTION_HASH_SCALAR_CHARACTERS),
+                    "tool_call_string_token_bytes": (
+                        MAX_ACTION_HASH_STRING_TOKEN_BYTES
+                    ),
                     "tool_call_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
@@ -193,6 +197,9 @@ class CommandCore:
                     ),
                     "action_hash_scalar_characters": (
                         MAX_ACTION_HASH_SCALAR_CHARACTERS
+                    ),
+                    "action_hash_string_token_bytes": (
+                        MAX_ACTION_HASH_STRING_TOKEN_BYTES
                     ),
                     "tool_result_summary_characters": (
                         MAX_TOOL_RESULT_SUMMARY_CHARACTERS
@@ -204,6 +211,9 @@ class CommandCore:
                     ),
                     "tool_result_output_scalar_characters": (
                         MAX_ACTION_HASH_SCALAR_CHARACTERS
+                    ),
+                    "tool_result_output_string_token_bytes": (
+                        MAX_ACTION_HASH_STRING_TOKEN_BYTES
                     ),
                     "tool_result_output_canonical_bytes": (
                         MAX_ACTION_HASH_CANONICAL_BYTES
@@ -279,6 +289,7 @@ class CommandCore:
                     "policy_glob_match_preflight": True,
                     "action_hash_preflight": True,
                     "canonical_number_preflight": True,
+                    "canonical_string_preflight": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

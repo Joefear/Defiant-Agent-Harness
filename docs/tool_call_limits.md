@@ -16,6 +16,7 @@ One accepted call allows at most:
 - 64 nested mappings or sequences across the complete call surface;
 - 1,100,000 nodes, including mapping keys;
 - 8,388,608 characters in one string;
+- 67,108,864 bytes in one escaped canonical string token;
 - 1,024 characters in one canonical integer, float, or decimal token; and
 - 67,108,864 canonical UTF-8 bytes across the name, identifiers, arguments,
   and transport parameters together.
@@ -48,11 +49,12 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.37.0` publishes tool-call-specific name, identifier,
-depth, node, string, number, and canonical-byte ceilings under `resource_limits` and
-reports `tool_call_contract_preflight: true`. Command Center renders only that
-static posture. Neither surface can submit a call, alter a ceiling, approve,
-reconcile, or execute.
+Command Core schema `0.38.0` publishes tool-call-specific name, identifier,
+depth, node, string-character, escaped-string-token, number, and canonical-byte
+ceilings under `resource_limits` and reports
+`tool_call_contract_preflight: true`. Command Center renders only that static
+posture. Neither surface can submit a call, alter a ceiling, approve, reconcile,
+or execute.
 
 ## Limits of the control
 

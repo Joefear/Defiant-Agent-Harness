@@ -127,6 +127,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"tool_call_nodes" in javascript
     assert b"tool_call_number_characters" in javascript
     assert b"tool_call_scalar_characters" in javascript
+    assert b"tool_call_string_token_bytes" in javascript
     assert b"tool_call_canonical_bytes" in javascript
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
@@ -155,11 +156,13 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"action_hash_nodes" in javascript
     assert b"action_hash_number_characters" in javascript
     assert b"action_hash_scalar_characters" in javascript
+    assert b"action_hash_string_token_bytes" in javascript
     assert b"tool_result_summary_characters" in javascript
     assert b"tool_result_output_nesting_depth" in javascript
     assert b"tool_result_output_nodes" in javascript
     assert b"tool_result_output_number_characters" in javascript
     assert b"tool_result_output_scalar_characters" in javascript
+    assert b"tool_result_output_string_token_bytes" in javascript
     assert b"tool_result_output_canonical_bytes" in javascript
     assert b"request_task_characters" in javascript
     assert b"request_identifier_characters" in javascript
@@ -170,7 +173,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"provenance_text_item_characters" in javascript
     assert b"provenance_text_characters" in javascript
     assert (
-        b"canonical numbers, governed request construction, tool-call translation, "
+        b"canonical strings and numbers, governed request construction, "
+        b"tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "
         b"payload matching, and glob matching bounded "

@@ -115,6 +115,16 @@ def test_tool_call_maps_canonical_number_failure(monkeypatch):
     assert exc.value.limit_enforced == "tool_call_number_characters"
 
 
+def test_tool_call_maps_canonical_string_token_failure(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", 20)
+
+    ToolCall("t", arguments={"value": "😀"})
+    with pytest.raises(ToolCallLimitError) as exc:
+        ToolCall("t", arguments={"value": "😀😀"})
+
+    assert exc.value.limit_enforced == "tool_call_string_token_bytes"
+
+
 def test_tool_call_rejects_cycles_without_echoing_content():
     arguments: dict = {}
     arguments["secret-key"] = arguments

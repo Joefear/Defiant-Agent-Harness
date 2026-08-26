@@ -264,6 +264,16 @@ def test_tool_result_maps_canonical_number_failure(monkeypatch):
     assert exc.value.limit_enforced == "tool_result_output_number_characters"
 
 
+def test_tool_result_maps_canonical_string_token_failure(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", 8)
+
+    ToolResult(status="succeeded", summary="accepted", output="é")
+    with pytest.raises(ToolResultLimitError) as exc:
+        ToolResult(status="succeeded", summary="refused", output="😀")
+
+    assert exc.value.limit_enforced == "tool_result_output_string_token_bytes"
+
+
 @pytest.mark.parametrize(
     ("constant", "maximum", "exact", "beyond", "limit_enforced"),
     [

@@ -42,7 +42,7 @@ previously accepted value remains byte-for-byte unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.37.0` publishes
+Command Core schema `0.38.0` publishes
 `action_hash_number_characters`, `tool_call_number_characters`, and
 `tool_result_output_number_characters` under `resource_limits`, plus
 `canonical_number_preflight: true`. Command Center renders only this static
@@ -57,3 +57,6 @@ many accepted values, process memory, CPU time, or hostile Python already
 running inside the harness process.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.44 separately preflights canonical string escape expansion. See
+`canonical_string_limits.md`.

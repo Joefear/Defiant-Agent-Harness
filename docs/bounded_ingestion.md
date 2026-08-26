@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.37.0` projects them under `resource_limits`, and Command Center only
+schema `0.38.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.40 applies the same fail-closed discipline to governed request construction.
@@ -44,6 +44,11 @@ detached, hashed, sealed, and checked again after adapter translation. See
 v0.43 separately bounds in-memory canonical numeric tokens before JSON
 encoding, including non-rendering preflight for large integers and
 large-exponent decimals. See [Canonical number limits](canonical_number_limits.md).
+
+v0.44 preflights the exact escaped byte width of each in-memory canonical JSON
+string before encoding, preventing a rejected control, non-ASCII, or non-BMP
+value from first materializing an oversized token. See
+[Canonical string limits](canonical_string_limits.md).
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
 both MCP configuration and policy packs. It rejects aliases and duplicate

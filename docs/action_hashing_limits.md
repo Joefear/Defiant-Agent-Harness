@@ -12,6 +12,7 @@ Each action-controlled fingerprint accepts at most:
 - 64 levels of mapping/sequence/scalar nesting;
 - 1,100,000 visited nodes, including mapping keys;
 - 8,388,608 characters in any one string;
+- 67,108,864 bytes in any one escaped canonical string token;
 - 1,024 characters in any canonical integer, float, or decimal token; and
 - 67,108,864 bytes of canonical JSON consumed by SHA-256.
 
@@ -47,7 +48,7 @@ that cannot be fingerprinted exactly.
 
 ## Read-only projection
 
-Command Core schema `0.37.0` publishes the fixed ceilings under
+Command Core schema `0.38.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -73,5 +74,9 @@ surface and publishes tool-call-specific aliases. See `tool_call_limits.md`.
 
 v0.43 adds the shared pre-encoding numeric-token ceiling while preserving every
 previously accepted canonical hash. See `canonical_number_limits.md`.
+
+v0.44 adds exact pre-render escaped-string token accounting. A string that
+cannot fit the complete canonical byte ceiling is refused before the JSON
+encoder materializes it. See `canonical_string_limits.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

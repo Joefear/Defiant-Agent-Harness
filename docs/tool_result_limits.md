@@ -15,6 +15,7 @@ One accepted `ToolResult` allows at most:
 - 64 nested output mappings or sequences;
 - 1,100,000 output nodes;
 - 8,388,608 characters in one output string;
+- 67,108,864 bytes in one escaped canonical output string token;
 - 1,024 characters in one canonical integer, float, or decimal token; and
 - 67,108,864 canonical UTF-8 bytes across the complete output.
 
@@ -46,7 +47,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.37.0` publishes the summary and output ceilings under
+Command Core schema `0.38.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a
