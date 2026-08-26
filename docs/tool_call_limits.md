@@ -28,6 +28,10 @@ numbers, and values outside a fixed ceiling are refused. Exact limits are
 accepted. Diagnostics identify the contract or ceiling class without echoing
 call content.
 
+The complete canonical byte total is calculated before mapping-key sorting or
+JSON encoding. The streaming hash counter independently enforces the same
+ceiling after preflight.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
@@ -49,7 +53,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.38.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.39.0` publishes tool-call-specific name, identifier,
 depth, node, string-character, escaped-string-token, number, and canonical-byte
 ceilings under `resource_limits` and reports
 `tool_call_contract_preflight: true`. Command Center renders only that static

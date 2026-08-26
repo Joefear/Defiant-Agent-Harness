@@ -46,9 +46,14 @@ before an action is accepted. No policy decision, approval, reservation, grant,
 evidence claim about an exact payload, or tool execution is produced for input
 that cannot be fingerprinted exactly.
 
+v0.45 calculates the complete encoded byte length during that structural
+preflight, including container syntax and mapping-key representation. A value
+that cannot fit is refused before mapping-key sorting or JSON encoding begins;
+the streaming counter remains a second check.
+
 ## Read-only projection
 
-Command Core schema `0.38.0` publishes the fixed ceilings under
+Command Core schema `0.39.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -78,5 +83,8 @@ previously accepted canonical hash. See `canonical_number_limits.md`.
 v0.44 adds exact pre-render escaped-string token accounting. A string that
 cannot fit the complete canonical byte ceiling is refused before the JSON
 encoder materializes it. See `canonical_string_limits.md`.
+
+v0.45 moves the complete canonical-byte ceiling into preflight without changing
+the limit or accepted hashes. See `canonical_value_preflight.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

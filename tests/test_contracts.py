@@ -274,6 +274,10 @@ def test_decimal_serialization_is_stable_and_string_safe():
         {"amount": Decimal("0.1000")},
         {"effect": SideEffect.EXTERNAL_SEND},
         ("tuple", {"nested": "value"}),
+        {1: "integer key"},
+        {False: "boolean key"},
+        {None: "null key"},
+        {1.25: "float key"},
     ],
 )
 def test_bounded_action_hash_preserves_canonical_hashes(value):
@@ -290,6 +294,50 @@ def test_action_hash_accepts_exact_canonical_byte_limit(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact - 1)
     with pytest.raises(ActionHashLimitError, match="canonical hash input") as exc:
         action_sha256_of(value)
+    assert exc.value.limit_enforced == "action_hash_canonical_bytes"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [],
+        {},
+        [True, False, None, -12, 1.25],
+        {"escaped": "\x00😀"},
+        {1: "integer key"},
+        {False: "boolean key"},
+        {None: "null key"},
+        {1.25: "float key"},
+        {"amount": Decimal("0.1000")},
+        {"nested": [{"x": "y"}, ()]},
+    ],
+)
+def test_action_hash_preflight_matches_exact_encoder_size(value, monkeypatch):
+    exact = len(canonical_json(value).encode("utf-8"))
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact)
+
+    assert action_sha256_of(value) == sha256_of(value)
+
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact - 1)
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+    assert exc.value.limit_enforced == "action_hash_canonical_bytes"
+
+
+def test_action_hash_rejects_aggregate_bytes_before_encoder(monkeypatch):
+    value = ["1234", "5678"]
+    exact = len(canonical_json(value).encode("utf-8"))
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact - 1)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive oversized value")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError, match="canonical hash input") as exc:
+        action_sha256_of(value)
+
     assert exc.value.limit_enforced == "action_hash_canonical_bytes"
 
 

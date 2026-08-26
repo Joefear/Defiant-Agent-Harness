@@ -638,6 +638,15 @@ token width without rendering it and fails closed before the encoder. This is
 a per-token allocation defense, not a cumulative CPU/memory quota or process
 sandbox.
 
+**Aggregate canonical encoding before byte refusal.** Before v0.45, every
+individual component of an in-memory mapping or sequence could satisfy its
+fixed ceiling while their combined canonical JSON exceeded 67,108,864 bytes.
+The streaming counter failed closed, but only after `sort_keys` and encoder
+emission began. v0.45 counts the exact complete canonical size during the
+bounded structural traversal and refuses an oversized aggregate before sorting
+or encoding. The streaming counter remains a second check. This does not remove
+sorting work for accepted mappings or impose a cumulative process quota.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the
