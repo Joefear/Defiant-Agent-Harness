@@ -133,6 +133,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy_known_tool_count" in javascript
     assert b"policy_rule_field_items" in javascript
     assert b"policy_rule_list_items" in javascript
+    assert b"policy_text_item_characters" in javascript
+    assert b"policy_text_characters" in javascript
+    assert b"policy text bounded before transformation" in javascript
     assert b"trusted_public_key_count" in javascript
     assert b"trusted_public_key_bytes" in javascript
     assert b"trusted_public_key_set_bytes" in javascript

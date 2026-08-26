@@ -370,6 +370,92 @@ def test_policy_rule_list_items_are_bounded_across_rules(monkeypatch):
         PolicyEngine([pack])
 
 
+def test_policy_text_item_is_bounded_before_rule_construction(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 4)
+    pack = {
+        "version": "test",
+        "rules": [
+            {
+                "id": "private-rule-name",
+                "effect": "not-a-valid-effect",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="text item exceeds maximum of 4") as failure:
+        PolicyEngine([pack])
+
+    assert "private-rule-name" not in str(failure.value)
+
+
+def test_policy_text_limit_from_file_has_sanitized_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 4)
+    path = tmp_path / "oversized-text.yaml"
+    path.write_text(
+        "version: test\ndescription: private-policy-content\nrules: []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="text item exceeds maximum of 4") as failure:
+        PolicyEngine.from_files([path])
+
+    assert "private-policy-content" not in str(failure.value)
+    assert str(tmp_path) not in str(failure.value)
+
+
+def test_policy_text_characters_are_bounded_across_packs(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 3)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_CHARACTERS", 4)
+    packs = [
+        {"version": "aa", "rules": []},
+        {"version": "bbb", "rules": []},
+    ]
+
+    with pytest.raises(ValueError, match="text character count exceeds maximum of 4"):
+        PolicyEngine(packs)
+
+
+def test_duplicate_policy_text_counts_as_supplied(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 4)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_CHARACTERS", 4)
+    pack = {
+        "version": "t",
+        "known_tools": ["aa", "aa"],
+        "rules": [],
+    }
+
+    with pytest.raises(ValueError, match="text character count exceeds maximum of 4"):
+        PolicyEngine([pack])
+
+
+def test_additional_registry_tool_text_participates_in_policy_bounds(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 20)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_CHARACTERS", 12)
+    loaded = policy_engine_module.LoadedPolicyPacks(
+        ({"version": "a", "rules": []},),
+        "test",
+    )
+
+    with pytest.raises(PolicyError, match="text character count exceeds maximum of 12"):
+        PolicyEngine.from_loaded(loaded, additional_known_tools=["x"])
+
+
+def test_policy_text_exact_boundaries_are_accepted(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_ITEM_CHARACTERS", 4)
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_TEXT_CHARACTERS", 8)
+    pack = {
+        "version": "a",
+        "description": "dd",
+        "known_tools": ["bb"],
+        "rules": [{"id": "ccc"}],
+    }
+
+    engine = PolicyEngine([pack])
+
+    assert engine.known_tools == ["bb"]
+    assert [rule.id for rule in engine.rules] == ["ccc"]
+
+
 def test_additional_registry_tools_cannot_bypass_policy_bounds(monkeypatch):
     monkeypatch.setattr(policy_engine_module, "MAX_POLICY_KNOWN_TOOLS", 1)
     loaded = policy_engine_module.LoadedPolicyPacks(

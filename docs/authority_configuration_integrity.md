@@ -37,7 +37,7 @@ second policy language or weaken strictest-wins and default-deny behavior.
 
 ## Read-only projection
 
-Command Core schema `0.29.0` reports the static parser profile, both refusal
+Command Core schema `0.30.0` reports the static parser profile, both refusal
 flags, and the policy-pack byte ceiling. Command Center renders this metadata
 read-only. Neither surface receives configuration source, uploads a pack,
 changes a limit, accepts a parser exception, rotates a profile, or launches an
@@ -65,3 +65,7 @@ pre-construction depth and node ceilings. See `yaml_structural_limits.md`.
 v0.35 adds MCP-specific per-collection and aggregate ceilings after YAML
 construction and before configuration transformation. See
 `mcp_configuration_limits.md`.
+
+v0.36 adds complete-ruleset per-item and aggregate policy text ceilings after
+YAML construction and before rule construction or hashing. See
+`policy_text_limits.md`.

@@ -51,6 +51,7 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - the fixed trusted-public-key count, per-key, and aggregate byte ceilings; and
 - the fixed complete-policy pack, rule, known-tool, per-field, and
   aggregate-list ceilings; and
+- the fixed per-item and complete-ruleset policy text ceilings;
 - the fixed authority-YAML nesting-depth and constructed-node ceilings;
 - the fixed per-collection and aggregate MCP authority-configuration
   ceilings; and
@@ -62,7 +63,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.29.0`. The browser cannot raise, disable, or replace them and never receives
+`0.30.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary
