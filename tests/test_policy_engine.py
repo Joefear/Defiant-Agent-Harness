@@ -254,6 +254,235 @@ def test_ruleset_hash_includes_authoritative_tool_contract():
     assert first.ruleset_hash != changed.ruleset_hash
 
 
+# -- policy glob matching limits -------------------------------------------
+
+
+def test_glob_conditions_are_evaluated_once_per_rule(monkeypatch):
+    engine = PolicyEngine(
+        [
+            {
+                "version": "glob-test",
+                "known_tools": ["inspect"],
+                "rules": [
+                    {
+                        "id": "match",
+                        "tools": ["inspect"],
+                        "targets": ["record*"],
+                        "payload_contains": ["needle"],
+                        "effect": "block",
+                    }
+                ],
+            }
+        ]
+    )
+    original = policy_engine_module.fnmatch.fnmatchcase
+    calls = []
+
+    def counted(subject, pattern):
+        calls.append((subject, pattern))
+        return original(subject, pattern)
+
+    monkeypatch.setattr(policy_engine_module.fnmatch, "fnmatchcase", counted)
+
+    decision = engine.evaluate(act("inspect", "record-1", {"value": "needle"}))
+
+    assert decision.decision is Decision.BLOCK
+    assert calls == [
+        ("inspect", "inspect"),
+        ("inspect", "inspect"),
+        ("record-1", "record*"),
+    ]
+
+
+def test_glob_tool_name_exact_character_boundary_is_accepted(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS", 7
+    )
+    engine = PolicyEngine(
+        [{"version": "test", "known_tools": ["inspect"], "rules": []}]
+    )
+
+    decision = engine.evaluate(act("inspect", "record"))
+
+    assert decision.decision is Decision.ALLOW
+
+
+def test_oversized_glob_tool_name_fails_closed_without_disclosure(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS", 6
+    )
+    engine = PolicyEngine([{"version": "test", "known_tools": ["*"], "rules": []}])
+
+    decision = engine.evaluate(act("SECRETS", "record"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "tool name exceeds maximum of 6 characters" in decision.reason
+    assert "SECRETS" not in repr(decision.to_dict())
+    assert decision.decision_inputs["limit_enforced"] == "policy_glob_matching"
+
+
+def test_normalized_glob_subject_expansion_fails_closed(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS", 1
+    )
+    monkeypatch.setattr(
+        policy_engine_module.os.path,
+        "normcase",
+        lambda value: "xx" if value == "X" else value,
+    )
+    engine = PolicyEngine([{"version": "test", "known_tools": ["*"], "rules": []}])
+
+    decision = engine.evaluate(act("X", "record"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "normalized policy glob tool name" in decision.reason
+    assert "X" not in repr(decision.to_dict())
+
+
+def test_glob_target_exact_character_boundary_is_accepted(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_TARGET_CHARACTERS", 6)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "rules": [{"id": "target", "targets": ["record"], "effect": "block"}],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "record"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["target"]
+
+
+def test_oversized_glob_target_fails_closed_without_disclosure(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_TARGET_CHARACTERS", 6)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "rules": [{"id": "target", "targets": ["*"], "effect": "allow"}],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "PRIVATE"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "target exceeds maximum of 6 characters" in decision.reason
+    assert "PRIVATE" not in repr(decision.to_dict())
+
+
+def test_glob_work_exact_boundary_is_accepted(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_GLOB_MATCH_WORK_UNITS", 10)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "rules": [
+                    {"id": "first", "targets": ["x"], "effect": "block"},
+                    {"id": "second", "targets": ["y"], "effect": "block"},
+                ],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "abcd"))
+
+    assert decision.decision is Decision.ALLOW
+    assert decision.policy_ids == ["default_deny"]
+
+
+def test_glob_work_stops_at_first_matching_pattern(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_GLOB_MATCH_WORK_UNITS", 12)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "rules": [
+                    {
+                        "id": "first-match",
+                        "targets": ["record", "never-reached"],
+                        "effect": "block",
+                    }
+                ],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "record"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["first-match"]
+
+
+def test_glob_work_is_bounded_across_rules(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_GLOB_MATCH_WORK_UNITS", 9)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "rules": [
+                    {"id": "first", "targets": ["x"], "effect": "allow"},
+                    {"id": "second", "targets": ["y"], "effect": "allow"},
+                ],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "abcd"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+    assert "glob match work exceeds maximum of 9 units" in decision.reason
+
+
+def test_glob_work_is_shared_by_classification_and_rules(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_GLOB_MATCH_WORK_UNITS", 27)
+    engine = PolicyEngine(
+        [
+            {
+                "version": "test",
+                "known_tools": ["inspect"],
+                "rules": [{"id": "allow", "tools": ["inspect"], "effect": "allow"}],
+            }
+        ]
+    )
+
+    decision = engine.evaluate(act("inspect", "record"))
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_match_limit"]
+
+
+def test_glob_target_is_not_validated_without_target_patterns(monkeypatch):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_TARGET_CHARACTERS", 1)
+    engine = PolicyEngine(
+        [{"version": "test", "rules": [{"id": "allow", "effect": "allow"}]}]
+    )
+
+    decision = engine.evaluate(act("inspect", "ordinary-long-target"))
+
+    assert decision.decision is Decision.ALLOW
+
+
+def test_glob_tool_name_is_not_validated_without_tool_patterns(monkeypatch):
+    monkeypatch.setattr(
+        policy_engine_module, "MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS", 1
+    )
+    engine = PolicyEngine(
+        [{"version": "test", "rules": [{"id": "allow", "effect": "allow"}]}]
+    )
+
+    decision = engine.evaluate(act("ordinary-long-tool", "record"))
+
+    assert decision.decision is Decision.ALLOW
+
+
 # -- governed payload matching limits ---------------------------------------
 
 

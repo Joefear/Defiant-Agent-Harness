@@ -33,6 +33,11 @@ Side-effect order, low to high: `none`, `local_write`, `external_send`, `externa
 
 Trust order, best to worst: `trusted`, `derived`, `untrusted`.
 
+Glob matching retains platform `fnmatch` semantics but is bounded per decision:
+tool-name subjects are limited to 4,096 characters, targets to 1 MiB, and
+known-tool plus rule comparisons share 64 MiB of deterministic work. See
+`policy_glob_matching_limits.md`.
+
 ## Outcomes
 
 | field | effect |

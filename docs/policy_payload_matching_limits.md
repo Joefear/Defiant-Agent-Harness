@@ -44,18 +44,17 @@ policy version and ruleset hash remain attached so the event is attributable.
 
 ## Read-only projection
 
-Command Core schema `0.31.0` publishes the four ceilings under
+Command Core schema `0.32.0` publishes the four ceilings under
 `resource_limits` and reports `policy_payload_match_preflight: true` in the
 static authority posture. Command Center renders those values. Neither surface
 can change a limit, exempt an action, upload policy, approve, or execute.
 
 ## Limits of the control
 
-This bounds payload flattening and deterministic substring-search work. It does
-not bound action payload hashing, tool-name or target glob work, Python scalar
-`str()` behavior for non-JSON direct callers, total process CPU or memory, or
-wall-clock time. Normal governed actions use dictionary/JSON-like payloads;
-deployment review, adversarial policy tests, monitoring, and OS resource
-controls remain necessary.
+This bounds payload flattening and deterministic substring-search work. v0.38
+separately bounds tool/target glob subjects and aggregate glob work; see
+`policy_glob_matching_limits.md`. Action payload hashing, Python scalar `str()`
+behavior for non-JSON direct callers, total process CPU or memory, and
+wall-clock time remain outside this control.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

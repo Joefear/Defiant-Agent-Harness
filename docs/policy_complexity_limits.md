@@ -32,7 +32,7 @@ settings. Splitting one large policy into more files does not increase the
 complete-ruleset ceilings. Operators whose reviewed rulesets exceed a ceiling
 must reduce or consolidate policy rather than weakening the control at runtime.
 
-Command Core schema `0.31.0` publishes the five fixed ceilings under
+Command Core schema `0.32.0` publishes the five fixed ceilings under
 `resource_limits`. Command Center displays them with the other static limits.
 Both surfaces remain strictly read-only: they cannot upload a pack, change a
 limit, grant an exception, or activate policy.
@@ -40,15 +40,17 @@ limit, grant an exception, or activate policy.
 ## Limits of the control
 
 These ceilings bound collection-driven policy work; they are not a wall-clock,
-CPU, or memory quota. They do not prove that a rule is correct, prevent
-expensive glob patterns within the accepted syntax, replace adversarial policy
-tests, or contain a compromised host. Deployment review and OS resource
-controls remain necessary.
+CPU, or memory quota. v0.38 separately bounds action-controlled glob subjects
+and aggregate glob comparisons, but does not prove that a rule is correct,
+replace adversarial policy tests, or contain a compromised host.
 
 v0.36 adds per-item and aggregate character ceilings for the recognized text
 inside these bounded collections. See `policy_text_limits.md`.
 
 v0.37 separately bounds governed payload materialization and aggregate
 substring-search work. See `policy_payload_matching_limits.md`.
+
+v0.38 separately bounds tool/target glob subjects and aggregate glob work. See
+`policy_glob_matching_limits.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

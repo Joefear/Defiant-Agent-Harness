@@ -69,3 +69,10 @@ MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH = 64
 MAX_POLICY_MATCH_PAYLOAD_NODES = 100_000
 MAX_POLICY_MATCH_PAYLOAD_CHARACTERS = 1 * MIB
 MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS = 64 * MIB
+
+# Glob subjects are action-controlled while patterns are bounded authority
+# text. Bound both subject size and aggregate classification/rule search work
+# across one policy decision.
+MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS = 4_096
+MAX_POLICY_MATCH_TARGET_CHARACTERS = 1 * MIB
+MAX_POLICY_GLOB_MATCH_WORK_UNITS = 64 * MIB
