@@ -105,6 +105,16 @@ def test_tool_call_accepts_exact_canonical_byte_bound_and_maps_next(monkeypatch)
     assert exc.value.limit_enforced == "tool_call_canonical_bytes"
 
 
+def test_tool_call_maps_canonical_number_failure(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
+
+    ToolCall("tool", arguments={"value": 9999})
+    with pytest.raises(ToolCallLimitError) as exc:
+        ToolCall("tool", arguments={"value": 10000})
+
+    assert exc.value.limit_enforced == "tool_call_number_characters"
+
+
 def test_tool_call_rejects_cycles_without_echoing_content():
     arguments: dict = {}
     arguments["secret-key"] = arguments

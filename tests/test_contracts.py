@@ -324,6 +324,52 @@ def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     assert "secret" not in str(exc.value)
 
 
+def test_action_hash_accepts_exact_integer_tokens_and_rejects_next(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
+
+    for value in (9999, -999):
+        assert action_sha256_of(value) == sha256_of(value)
+
+    for value in (10000, -1000):
+        with pytest.raises(ActionHashLimitError, match="canonical number") as exc:
+            action_sha256_of(value)
+        assert exc.value.limit_enforced == "action_hash_number_characters"
+
+
+def test_action_hash_bounds_decimal_before_large_exponent_rendering(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
+
+    exact = Decimal("1E+3")
+    assert action_sha256_of(exact) == sha256_of(exact)
+    with pytest.raises(ActionHashLimitError, match="canonical number") as exc:
+        action_sha256_of(Decimal("1E+1000000"))
+
+    assert exc.value.limit_enforced == "action_hash_number_characters"
+    assert "1000000" not in str(exc.value)
+
+
+def test_action_hash_refuses_large_fractional_zero_tail_without_rendering():
+    trailing_zeros = (0,) * 100_000
+    value = Decimal((0, (1,) + trailing_zeros, -100_000))
+
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+    assert exc.value.limit_enforced == "action_hash_number_characters"
+
+
+def test_action_hash_bounds_finite_float_tokens_and_refuses_nonfinite(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
+
+    assert action_sha256_of(1.25) == sha256_of(1.25)
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(10.25)
+    assert exc.value.limit_enforced == "action_hash_number_characters"
+
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="non-finite"):
+            action_sha256_of(value)
+
+
 def test_action_hash_rejects_cyclic_payload_without_recursing_forever():
     payload = {}
     payload["self"] = payload

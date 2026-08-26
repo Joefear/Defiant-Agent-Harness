@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.36.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.37.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -25,6 +25,7 @@ contains:
 - fixed governed-payload matching depth, node, text, and aggregate work ceilings;
 - fixed policy glob tool-name/target subject and aggregate work ceilings;
 - fixed action-hash depth, node, scalar, and canonical-byte ceilings;
+- a fixed canonical integer, float, and decimal token ceiling before encoding;
 - fixed pre-adapter tool-call name, identifier, depth, node, scalar, and
   canonical-byte ceilings;
 - fixed post-execution tool-result summary, depth, node, scalar, and

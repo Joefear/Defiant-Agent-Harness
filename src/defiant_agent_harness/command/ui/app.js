@@ -111,15 +111,18 @@ function renderResourceLimits(limits, configuration) {
     `tool call canonical input ${bytes(limits.tool_call_canonical_bytes)}`,
     `tool call depth ${integer.format(limits.tool_call_nesting_depth)}`,
     `tool call nodes ${integer.format(limits.tool_call_nodes)}`,
+    `tool call number ${integer.format(limits.tool_call_number_characters)} characters`,
     `tool call scalar ${integer.format(limits.tool_call_scalar_characters)} characters`,
     `action hash canonical input ${bytes(limits.action_hash_canonical_bytes)}`,
     `action hash depth ${integer.format(limits.action_hash_nesting_depth)}`,
     `action hash nodes ${integer.format(limits.action_hash_nodes)}`,
+    `action hash number ${integer.format(limits.action_hash_number_characters)} characters`,
     `action hash scalar ${integer.format(limits.action_hash_scalar_characters)} characters`,
     `tool result summary ${integer.format(limits.tool_result_summary_characters)} characters`,
     `tool result output ${bytes(limits.tool_result_output_canonical_bytes)}`,
     `tool result depth ${integer.format(limits.tool_result_output_nesting_depth)}`,
     `tool result nodes ${integer.format(limits.tool_result_output_nodes)}`,
+    `tool result number ${integer.format(limits.tool_result_output_number_characters)} characters`,
     `tool result scalar ${integer.format(limits.tool_result_output_scalar_characters)} characters`,
     `request task ${integer.format(limits.request_task_characters)} characters`,
     `request identifier ${integer.format(limits.request_identifier_characters)} characters`,
@@ -165,7 +168,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, and glob matching bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; canonical numbers, governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, and glob matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

@@ -254,6 +254,16 @@ def test_tool_result_maps_bounded_output_failure_without_echoing_content(monkeyp
     assert "secret" not in str(exc.value)
 
 
+def test_tool_result_maps_canonical_number_failure(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
+
+    ToolResult(status="succeeded", summary="accepted", output=9999)
+    with pytest.raises(ToolResultLimitError) as exc:
+        ToolResult(status="succeeded", summary="refused", output=10000)
+
+    assert exc.value.limit_enforced == "tool_result_output_number_characters"
+
+
 @pytest.mark.parametrize(
     ("constant", "maximum", "exact", "beyond", "limit_enforced"),
     [
