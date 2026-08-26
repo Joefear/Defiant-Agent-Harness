@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.41.0` projects them under `resource_limits`, and Command Center only
+schema `0.42.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.40 applies the same fail-closed discipline to governed request construction.
@@ -62,6 +62,10 @@ traversal or sorting. See
 v0.47 charges canonical key-token bytes by an idealized logarithmic comparison
 round factor against one aggregate pre-sort budget. See
 [Canonical mapping sort-work limits](canonical_mapping_sort_work.md).
+
+v0.48 validates canonical mapping-key eligibility and homogeneous sortable
+families before values or encoder sorting. See
+[Canonical mapping-key contract](canonical_mapping_key_contract.md).
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
 both MCP configuration and policy packs. It rejects aliases and duplicate

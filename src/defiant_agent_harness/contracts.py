@@ -804,6 +804,22 @@ def _validate_action_hash_structure(obj: Any) -> None:
             )
         mapping_sort_work += width * rounds
 
+    def validate_mapping_key_families(value: dict[Any, Any]) -> None:
+        family: str | None = None
+        for key in dict.keys(value):
+            if isinstance(key, str):
+                current = "string"
+            elif isinstance(key, (int, float)):
+                current = "number"
+            elif key is None:
+                current = "null"
+            else:
+                raise ValueError("action hash input is not canonical JSON data")
+            if family is None:
+                family = current
+            elif current != family:
+                raise ValueError("action hash input is not canonical JSON data")
+
     def visit_key(value: Any, depth: int) -> int:
         claim_node(depth)
         if isinstance(value, enum.Enum):
@@ -872,6 +888,7 @@ def _validate_action_hash_structure(obj: Any) -> None:
                     f"{MAX_ACTION_HASH_MAPPING_ENTRIES}",
                     limit_enforced="action_hash_mapping_entries",
                 )
+            validate_mapping_key_families(value)
             sort_rounds = (entry_count - 1).bit_length()
             marker = id(value)
             if marker in active_containers:

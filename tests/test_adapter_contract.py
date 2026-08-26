@@ -121,6 +121,14 @@ def test_tool_call_maps_canonical_mapping_sort_work_failure(monkeypatch):
     assert exc.value.limit_enforced == "tool_call_mapping_sort_work_units"
 
 
+def test_tool_call_maps_invalid_mapping_key_contract():
+    with pytest.raises(ToolCallContractError) as exc:
+        ToolCall("tool", arguments={"text": 1, 2: "number"})
+
+    assert not isinstance(exc.value, ToolCallLimitError)
+    assert exc.value.limit_enforced == "tool_call_contract"
+
+
 def test_tool_call_maps_canonical_number_failure(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
 

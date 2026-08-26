@@ -665,6 +665,15 @@ shared by all mappings. A breach fails before encoder sorting. The cost model
 is deterministic and version-stable, not an exact Timsort comparison counter,
 wall-clock timeout, or cumulative process quota.
 
+**Late canonical mapping-key incompatibility.** Before v0.48, mixed string and
+numeric keys, `None` mixed with another key, and unsupported key objects passed
+structural byte/work preflight and reached `sort_keys=True`. The encoder still
+failed closed, but only after beginning its sorting/encoding path. v0.48 checks
+key eligibility and homogeneous sortable families in a bounded key-only pass
+before values or sorting. Existing successful hashes and sanitized owning
+contract failures are unchanged. Trusted Python subclasses remain inside the
+process trust boundary.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

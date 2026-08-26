@@ -43,7 +43,7 @@ unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.41.0` publishes the action, tool-call, and tool-result
+Command Core schema `0.42.0` publishes the action, tool-call, and tool-result
 budgets under `resource_limits` and reports
 `canonical_mapping_sort_preflight: true`. Command Center renders only those
 fixed values and posture. It cannot submit a value, change a budget, approve,
@@ -58,3 +58,6 @@ running inside the harness process remains trusted, and repeated accepted
 requests still require deployment monitoring and isolation.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.48 separately refuses unsupported or mutually unsortable key families
+before values or encoder sorting. See `canonical_mapping_key_contract.md`.

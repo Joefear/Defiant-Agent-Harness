@@ -35,6 +35,10 @@ canonical byte total are checked before mapping-key sorting or JSON encoding.
 The streaming hash counter independently enforces the byte ceiling after
 preflight.
 
+Mapping-key eligibility and sortable families are checked in a key-only pass
+before call values or encoder sorting. Existing invalid-key inputs retain the
+sanitized `tool_call_contract` classification.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
@@ -56,7 +60,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.41.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.42.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports
