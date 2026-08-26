@@ -85,6 +85,10 @@ MAX_POLICY_GLOB_MATCH_WORK_UNITS = 64 * MIB
 # without turning a transport-valid call into an authority bypass.
 MAX_ACTION_HASH_NESTING_DEPTH = 64
 MAX_ACTION_HASH_NODES = 1_100_000
+# Canonical JSON sorts each mapping's keys. Keep one attacker-controlled sort
+# from approaching the broader node allowance even when the encoded value fits
+# the complete byte ceiling.
+MAX_ACTION_HASH_MAPPING_ENTRIES = 65_536
 MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
 MAX_ACTION_HASH_NUMBER_CHARACTERS = 1_024
 MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB

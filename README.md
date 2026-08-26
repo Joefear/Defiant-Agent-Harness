@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.45.
+logs. A full trusted-memory/DKE system is not part of v0.46.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.45 is
+## What v0.46 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -432,6 +432,14 @@ as defense in depth. Accepted canonical bytes and hashes remain unchanged.
 Command Core and the strictly read-only Command Center expose only the static
 preflight posture.
 
+v0.46 bounds canonical mapping-sort amplification. Every mapping shared by
+tool-call construction, action fingerprints, and tool-result capture is capped
+at 65,536 entries before its keys or values are traversed and before the JSON
+encoder can sort them. The complete node and byte ceilings remain in force,
+accepted canonical hashes are unchanged, and Command Core plus the strictly
+read-only Command Center expose only the fixed limits and preflight posture.
+Mappings above the new ceiling are deliberately no longer accepted.
+
 ## Install
 
 ```bash
@@ -767,7 +775,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.45 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.46 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -804,6 +812,7 @@ fixed single-pass governed-payload depth, node, text, and aggregate substring
 matching ceilings,
 fixed lazy tool-name/target glob-subject and decision-wide glob-work ceilings,
 fixed bounded canonical action fingerprints with a final live capability check,
+fixed per-mapping canonical-entry ceilings before key traversal or sorting,
 fixed complete canonical-value byte preflight before sorting or encoding,
 fixed pre-render canonical-string token byte ceilings,
 fixed pre-encoding canonical-number token ceilings,
@@ -838,6 +847,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/policy_payload_matching_limits.md`,
 `docs/policy_glob_matching_limits.md`,
 `docs/action_hashing_limits.md`,
+`docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,
 `docs/canonical_string_limits.md`,
 `docs/canonical_number_limits.md`,

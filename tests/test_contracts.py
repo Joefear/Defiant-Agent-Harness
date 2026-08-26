@@ -362,6 +362,52 @@ def test_action_hash_rejects_excess_nodes_before_encoding(monkeypatch):
     assert exc.value.limit_enforced == "action_hash_nodes"
 
 
+def test_action_hash_accepts_exact_mapping_entries_and_rejects_next(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_ENTRIES", 2)
+
+    accepted = {"b": 2, "a": 1}
+    assert action_sha256_of(accepted) == sha256_of(accepted)
+
+    with pytest.raises(ActionHashLimitError, match="mapping exceeds") as exc:
+        action_sha256_of({"a": 1, "b": 2, "secret": 3})
+
+    assert exc.value.limit_enforced == "action_hash_mapping_entries"
+    assert "secret" not in str(exc.value)
+
+
+def test_action_hash_rejects_mapping_before_traversal_or_encoding(monkeypatch):
+    class StrandedMapping(dict):
+        def items(self):
+            raise AssertionError("oversized mapping must not be traversed")
+
+    value = StrandedMapping({"a": 1, "b": 2, "secret": 3})
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_ENTRIES", 2)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive oversized mapping")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_entries"
+    assert "secret" not in str(exc.value)
+
+
+def test_action_hash_mapping_limit_applies_to_each_nested_mapping(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_ENTRIES", 2)
+
+    assert action_sha256_of({"outer": {"a": 1, "b": 2}}) == sha256_of(
+        {"outer": {"a": 1, "b": 2}}
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of({"outer": {"a": 1, "b": 2, "c": 3}})
+
+    assert exc.value.limit_enforced == "action_hash_mapping_entries"
+
+
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
 

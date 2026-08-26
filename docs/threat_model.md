@@ -647,6 +647,15 @@ bounded structural traversal and refuses an oversized aggregate before sorting
 or encoding. The streaming counter remains a second check. This does not remove
 sorting work for accepted mappings or impose a cumulative process quota.
 
+**Canonical mapping-sort amplification.** Before v0.46, one mapping could fit
+the aggregate node and canonical-byte ceilings while still approaching roughly
+half the 1,100,000-node allowance as key/value pairs. Canonical hashing would
+then sort that large key set. v0.46 refuses any mapping above 65,536 entries
+before visiting its keys or values and before the encoder can sort it. The
+existing aggregate node and byte ceilings still apply across nested mappings.
+Accepted mappings still sort, and this remains a per-fingerprint control rather
+than a CPU timeout or cumulative quota.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

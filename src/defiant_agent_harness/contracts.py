@@ -25,6 +25,7 @@ from typing import Any, Iterable
 
 from .limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
+    MAX_ACTION_HASH_MAPPING_ENTRIES,
     MAX_ACTION_HASH_NESTING_DEPTH,
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
@@ -845,6 +846,12 @@ def _validate_action_hash_structure(obj: Any) -> None:
             consume(len(text))
             return
         if isinstance(value, dict):
+            if dict.__len__(value) > MAX_ACTION_HASH_MAPPING_ENTRIES:
+                raise ActionHashLimitError(
+                    "action hash mapping exceeds maximum entry count of "
+                    f"{MAX_ACTION_HASH_MAPPING_ENTRIES}",
+                    limit_enforced="action_hash_mapping_entries",
+                )
             marker = id(value)
             if marker in active_containers:
                 raise ValueError("action hash input contains a cyclic container")

@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.39.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.40.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -24,12 +24,14 @@ contains:
 - fixed per-item and complete-ruleset policy text ceilings;
 - fixed governed-payload matching depth, node, text, and aggregate work ceilings;
 - fixed policy glob tool-name/target subject and aggregate work ceilings;
-- fixed action-hash depth, node, scalar-character, escaped-string-token,
-  number-token, and canonical-byte ceilings;
-- fixed pre-adapter tool-call name, identifier, depth, node, scalar-character,
+- fixed action-hash depth, node, per-mapping entry, scalar-character,
   escaped-string-token, number-token, and canonical-byte ceilings;
-- fixed post-execution tool-result summary, depth, node, scalar-character,
-  escaped-string-token, number-token, and canonical-byte ceilings;
+- fixed pre-adapter tool-call name, identifier, depth, node, per-mapping entry,
+  scalar-character, escaped-string-token, number-token, and canonical-byte
+  ceilings;
+- fixed post-execution tool-result summary, depth, node, per-mapping entry,
+  scalar-character, escaped-string-token, number-token, and canonical-byte
+  ceilings;
 - fixed governed-request task, identifier, allowlist, provenance, and
   aggregate-text ceilings;
 - fixed authority-YAML nesting-depth and constructed-node ceilings;
@@ -75,7 +77,7 @@ contains:
   native-hook events, MCP configuration, and each policy pack; and
 - the static authority-YAML and authority-JSON parser profiles plus explicit
   alias, nesting, lexical-token, scalar-token, canonical-number,
-  canonical-string, complete-canonical-value, MCP-collection, policy-text,
+  canonical-string, canonical-mapping, complete-canonical-value, MCP-collection, policy-text,
   policy-payload-matching, policy-glob-matching, duplicate-key,
   non-finite-number, and strict-UTF-8 posture.
 

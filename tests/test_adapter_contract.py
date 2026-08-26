@@ -65,6 +65,13 @@ def test_tool_call_rejects_invalid_field_shapes(field, value, limit_enforced):
             "tool_call_nodes",
         ),
         (
+            "MAX_ACTION_HASH_MAPPING_ENTRIES",
+            5,
+            {str(index): index for index in range(5)},
+            {str(index): index for index in range(6)},
+            "tool_call_mapping_entries",
+        ),
+        (
             "MAX_ACTION_HASH_SCALAR_CHARACTERS",
             16,
             {"v": "x" * 16},

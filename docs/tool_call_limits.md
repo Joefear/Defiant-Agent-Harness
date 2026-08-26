@@ -15,6 +15,7 @@ One accepted call allows at most:
 - 4,096 characters in each call or server identifier;
 - 64 nested mappings or sequences across the complete call surface;
 - 1,100,000 nodes, including mapping keys;
+- 65,536 entries in any one mapping;
 - 8,388,608 characters in one string;
 - 67,108,864 bytes in one escaped canonical string token;
 - 1,024 characters in one canonical integer, float, or decimal token; and
@@ -28,9 +29,9 @@ numbers, and values outside a fixed ceiling are refused. Exact limits are
 accepted. Diagnostics identify the contract or ceiling class without echoing
 call content.
 
-The complete canonical byte total is calculated before mapping-key sorting or
-JSON encoding. The streaming hash counter independently enforces the same
-ceiling after preflight.
+Each mapping's entry count and the complete canonical byte total are checked
+before mapping-key sorting or JSON encoding. The streaming hash counter
+independently enforces the byte ceiling after preflight.
 
 ## Owning-boundary behavior
 
@@ -53,9 +54,9 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.39.0` publishes tool-call-specific name, identifier,
-depth, node, string-character, escaped-string-token, number, and canonical-byte
-ceilings under `resource_limits` and reports
+Command Core schema `0.40.0` publishes tool-call-specific name, identifier,
+depth, node, mapping-entry, string-character, escaped-string-token, number, and
+canonical-byte ceilings under `resource_limits` and reports
 `tool_call_contract_preflight: true`. Command Center renders only that static
 posture. Neither surface can submit a call, alter a ceiling, approve, reconcile,
 or execute.
