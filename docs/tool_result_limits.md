@@ -24,6 +24,10 @@ objects, non-finite numbers, and values outside a fixed ceiling are refused.
 Exact limits are accepted. Failure messages identify the ceiling class without
 echoing result content.
 
+The complete output byte total is calculated before mapping-key sorting or JSON
+encoding. The streaming hash counter independently enforces the same ceiling
+after preflight.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
@@ -47,7 +51,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.38.0` publishes the summary and output ceilings under
+Command Core schema `0.39.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

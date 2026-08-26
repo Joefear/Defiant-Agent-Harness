@@ -109,11 +109,7 @@ def action_sha256_of(obj: Any) -> str:
         for chunk in encoder.iterencode(obj):
             raw = chunk.encode("utf-8")
             if len(raw) > MAX_ACTION_HASH_CANONICAL_BYTES - encoded_bytes:
-                raise ActionHashLimitError(
-                    "action canonical hash input exceeds maximum of "
-                    f"{MAX_ACTION_HASH_CANONICAL_BYTES} bytes",
-                    limit_enforced="action_hash_canonical_bytes",
-                )
+                _raise_action_hash_canonical_limit()
             digest.update(raw)
             encoded_bytes += len(raw)
     except ActionHashLimitError:
@@ -764,12 +760,13 @@ def _action_hash_default(obj: Any) -> Any:
 
 
 def _validate_action_hash_structure(obj: Any) -> None:
-    """Preflight action data without copying or echoing attacker input."""
+    """Preflight action data and its exact canonical size without encoding."""
 
     nodes = 0
+    canonical_bytes = 0
     active_containers: set[int] = set()
 
-    def visit(value: Any, depth: int) -> None:
+    def claim_node(depth: int) -> None:
         nonlocal nodes
         if depth > MAX_ACTION_HASH_NESTING_DEPTH:
             raise ActionHashLimitError(
@@ -785,24 +782,67 @@ def _validate_action_hash_structure(obj: Any) -> None:
                 limit_enforced="action_hash_nodes",
             )
 
+    def consume(width: int) -> None:
+        nonlocal canonical_bytes
+        if width > MAX_ACTION_HASH_CANONICAL_BYTES - canonical_bytes:
+            _raise_action_hash_canonical_limit()
+        canonical_bytes += width
+
+    def visit_key(value: Any, depth: int) -> None:
+        claim_node(depth)
         if isinstance(value, enum.Enum):
-            visit(value.value, depth)
+            visit_key(value.value, depth)
             return
         if isinstance(value, Decimal):
-            _bounded_money_text(value)
+            consume(_validate_action_hash_string_token(_bounded_money_text(value)))
             return
         if isinstance(value, str):
-            _validate_action_hash_scalar(value)
+            consume(_validate_action_hash_scalar(value))
             return
-        if isinstance(value, bool) or value is None:
+        if isinstance(value, bool):
+            consume(6 if value else 7)
+            return
+        if value is None:
+            consume(6)
             return
         if isinstance(value, int):
-            _validate_action_hash_integer(value)
+            consume(_validate_action_hash_integer(value) + 2)
             return
         if isinstance(value, float):
             if not math.isfinite(value):
                 raise ValueError("action hash input contains a non-finite number")
-            _validate_action_hash_number_text(repr(value))
+            text = float.__repr__(value)
+            _validate_action_hash_number_text(text)
+            consume(len(text) + 2)
+            return
+        _action_hash_default(value)
+
+    def visit(value: Any, depth: int) -> None:
+        claim_node(depth)
+        if isinstance(value, enum.Enum):
+            visit(value.value, depth)
+            return
+        if isinstance(value, Decimal):
+            consume(_validate_action_hash_string_token(_bounded_money_text(value)))
+            return
+        if isinstance(value, str):
+            consume(_validate_action_hash_scalar(value))
+            return
+        if isinstance(value, bool):
+            consume(4 if value else 5)
+            return
+        if value is None:
+            consume(4)
+            return
+        if isinstance(value, int):
+            consume(_validate_action_hash_integer(value))
+            return
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                raise ValueError("action hash input contains a non-finite number")
+            text = float.__repr__(value)
+            _validate_action_hash_number_text(text)
+            consume(len(text))
             return
         if isinstance(value, dict):
             marker = id(value)
@@ -810,10 +850,14 @@ def _validate_action_hash_structure(obj: Any) -> None:
                 raise ValueError("action hash input contains a cyclic container")
             active_containers.add(marker)
             try:
-                for key, child in value.items():
+                consume(2)
+                for index, (key, child) in enumerate(value.items()):
+                    if index:
+                        consume(1)
                     # Keys are part of the canonical surface even though JSON's
                     # encoder visits them differently from mapping values.
-                    visit(key, depth + 1)
+                    visit_key(key, depth + 1)
+                    consume(1)
                     visit(child, depth + 1)
             finally:
                 active_containers.remove(marker)
@@ -824,7 +868,10 @@ def _validate_action_hash_structure(obj: Any) -> None:
                 raise ValueError("action hash input contains a cyclic container")
             active_containers.add(marker)
             try:
-                for child in value:
+                consume(2)
+                for index, child in enumerate(value):
+                    if index:
+                        consume(1)
                     visit(child, depth + 1)
             finally:
                 active_containers.remove(marker)
@@ -836,17 +883,17 @@ def _validate_action_hash_structure(obj: Any) -> None:
     visit(obj, 0)
 
 
-def _validate_action_hash_scalar(value: str) -> None:
+def _validate_action_hash_scalar(value: str) -> int:
     if len(value) > MAX_ACTION_HASH_SCALAR_CHARACTERS:
         raise ActionHashLimitError(
             "action hash scalar exceeds maximum of "
             f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
             limit_enforced="action_hash_scalar_characters",
         )
-    _validate_action_hash_string_token(value)
+    return _validate_action_hash_string_token(value)
 
 
-def _validate_action_hash_string_token(value: str) -> None:
+def _validate_action_hash_string_token(value: str) -> int:
     # ``JSONEncoder(ensure_ascii=True)`` emits the opening and closing quotes,
     # printable ASCII verbatim, short escapes for five controls plus quote and
     # backslash, six-byte ``\uXXXX`` escapes for other BMP code points, and
@@ -864,7 +911,7 @@ def _validate_action_hash_string_token(value: str) -> None:
         used += len(value)
         if used > MAX_ACTION_HASH_STRING_TOKEN_BYTES:
             _raise_action_hash_string_token_limit()
-        return
+        return used
 
     for character in value:
         codepoint = ord(character)
@@ -879,6 +926,7 @@ def _validate_action_hash_string_token(value: str) -> None:
         if width > MAX_ACTION_HASH_STRING_TOKEN_BYTES - used:
             _raise_action_hash_string_token_limit()
         used += width
+    return used
 
 
 def _raise_action_hash_string_token_limit() -> None:
@@ -889,7 +937,7 @@ def _raise_action_hash_string_token_limit() -> None:
     )
 
 
-def _validate_action_hash_integer(value: int) -> None:
+def _validate_action_hash_integer(value: int) -> int:
     sign_characters = 1 if value < 0 else 0
     allowed_digits = MAX_ACTION_HASH_NUMBER_CHARACTERS - sign_characters
     if allowed_digits <= 0:
@@ -897,6 +945,7 @@ def _validate_action_hash_integer(value: int) -> None:
     boundary = _action_hash_integer_boundary(allowed_digits)
     if value >= boundary or value <= -boundary:
         _raise_action_hash_number_limit()
+    return len(int.__repr__(value))
 
 
 def _bounded_money_text(value: Decimal) -> str:
@@ -962,6 +1011,14 @@ def _raise_action_hash_number_limit() -> None:
         "action hash canonical number exceeds maximum of "
         f"{MAX_ACTION_HASH_NUMBER_CHARACTERS} characters",
         limit_enforced="action_hash_number_characters",
+    )
+
+
+def _raise_action_hash_canonical_limit() -> None:
+    raise ActionHashLimitError(
+        "action canonical hash input exceeds maximum of "
+        f"{MAX_ACTION_HASH_CANONICAL_BYTES} bytes",
+        limit_enforced="action_hash_canonical_bytes",
     )
 
 

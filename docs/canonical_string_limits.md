@@ -38,7 +38,7 @@ remain unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.38.0` publishes
+Command Core schema `0.39.0` publishes
 `action_hash_string_token_bytes`, `tool_call_string_token_bytes`, and
 `tool_result_output_string_token_bytes` under `resource_limits`, plus
 `canonical_string_preflight: true`. Command Center renders only this static
@@ -52,3 +52,6 @@ It does not impose a cumulative process quota, contain trusted Python already
 inside the harness process, or replace the complete canonical byte ceiling.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.45 separately preflights the complete canonical value before sorting or
+encoding. See `canonical_value_preflight.md`.

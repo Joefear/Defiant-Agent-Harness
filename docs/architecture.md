@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.44
+## What is deliberately absent from v0.45
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -680,6 +680,13 @@ calls, action fingerprints, and tool results map the shared sanitized failure
 to their own resource-limit aliases. Command Core and Command Center expose
 only static posture. See `canonical_string_limits.md`.
 
+v0.45 counts the exact complete canonical JSON size during the same bounded
+structural traversal. Container syntax, keys, scalars, enum values, and decimal
+strings participate without sorting or encoding. A breach therefore fails
+before `sort_keys` or `JSONEncoder`; the existing streaming counter remains a
+second assertion. Command Core and Command Center expose only static posture.
+See `canonical_value_preflight.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -699,6 +706,10 @@ only static posture. See `canonical_string_limits.md`.
   one rejected string from first expanding beyond the complete canonical byte
   ceiling. Total traffic and repeated accepted hashing still require deployment
   monitoring and OS resource controls.
+- **Canonical-value preflight is per fingerprint.** v0.45 prevents rejected
+  aggregate values from entering encoder sorting or emission, but accepted
+  mappings are still sorted and repeated hashing still consumes CPU. Deployment
+  quotas and monitoring remain necessary.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

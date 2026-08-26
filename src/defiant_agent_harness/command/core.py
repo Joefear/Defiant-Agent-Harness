@@ -88,7 +88,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.38.0"
+SNAPSHOT_VERSION = "0.39.0"
 
 
 class CommandError(RuntimeError):
@@ -290,6 +290,7 @@ class CommandCore:
                     "action_hash_preflight": True,
                     "canonical_number_preflight": True,
                     "canonical_string_preflight": True,
+                    "canonical_value_preflight": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

@@ -173,8 +173,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"provenance_text_item_characters" in javascript
     assert b"provenance_text_characters" in javascript
     assert (
-        b"canonical strings and numbers, governed request construction, "
-        b"tool-call translation, "
+        b"complete canonical values, strings, and numbers preflighted; "
+        b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "
         b"payload matching, and glob matching bounded "
