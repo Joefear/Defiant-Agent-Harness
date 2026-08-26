@@ -50,7 +50,7 @@ than choosing an interpretation.
 
 ## Read-only projection
 
-Command Core schema `0.33.0` exposes `strict_json_v3`, strict UTF-8, structural
+Command Core schema `0.34.0` exposes `strict_json_v3`, strict UTF-8, structural
 and scalar-preflight limits, duplicate-key refusal, and non-finite-number
 refusal beside the existing YAML posture. Command Center renders this static
 metadata read-only. Neither surface accepts JSON, changes a parser option or

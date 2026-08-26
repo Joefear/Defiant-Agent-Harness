@@ -24,6 +24,7 @@ from defiant_agent_harness.contracts import (
     Decision,
     HarnessRequest,
     ResultStatus,
+    RequestLimitError,
     SideEffect,
     Trust,
 )
@@ -128,6 +129,29 @@ def test_oversized_action_hash_input_fails_before_authority_or_execution(
     assert harness.evidence.records() == []
     assert harness.approvals.list_pending() == []
     assert harness.budget.balance_usd == 25
+
+
+def test_mutated_oversized_request_fails_before_agent_proposal(tmp_path, monkeypatch):
+    class ObservedAdapter(MockAgentAdapter):
+        proposed = False
+
+        def propose(self, task):
+            self.proposed = True
+            return super().propose(task)
+
+    adapter = ObservedAdapter(script=SCRIPTS["send_email"])
+    harness = build_harness(tmp_path, adapter, starting_budget_usd=25)
+    request = HarnessRequest(task="request", user_id="tester", workspace_id="ws")
+    request.allowed_tools = ["read_file", "send_email"]
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_ALLOWED_TOOLS", 1)
+
+    with pytest.raises(RequestLimitError, match="allowed tool count") as exc:
+        harness.run(request)
+
+    assert exc.value.limit_enforced == "request_allowed_tools"
+    assert adapter.proposed is False
+    assert harness.evidence.records() == []
+    assert harness.approvals.list_pending() == []
 
 
 def test_injected_publish_is_blocked(tmp_path):

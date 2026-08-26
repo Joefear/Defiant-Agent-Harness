@@ -584,6 +584,16 @@ fresh bounded authorization hash so a nested post-seal mutation is refused.
 Input that cannot be fingerprinted exactly is rejected before authority or
 execution; the control does not provide a process-wide CPU or memory quota.
 
+**Oversized or post-construction request input.** Before v0.40, a direct caller
+could create or mutate a request with a large task, identifier, allowlist, or
+provenance collection and amplify adapter prompting, membership checks, policy
+context, or durable snapshots before a later store limit intervened. v0.40
+applies fixed item, collection, and aggregate text ceilings at construction,
+revalidates at the owning boundary, detaches collections, and seals the request
+before proposal. Refusal is sanitized and creates no partial authority. This
+does not authenticate identifiers, prove provenance, or impose process-wide
+resource quotas.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

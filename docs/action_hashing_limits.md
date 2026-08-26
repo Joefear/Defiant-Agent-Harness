@@ -46,7 +46,7 @@ that cannot be fingerprinted exactly.
 
 ## Read-only projection
 
-Command Core schema `0.33.0` publishes the four fixed ceilings under
+Command Core schema `0.34.0` publishes the four fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -58,5 +58,8 @@ process-wide quotas. The final capability re-check is intentional. Evidence,
 authority documents, runtime artifacts, and durable state retain their own
 separate limits. A compromised host or trusted Python code inside the harness
 process still requires deployment isolation and monitoring.
+
+v0.40 separately bounds governed-request and provenance metadata before action
+construction. See `governed_request_limits.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

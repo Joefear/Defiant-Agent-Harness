@@ -152,6 +152,7 @@ class Harness:
     @_authority_entrypoint
     def run(self, request: HarnessRequest) -> list[ActionOutcome]:
         self._require_execution_enabled()
+        request.seal_contract()
         return [
             self.handle_call(call, request)
             for call in self.adapter.propose(request.task)
@@ -167,6 +168,7 @@ class Harness:
         execution_key: str = "",
     ) -> ActionOutcome:
         self._require_execution_enabled()
+        request.seal_contract()
         action = self.adapter.to_action(call, request.request_id)
         return self._handle(
             action,
@@ -194,6 +196,7 @@ class Harness:
         external runtime reports success.
         """
         self._require_execution_enabled()
+        request.seal_contract()
         action = self.adapter.to_action(call, request.request_id)
         return self._handle(
             action,
@@ -214,6 +217,7 @@ class Harness:
         execution_key: str = "",
         external_execution: bool = False,
     ) -> ActionOutcome:
+        request.seal_contract()
         action.seal_fingerprints()
         self.recover_operation()
         self.reconcile_expired_approvals()
@@ -342,6 +346,7 @@ class Harness:
         action = pending.held_action()
         action.seal_fingerprints()
         request = pending.held_request()
+        request.seal_contract()
         original_decision = pending.held_decision()
         if original_decision.ruleset_hash != self.policy.ruleset_hash:
             current_decision = self._control_decision(
@@ -403,6 +408,7 @@ class Harness:
         self._require_execution_enabled()
         self.recover_operation()
         self.state_integrity.require_safe()
+        request.seal_contract()
         action.seal_fingerprints()
         records = self.evidence.by_action(action.action_id)
         authorization = next(
@@ -509,6 +515,7 @@ class Harness:
         action = pending.held_action()
         action.seal_fingerprints()
         request = pending.held_request()
+        request.seal_contract()
         original_decision = pending.held_decision()
 
         if pending.status == "pending" and approved:
@@ -624,6 +631,7 @@ class Harness:
                 action = approval.held_action()
                 action.seal_fingerprints()
                 request = approval.held_request()
+                request.seal_contract()
                 decision = approval.held_decision()
             except ApprovalError:
                 # Legacy/unresumable records remain non-actionable and unchanged.
@@ -716,6 +724,7 @@ class Harness:
             attestation=attestation,
         )
         request = approval.held_request()
+        request.seal_contract()
         decision = approval.held_decision()
 
         budget_result = self.budget.reconcile_reservation(

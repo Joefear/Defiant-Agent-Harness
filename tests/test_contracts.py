@@ -11,6 +11,7 @@ from defiant_agent_harness.contracts import (
     ContentRef,
     HarnessRequest,
     ProposedAction,
+    RequestLimitError,
     SideEffect,
     Trust,
     action_sha256_of,
@@ -27,6 +28,225 @@ def test_request_rejects_negative_budget_limit():
             workspace_id="workspace",
             budget_limit_usd="-0.01",
         )
+
+
+@pytest.mark.parametrize("field", ["allowed_tools", "inputs"])
+def test_request_collections_must_be_lists(field):
+    values = {
+        "task": "task",
+        "user_id": "user",
+        "workspace_id": "workspace",
+        "allowed_tools": [],
+        "inputs": [],
+    }
+    values[field] = ()
+
+    with pytest.raises(ValueError, match=f"{field} must be a list"):
+        HarnessRequest(**values)
+
+
+def test_request_accepts_exact_text_item_limits_and_rejects_next(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_TEXT_ITEM_CHARACTERS", 4)
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_IDENTIFIER_CHARACTERS", 4)
+
+    HarnessRequest(
+        task="1234",
+        user_id="1234",
+        workspace_id="1234",
+        request_id="1234",
+        task_type="1234",
+    )
+    with pytest.raises(RequestLimitError, match="task exceeds") as task_error:
+        HarnessRequest(task="12345", user_id="u", workspace_id="w")
+    with pytest.raises(RequestLimitError, match="user_id exceeds") as id_error:
+        HarnessRequest(task="task", user_id="12345", workspace_id="w")
+    assert task_error.value.limit_enforced == "request_text_item"
+    assert id_error.value.limit_enforced == "request_text_item"
+
+
+def test_request_accepts_exact_allowlist_limits_and_rejects_next(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_ALLOWED_TOOLS", 2)
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_ALLOWED_TOOL_CHARACTERS", 4)
+
+    HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        allowed_tools=["1234", "read"],
+    )
+    with pytest.raises(RequestLimitError, match="allowed tool count") as count_error:
+        HarnessRequest(
+            task="task",
+            user_id="user",
+            workspace_id="workspace",
+            allowed_tools=["one", "two", "three"],
+        )
+    with pytest.raises(RequestLimitError, match="allowed tool exceeds") as item_error:
+        HarnessRequest(
+            task="task",
+            user_id="user",
+            workspace_id="workspace",
+            allowed_tools=["12345"],
+        )
+    assert count_error.value.limit_enforced == "request_allowed_tools"
+    assert item_error.value.limit_enforced == "request_text_item"
+
+
+def test_request_rejects_empty_allowlist_entries():
+    with pytest.raises(ValueError, match="non-empty strings"):
+        HarnessRequest(
+            task="task",
+            user_id="user",
+            workspace_id="workspace",
+            allowed_tools=[" "],
+        )
+
+
+def test_request_accepts_exact_aggregate_text_limit_and_rejects_next(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_TEXT_CHARACTERS", 5)
+    base = {
+        "task": "t",
+        "user_id": "u",
+        "workspace_id": "w",
+        "request_id": "r",
+        "task_type": "g",
+    }
+
+    HarnessRequest(**base)
+    with pytest.raises(RequestLimitError, match="request text exceeds") as exc:
+        HarnessRequest(**base, allowed_tools=["x"])
+    assert exc.value.limit_enforced == "request_text_characters"
+
+
+def test_provenance_metadata_accepts_exact_item_limit_and_sanitizes_failure(
+    monkeypatch,
+):
+    monkeypatch.setattr(contracts_module, "MAX_PROVENANCE_TEXT_ITEM_CHARACTERS", 4)
+
+    ContentRef("1234", "web", Trust.UNTRUSTED, "hash", "")
+    with pytest.raises(RequestLimitError, match="provenance metadata item") as exc:
+        ContentRef("12345-secret", "web", Trust.UNTRUSTED, "hash", "")
+    assert exc.value.limit_enforced == "provenance_text_item"
+    assert "secret" not in str(exc.value)
+
+
+def test_provenance_count_is_bounded_for_requests_and_actions(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_PROVENANCE_REFS", 2)
+    ref = ContentRef("r", "web", Trust.UNTRUSTED, "hash")
+
+    HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        inputs=[ref, ref],
+    )
+    ProposedAction(
+        tool_name="tool",
+        target="target",
+        payload={},
+        side_effect_level=SideEffect.NONE,
+        payload_sources=[ref, ref],
+    )
+    with pytest.raises(RequestLimitError) as request_error:
+        HarnessRequest(
+            task="task",
+            user_id="user",
+            workspace_id="workspace",
+            inputs=[ref, ref, ref],
+        )
+    with pytest.raises(RequestLimitError) as action_error:
+        ProposedAction(
+            tool_name="tool",
+            target="target",
+            payload={},
+            side_effect_level=SideEffect.NONE,
+            payload_sources=[ref, ref, ref],
+        )
+    assert request_error.value.limit_enforced == "request_provenance_refs"
+    assert action_error.value.limit_enforced == "action_provenance_refs"
+
+
+def test_action_provenance_aggregate_text_is_bounded(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_PROVENANCE_TEXT_CHARACTERS", 3)
+    ref = ContentRef("r", "o", Trust.DERIVED, "h")
+
+    ProposedAction(
+        tool_name="tool",
+        target="target",
+        payload={},
+        side_effect_level=SideEffect.NONE,
+        payload_sources=[ref],
+    )
+    with pytest.raises(RequestLimitError, match="action provenance text") as exc:
+        ProposedAction(
+            tool_name="tool",
+            target="target",
+            payload={},
+            side_effect_level=SideEffect.NONE,
+            payload_sources=[ref, ref],
+        )
+    assert exc.value.limit_enforced == "action_provenance_text_characters"
+
+
+def test_request_seal_revalidates_mutation_and_sanitizes_failure(monkeypatch):
+    request = HarnessRequest(task="task", user_id="user", workspace_id="workspace")
+    request.task = "secret-over-limit"
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_TEXT_ITEM_CHARACTERS", 4)
+
+    with pytest.raises(RequestLimitError, match="task exceeds") as exc:
+        request.seal_contract()
+    assert exc.value.limit_enforced == "request_text_item"
+    assert "secret-over-limit" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("sensitivity", "invalid", "invalid"),
+        ("budget_limit_usd", "-1", "budget_limit_usd"),
+        ("created_at", "2026-01-01T00:00:00", "timezone-aware"),
+    ],
+)
+def test_request_seal_revalidates_mutated_scalar_fields(field, value, message):
+    request = HarnessRequest(task="task", user_id="user", workspace_id="workspace")
+    setattr(request, field, value)
+
+    with pytest.raises(ValueError, match=message):
+        request.seal_contract()
+
+
+def test_request_seal_detaches_collections_and_freezes_contract_fields():
+    allowed_tools = ["read_file"]
+    ref = ContentRef("ref", "operator", Trust.TRUSTED, "hash")
+    inputs = [ref]
+    request = HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        allowed_tools=allowed_tools,
+        inputs=inputs,
+    )
+
+    request.seal_contract()
+    allowed_tools.append("delete_file")
+    inputs.clear()
+
+    assert request.allowed_tools == ("read_file",)
+    assert request.inputs == (ref,)
+    assert request.to_dict()["allowed_tools"] == ["read_file"]
+    assert request.to_dict()["inputs"] == [
+        {
+            "ref_id": "ref",
+            "origin": "operator",
+            "trust": "trusted",
+            "content_hash": "hash",
+            "label": "",
+        }
+    ]
+    with pytest.raises(ValueError, match="sealed request"):
+        request.workspace_id = "changed"
+    with pytest.raises(ValueError, match="sealed request"):
+        request._contract_sealed = False
 
 
 def test_action_rejects_negative_or_nonfinite_cost():
