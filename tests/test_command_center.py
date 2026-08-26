@@ -123,6 +123,10 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"renderResourceLimits" in javascript
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
+    assert b"mcp_config_collection_items" in javascript
+    assert b"mcp_dependency_file_pins" in javascript
+    assert b"mcp_launch_environment_entries" in javascript
+    assert b"MCP collections bounded before transformation" in javascript
     assert b"policy_pack_bytes" in javascript
     assert b"policy_pack_count" in javascript
     assert b"policy_rule_count" in javascript

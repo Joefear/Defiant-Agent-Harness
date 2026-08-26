@@ -9,7 +9,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..bounded_io import InputLimitError
-from ..limits import MAX_MCP_CONFIG_BYTES
+from ..limits import (
+    MAX_MCP_CONFIG_BYTES,
+    MAX_MCP_CONFIG_COLLECTION_ITEMS,
+    MAX_MCP_DEPENDENCY_FILE_PINS,
+    MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES,
+)
 from ..contracts import SideEffect, Trust
 from ..launch_envelope import LaunchEnvironmentConfig, LaunchEnvelopeError
 from ..money import ZERO, money
@@ -236,6 +241,71 @@ _TOOL_KEYS = {
 }
 
 
+def _bounded_collection_count(value: Any, label: str) -> int:
+    """Return a collection size after enforcing the shared MCP ceiling."""
+    if not isinstance(value, (dict, list, tuple)):
+        return 0
+    count = len(value)
+    if count > MAX_MCP_CONFIG_COLLECTION_ITEMS:
+        raise McpConfigError(
+            f"{label} item count exceeds maximum of {MAX_MCP_CONFIG_COLLECTION_ITEMS}"
+        )
+    return count
+
+
+def _preflight_config_collections(
+    root: dict[str, Any],
+    server: dict[str, Any],
+    command_raw: Any,
+) -> None:
+    """Bound collection-driven work before validation or path construction."""
+    _bounded_collection_count(command_raw, "server.command")
+    _bounded_collection_count(server.get("header_env", {}), "server.header_env")
+    _bounded_collection_count(root.get("tools"), "tools")
+
+    dependency_file_count = 0
+    artifact_raw = server.get("artifact_integrity")
+    if isinstance(artifact_raw, dict):
+        _bounded_collection_count(
+            artifact_raw.get("artifacts", []),
+            "server.artifact_integrity.artifacts",
+        )
+        roots_raw = artifact_raw.get("dependency_roots", [])
+        _bounded_collection_count(
+            roots_raw,
+            "server.artifact_integrity.dependency_roots",
+        )
+        if isinstance(roots_raw, list):
+            for index, root_raw in enumerate(roots_raw):
+                if not isinstance(root_raw, dict):
+                    continue
+                files_raw = root_raw.get("files")
+                dependency_file_count += _bounded_collection_count(
+                    files_raw,
+                    f"server.artifact_integrity.dependency_roots[{index}].files",
+                )
+                if dependency_file_count > MAX_MCP_DEPENDENCY_FILE_PINS:
+                    raise McpConfigError(
+                        "server.artifact_integrity dependency file pin count "
+                        f"exceeds maximum of {MAX_MCP_DEPENDENCY_FILE_PINS}"
+                    )
+
+    launch_raw = server.get("launch_environment")
+    if isinstance(launch_raw, dict):
+        launch_count = sum(
+            _bounded_collection_count(
+                launch_raw.get(field, {} if field == "set" else []),
+                f"server.launch_environment.{field}",
+            )
+            for field in ("inherit", "secret_env", "set", "allow_unsafe")
+        )
+        if launch_count > MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES:
+            raise McpConfigError(
+                "server.launch_environment aggregate item count exceeds maximum of "
+                f"{MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES}"
+            )
+
+
 def _load_dependency_roots(
     raw: Any,
     *,
@@ -317,6 +387,7 @@ def load_proxy_config(
     command_raw = (
         command_override if command_override is not None else server.get("command")
     )
+    _preflight_config_collections(root, server, command_raw)
     url_raw = server.get("url", "")
     if command_override is not None and url_raw:
         raise McpConfigError("command override cannot be used with server.url")

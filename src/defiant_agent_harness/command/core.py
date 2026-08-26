@@ -26,6 +26,9 @@ from ..limits import (
     MAX_JSON_NUMBER_TOKEN_CHARACTERS,
     MAX_JSON_STRING_TOKEN_CHARACTERS,
     MAX_MCP_CONFIG_BYTES,
+    MAX_MCP_CONFIG_COLLECTION_ITEMS,
+    MAX_MCP_DEPENDENCY_FILE_PINS,
+    MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES,
     MAX_MCP_MESSAGE_BYTES,
     MAX_POLICY_KNOWN_TOOLS,
     MAX_POLICY_PACK_BYTES,
@@ -59,7 +62,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.28.0"
+SNAPSHOT_VERSION = "0.29.0"
 
 
 class CommandError(RuntimeError):
@@ -158,6 +161,11 @@ class CommandCore:
                     "json_number_token_characters": MAX_JSON_NUMBER_TOKEN_CHARACTERS,
                     "json_string_token_characters": MAX_JSON_STRING_TOKEN_CHARACTERS,
                     "mcp_config_bytes": MAX_MCP_CONFIG_BYTES,
+                    "mcp_config_collection_items": (MAX_MCP_CONFIG_COLLECTION_ITEMS),
+                    "mcp_dependency_file_pins": MAX_MCP_DEPENDENCY_FILE_PINS,
+                    "mcp_launch_environment_entries": (
+                        MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES
+                    ),
                     "policy_pack_bytes": MAX_POLICY_PACK_BYTES,
                     "policy_pack_count": MAX_POLICY_PACKS,
                     "policy_rule_count": MAX_POLICY_RULES,
@@ -175,6 +183,7 @@ class CommandCore:
                     "json_parser_profile": STRICT_JSON_PROFILE,
                     "json_structural_preflight": True,
                     "json_scalar_preflight": True,
+                    "mcp_collection_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

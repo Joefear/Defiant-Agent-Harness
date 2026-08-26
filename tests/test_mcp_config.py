@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+import defiant_agent_harness.mcp.config as mcp_config_module
 import defiant_agent_harness.strict_yaml as strict_yaml_module
 from defiant_agent_harness.contracts import SideEffect, Trust
 from defiant_agent_harness.mcp.config import McpConfigError, load_proxy_config
@@ -72,6 +73,174 @@ tools:
     )
     config = load_proxy_config(path, ["python", "server.py", "--safe"])
     assert config.command == ("python", "server.py", "--safe")
+
+
+def test_command_override_count_is_bounded_before_element_validation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 1)
+    path = tmp_path / "proxy.yaml"
+    path.write_text(
+        "server: {name: x, command: [old]}\ntools: {echo: {side_effect: none}}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(McpConfigError, match="server.command item count.*maximum of 1"):
+        load_proxy_config(path, ["python", object()])
+
+
+@pytest.mark.parametrize(
+    "body, label",
+    [
+        (
+            "server: {name: x, command: [python]}\n"
+            "tools: {first: null, second: null}\n",
+            "tools",
+        ),
+        (
+            "server:\n"
+            "  name: remote\n"
+            "  url: https://mcp.example.test\n"
+            "  header_env: {X-First: FIRST, X-Second: SECOND}\n"
+            "tools: {lookup: {side_effect: none}}\n",
+            "server.header_env",
+        ),
+        (
+            "server:\n"
+            "  name: x\n"
+            "  command: [python]\n"
+            "  artifact_integrity:\n"
+            "    required: true\n"
+            "    artifacts: [{private: first}, {private: second}]\n"
+            "tools: {echo: {side_effect: none}}\n",
+            "server.artifact_integrity.artifacts",
+        ),
+        (
+            "server:\n"
+            "  name: x\n"
+            "  command: [python]\n"
+            "  artifact_integrity:\n"
+            "    required: true\n"
+            "    dependency_roots: [{private: first}, {private: second}]\n"
+            "tools: {echo: {side_effect: none}}\n",
+            "server.artifact_integrity.dependency_roots",
+        ),
+        (
+            "server:\n"
+            "  name: x\n"
+            "  command: [python]\n"
+            "  launch_environment:\n"
+            "    secret_env: [PRIVATE_ONE, PRIVATE_TWO]\n"
+            "tools: {echo: {side_effect: none}}\n",
+            "server.launch_environment.secret_env",
+        ),
+    ],
+)
+def test_mcp_config_collections_are_bounded_before_entry_validation(
+    tmp_path, monkeypatch, body, label
+):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 1)
+    path = tmp_path / "oversized.yaml"
+    path.write_text(body, encoding="utf-8")
+
+    with pytest.raises(
+        McpConfigError, match=rf"{label} item count.*maximum of 1"
+    ) as failure:
+        load_proxy_config(path)
+
+    assert "private" not in str(failure.value)
+
+
+def test_dependency_file_collection_is_bounded_before_pin_validation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 1)
+    path = tmp_path / "oversized-files.yaml"
+    path.write_text(
+        """
+server:
+  name: x
+  command: [python]
+  artifact_integrity:
+    required: true
+    dependency_roots:
+      - path: dependencies
+        files: [{private: first}, {private: second}]
+tools: {echo: {side_effect: none}}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        McpConfigError, match=r"dependency_roots\[0\]\.files item count"
+    ):
+        load_proxy_config(path)
+
+
+def test_aggregate_dependency_file_pin_count_is_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 2)
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_DEPENDENCY_FILE_PINS", 1)
+    path = tmp_path / "aggregate-files.yaml"
+    path.write_text(
+        """
+server:
+  name: x
+  command: [python]
+  artifact_integrity:
+    required: true
+    dependency_roots:
+      - {path: first, files: [{private: first}]}
+      - {path: second, files: [{private: second}]}
+tools: {echo: {side_effect: none}}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(McpConfigError, match="dependency file pin count.*maximum of 1"):
+        load_proxy_config(path)
+
+
+def test_aggregate_launch_environment_count_is_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 2)
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES", 2)
+    path = tmp_path / "aggregate-environment.yaml"
+    path.write_text(
+        """
+server:
+  name: x
+  command: [python]
+  launch_environment:
+    inherit: [PATH]
+    secret_env: [PRIVATE_TOKEN]
+    set: {MODE: production}
+tools: {echo: {side_effect: none}}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        McpConfigError, match="aggregate item count.*maximum of 2"
+    ) as failure:
+        load_proxy_config(path)
+
+    assert "PRIVATE_TOKEN" not in str(failure.value)
+
+
+def test_mcp_config_collection_exact_boundary_is_accepted(tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_config_module, "MAX_MCP_CONFIG_COLLECTION_ITEMS", 2)
+    path = tmp_path / "boundary.yaml"
+    path.write_text(
+        "server: {name: x, command: [python, server.py]}\n"
+        "tools:\n"
+        "  first: {side_effect: none}\n"
+        "  second: {side_effect: local_write}\n",
+        encoding="utf-8",
+    )
+
+    config = load_proxy_config(path)
+
+    assert config.command == ("python", "server.py")
+    assert set(config.tools) == {"first", "second"}
 
 
 def test_runner_override_is_bound_as_the_effective_runner(tmp_path):

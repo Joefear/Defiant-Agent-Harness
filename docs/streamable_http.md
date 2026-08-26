@@ -34,6 +34,8 @@ tools:
 ```
 
 `header_env` maps an HTTP header name to the name of an environment variable.
+v0.35 caps that map at 4,096 entries before header validation or remote-session
+creation, as part of the shared MCP configuration collection preflight.
 The secret value is read only when the process starts:
 
 ```powershell

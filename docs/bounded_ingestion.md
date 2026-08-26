@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.28.0` projects them under `resource_limits`, and Command Center only
+schema `0.29.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
@@ -52,6 +52,10 @@ characters per string token and 1,024 source characters per number token. See
 
 v0.32 separately bounds operator-supplied trusted public-key collections before
 filesystem and cryptographic work. See `trusted_key_limits.md`.
+
+v0.35 separately bounds semantically expensive MCP configuration collections
+after strict YAML construction but before entry transformation, path handling,
+hashing, or startup. See `mcp_configuration_limits.md`.
 
 ## Parser discipline
 
