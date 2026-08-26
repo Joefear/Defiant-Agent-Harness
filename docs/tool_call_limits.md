@@ -39,6 +39,11 @@ Mapping-key eligibility and sortable families are checked in a key-only pass
 before call values or encoder sorting. Existing invalid-key inputs retain the
 sanitized `tool_call_contract` classification.
 
+Every eligible key then receives its complete scalar, escaped-token,
+finite/canonical-number, node, canonical-byte, and sort-work checks before any
+mapping value is visited. A key ceiling breach retains the corresponding
+sanitized `tool_call_*` limit classification.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
@@ -60,7 +65,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.42.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.43.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports

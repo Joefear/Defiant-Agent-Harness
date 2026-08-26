@@ -129,6 +129,16 @@ def test_tool_call_maps_invalid_mapping_key_contract():
     assert exc.value.limit_enforced == "tool_call_contract"
 
 
+def test_tool_call_completes_mapping_key_preflight_before_values(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 2)
+
+    with pytest.raises(ToolCallLimitError) as exc:
+        ToolCall("tool", arguments={1: object(), 100: "late invalid key"})
+
+    assert exc.value.limit_enforced == "tool_call_number_characters"
+    assert "late invalid key" not in str(exc.value)
+
+
 def test_tool_call_maps_canonical_number_failure(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 4)
 

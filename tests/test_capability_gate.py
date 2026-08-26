@@ -276,6 +276,20 @@ def test_tool_result_maps_invalid_mapping_key_contract():
     assert exc.value.limit_enforced == "tool_result_output_contract"
 
 
+def test_tool_result_completes_mapping_key_preflight_before_values(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_NUMBER_CHARACTERS", 2)
+
+    with pytest.raises(ToolResultLimitError) as exc:
+        ToolResult(
+            status="succeeded",
+            summary="invalid late key",
+            output={1: object(), 100: "late invalid key"},
+        )
+
+    assert exc.value.limit_enforced == "tool_result_output_number_characters"
+    assert "late invalid key" not in str(exc.value)
+
+
 def test_tool_result_maps_canonical_string_token_failure(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", 8)
 

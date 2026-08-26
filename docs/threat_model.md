@@ -674,6 +674,16 @@ before values or sorting. Existing successful hashes and sanitized owning
 contract failures are unchanged. Trusted Python subclasses remain inside the
 process trust boundary.
 
+**Late canonical mapping-key token failure.** v0.48 established key-family
+eligibility before values, but complete scalar, escaped-token, numeric, byte,
+node, and sort-work checks were still interleaved with value traversal. A valid
+early key could therefore expose its unsupported or adversarial value before a
+later key was rejected as oversized, non-finite, or over budget. v0.49 completes
+all key-controlled validation and accounting before the first mapping value is
+visited. Accepted canonical bytes and hashes do not change. This remains a
+per-fingerprint deterministic control, not a Python sandbox, wall-clock limit,
+or cumulative quota.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

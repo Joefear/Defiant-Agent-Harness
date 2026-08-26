@@ -546,6 +546,95 @@ def test_action_hash_rejects_unsupported_keys_before_values_or_encoder(monkeypat
         assert "secret" not in str(exc.value)
 
 
+@pytest.mark.parametrize(
+    ("constant", "maximum", "entries", "limit_enforced"),
+    [
+        (
+            "MAX_ACTION_HASH_SCALAR_CHARACTERS",
+            4,
+            [("safe", object()), ("secret-key", 1)],
+            "action_hash_scalar_characters",
+        ),
+        (
+            "MAX_ACTION_HASH_STRING_TOKEN_BYTES",
+            8,
+            [("a", object()), ("😀", 1)],
+            "action_hash_string_token_bytes",
+        ),
+        (
+            "MAX_ACTION_HASH_NUMBER_CHARACTERS",
+            2,
+            [(1, object()), (100, 1)],
+            "action_hash_number_characters",
+        ),
+    ],
+)
+def test_action_hash_validates_every_key_token_before_mapping_values(
+    monkeypatch, constant, maximum, entries, limit_enforced
+):
+    class GuardedMapping(dict):
+        def items(self):
+            raise AssertionError(
+                "mapping values must not precede complete key preflight"
+            )
+
+    value = GuardedMapping(entries)
+    monkeypatch.setattr(contracts_module, constant, maximum)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive an invalid mapping key")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == limit_enforced
+    assert "secret" not in str(exc.value)
+
+
+def test_action_hash_validates_all_numeric_keys_before_mapping_values(monkeypatch):
+    class GuardedMapping(dict):
+        def items(self):
+            raise AssertionError(
+                "mapping values must not precede complete key preflight"
+            )
+
+    value = GuardedMapping([(1.0, object()), (float("inf"), 1)])
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive a non-finite mapping key")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ValueError, match="non-finite number"):
+        action_sha256_of(value)
+
+
+def test_action_hash_accounts_all_key_sort_work_before_mapping_values(monkeypatch):
+    class GuardedMapping(dict):
+        def items(self):
+            raise AssertionError(
+                "mapping values must not precede complete key preflight"
+            )
+
+    value = GuardedMapping([("a", object()), ("bb", 1)])
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS", 6)
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive an over-budget mapping")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ActionHashLimitError) as exc:
+        action_sha256_of(value)
+
+    assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
+
+
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
 
