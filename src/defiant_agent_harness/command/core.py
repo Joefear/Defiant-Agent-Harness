@@ -36,6 +36,8 @@ from ..limits import (
     MAX_POLICY_RULE_FIELD_ITEMS,
     MAX_POLICY_RULE_LIST_ITEMS,
     MAX_POLICY_RULES,
+    MAX_POLICY_TEXT_CHARACTERS,
+    MAX_POLICY_TEXT_ITEM_CHARACTERS,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -62,7 +64,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.29.0"
+SNAPSHOT_VERSION = "0.30.0"
 
 
 class CommandError(RuntimeError):
@@ -172,6 +174,8 @@ class CommandCore:
                     "policy_known_tool_count": MAX_POLICY_KNOWN_TOOLS,
                     "policy_rule_field_items": MAX_POLICY_RULE_FIELD_ITEMS,
                     "policy_rule_list_items": MAX_POLICY_RULE_LIST_ITEMS,
+                    "policy_text_item_characters": (MAX_POLICY_TEXT_ITEM_CHARACTERS),
+                    "policy_text_characters": MAX_POLICY_TEXT_CHARACTERS,
                     "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
                     "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
                     "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -184,6 +188,7 @@ class CommandCore:
                     "json_structural_preflight": True,
                     "json_scalar_preflight": True,
                     "mcp_collection_preflight": True,
+                    "policy_text_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

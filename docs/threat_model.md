@@ -434,6 +434,25 @@ size or cost of hashing referenced files, impose a process-wide resource
 quota, or contain a compromised host. Artifact inventory limits, operator
 review, immutable deployment, and OS controls remain separate defenses.
 
+### 28. Aggregate policy text amplification
+
+Per-file byte and complete-ruleset collection ceilings do not bound text
+volume across many policy packs. Long glob patterns, payload terms,
+descriptions, reasons, scopes, and redactions can amplify normalization,
+authority hashing, storage, and repeated matcher work even when every
+collection count remains valid.
+
+v0.36 caps each recognized policy text item at 4,096 constructed characters
+and all recognized text in one complete ruleset at 8,388,608 characters. The
+synthetic registry pack participates, duplicates count as supplied, exact
+limits pass, and failures precede rule construction and ruleset hashing without
+echoing policy content.
+
+These bounds do not cap governed action payloads or establish a wall-clock
+matcher budget, prove policy correctness, or contain a compromised host.
+Adversarial policy tests, deployment review, monitoring, and OS resource
+controls remain necessary.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

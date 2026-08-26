@@ -57,3 +57,7 @@ MAX_POLICY_RULES = 4_096
 MAX_POLICY_KNOWN_TOOLS = 4_096
 MAX_POLICY_RULE_FIELD_ITEMS = 4_096
 MAX_POLICY_RULE_LIST_ITEMS = 65_536
+# Text volume is counted across the complete loaded ruleset, including the
+# synthetic registry pack, before Rule construction or authority hashing.
+MAX_POLICY_TEXT_ITEM_CHARACTERS = 4_096
+MAX_POLICY_TEXT_CHARACTERS = 8 * MIB

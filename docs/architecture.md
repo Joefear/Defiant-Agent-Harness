@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.35
+## What is deliberately absent from v0.36
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -605,6 +605,14 @@ dependency pins are capped at 8,192 across roots and launch-environment entries
 at 4,096 across fields. CLI command overrides use the same path. Command Core
 and Command Center expose only the static ceilings and cannot mutate authority.
 See `mcp_configuration_limits.md`.
+
+v0.36 adds complete-ruleset policy text preflight alongside the v0.33
+collection checks. Each recognized policy string is capped at 4,096
+constructed characters and all recognized policy text across loaded packs,
+including the synthetic registry pack, is capped at 8,388,608. It runs before
+rule construction, normalization, authority hashing, or action evaluation.
+Command Core and Command Center expose only the static limits. See
+`policy_text_limits.md`.
 
 ## Known limits
 

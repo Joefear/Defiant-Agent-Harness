@@ -38,6 +38,8 @@ from ..limits import (
     MAX_POLICY_RULE_FIELD_ITEMS,
     MAX_POLICY_RULE_LIST_ITEMS,
     MAX_POLICY_RULES,
+    MAX_POLICY_TEXT_CHARACTERS,
+    MAX_POLICY_TEXT_ITEM_CHARACTERS,
 )
 from ..strict_yaml import StrictYamlError, load_bounded_yaml
 
@@ -50,6 +52,16 @@ _RULE_LIST_FIELDS = (
     "payload_contains",
     "sensitivities",
     "redactions",
+)
+_PACK_TEXT_FIELDS = ("version", "name", "description")
+_RULE_TEXT_FIELDS = (
+    "id",
+    "description",
+    "side_effect_at_least",
+    "max_payload_trust",
+    "effect",
+    "reason",
+    "approval_scope",
 )
 
 
@@ -155,9 +167,15 @@ def _validate_policy_complexity(packs: list[dict]) -> None:
     known_tool_count = 0
     rule_count = 0
     rule_list_item_count = 0
+    text_character_count = 0
     for pack in packs:
         if not isinstance(pack, dict):
             raise ValueError("each policy pack must be a mapping")
+
+        for field_name in _PACK_TEXT_FIELDS:
+            text_character_count = _count_policy_text(
+                pack.get(field_name), text_character_count
+            )
 
         known_tools = pack.get("known_tools", []) or []
         if isinstance(known_tools, list):
@@ -167,6 +185,8 @@ def _validate_policy_complexity(packs: list[dict]) -> None:
                     "known tool pattern count exceeds maximum of "
                     f"{MAX_POLICY_KNOWN_TOOLS}"
                 )
+            for value in known_tools:
+                text_character_count = _count_policy_text(value, text_character_count)
 
         rules = pack.get("rules", []) or []
         if not isinstance(rules, list):
@@ -178,6 +198,10 @@ def _validate_policy_complexity(packs: list[dict]) -> None:
         for raw in rules:
             if not isinstance(raw, dict):
                 continue
+            for field_name in _RULE_TEXT_FIELDS:
+                text_character_count = _count_policy_text(
+                    raw.get(field_name), text_character_count
+                )
             for field_name in _RULE_LIST_FIELDS:
                 values = raw.get(field_name, [])
                 if not isinstance(values, list):
@@ -193,6 +217,28 @@ def _validate_policy_complexity(packs: list[dict]) -> None:
                         "policy rule list item count exceeds maximum of "
                         f"{MAX_POLICY_RULE_LIST_ITEMS}"
                     )
+                for value in values:
+                    text_character_count = _count_policy_text(
+                        value, text_character_count
+                    )
+
+
+def _count_policy_text(value: Any, current: int) -> int:
+    """Count one recognized policy string without echoing its contents."""
+    if not isinstance(value, str):
+        return current
+    if len(value) > MAX_POLICY_TEXT_ITEM_CHARACTERS:
+        raise ValueError(
+            "policy text item exceeds maximum of "
+            f"{MAX_POLICY_TEXT_ITEM_CHARACTERS} characters"
+        )
+    total = current + len(value)
+    if total > MAX_POLICY_TEXT_CHARACTERS:
+        raise ValueError(
+            "policy text character count exceeds maximum of "
+            f"{MAX_POLICY_TEXT_CHARACTERS}"
+        )
+    return total
 
 
 def _validate_policy_pack_input_count(count: int) -> None:
