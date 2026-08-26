@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.42
+## What is deliberately absent from v0.43
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -664,6 +664,14 @@ mutation before recovery, policy, approval, reservation, evidence, or tool
 execution. Command Core and Command Center expose only static posture. See
 `tool_call_limits.md`.
 
+v0.43 completes the scalar preflight for shared canonical hashing. Integers,
+finite floats, and canonical decimal strings are limited to 1,024 characters
+before JSON encoding. Integer magnitude is compared without decimal rendering;
+`Decimal` coefficient and rendered lengths are checked from tuple metadata
+before fixed-point expansion. Accepted canonical bytes and hashes do not change.
+Command Core and Command Center expose only static posture. See
+`canonical_number_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -675,6 +683,10 @@ execution. Command Core and Command Center expose only static posture. See
   each canonical payload, provenance-content, and authorization fingerprint.
   Total traffic, CPU, memory, and wall-clock consumption across many accepted
   actions still require deployment monitoring and OS controls.
+- **Canonical-number limits are per value, not arithmetic quotas.** v0.43
+  prevents unbounded decimal rendering during canonical hashing. It does not
+  cap arithmetic performed before a value reaches Defiant or cumulative work
+  across many accepted values.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

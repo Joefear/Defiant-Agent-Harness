@@ -617,6 +617,17 @@ no policy decision, approval, reservation, evidence, or execution. This
 detects contract drift; it does not sandbox arbitrary trusted Python code or
 provide a process-wide resource quota.
 
+**Oversized in-memory canonical numbers.** Strict JSON ingress limits numeric
+tokens, but before v0.43 a direct caller could provide a huge Python integer or
+a `Decimal` with a large positive exponent. Shared canonical hashing treated
+numbers as scalar primitives and could attempt decimal or fixed-point rendering
+before the canonical-byte ceiling intervened. v0.43 caps each rendered numeric
+token at 1,024 characters, compares integer magnitude without rendering, and
+caps decimal coefficient digits and calculates rendered length from tuple
+metadata before expansion.
+Non-finite floats remain refused. This bounds rendering at Defiant's canonical
+boundary, not arithmetic performed earlier or cumulative process resources.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

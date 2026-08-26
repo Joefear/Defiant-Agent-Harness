@@ -14,17 +14,20 @@ from __future__ import annotations
 import enum
 import hashlib
 import json
+import math
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any, Iterable
 
 from .limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
     MAX_ACTION_HASH_NESTING_DEPTH,
     MAX_ACTION_HASH_NODES,
+    MAX_ACTION_HASH_NUMBER_CHARACTERS,
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
     MAX_PROVENANCE_REFS,
     MAX_PROVENANCE_TEXT_CHARACTERS,
@@ -753,7 +756,7 @@ def _action_hash_default(obj: Any) -> Any:
     if isinstance(obj, enum.Enum):
         return obj.value
     if isinstance(obj, Decimal):
-        return money_text(obj)
+        return _bounded_money_text(obj)
     raise TypeError(f"unsupported action hash value type: {type(obj).__name__}")
 
 
@@ -783,13 +786,20 @@ def _validate_action_hash_structure(obj: Any) -> None:
             visit(value.value, depth)
             return
         if isinstance(value, Decimal):
-            text = money_text(value)
-            _validate_action_hash_scalar(text)
+            _bounded_money_text(value)
             return
         if isinstance(value, str):
             _validate_action_hash_scalar(value)
             return
-        if value is None or isinstance(value, (bool, int, float)):
+        if isinstance(value, bool) or value is None:
+            return
+        if isinstance(value, int):
+            _validate_action_hash_integer(value)
+            return
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                raise ValueError("action hash input contains a non-finite number")
+            _validate_action_hash_number_text(repr(value))
             return
         if isinstance(value, dict):
             marker = id(value)
@@ -830,6 +840,82 @@ def _validate_action_hash_scalar(value: str) -> None:
             f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
             limit_enforced="action_hash_scalar_characters",
         )
+
+
+def _validate_action_hash_integer(value: int) -> None:
+    sign_characters = 1 if value < 0 else 0
+    allowed_digits = MAX_ACTION_HASH_NUMBER_CHARACTERS - sign_characters
+    if allowed_digits <= 0:
+        _raise_action_hash_number_limit()
+    boundary = _action_hash_integer_boundary(allowed_digits)
+    if value >= boundary or value <= -boundary:
+        _raise_action_hash_number_limit()
+
+
+def _bounded_money_text(value: Decimal) -> str:
+    result = money(value)
+    if result == ZERO:
+        return "0"
+    digits, retained_digits, exponent = _canonical_money_components(result)
+    if (
+        _canonical_money_text_length(retained_digits, exponent)
+        > MAX_ACTION_HASH_NUMBER_CHARACTERS
+    ):
+        _raise_action_hash_number_limit()
+    coefficient = "".join(str(digit) for digit in digits[:retained_digits])
+    if exponent >= 0:
+        return coefficient + ("0" * exponent)
+    fractional_digits = -exponent
+    if fractional_digits >= retained_digits:
+        return "0." + ("0" * (fractional_digits - retained_digits)) + coefficient
+    split_at = retained_digits - fractional_digits
+    return coefficient[:split_at] + "." + coefficient[split_at:]
+
+
+@lru_cache(maxsize=16)
+def _action_hash_integer_boundary(digits: int) -> int:
+    return 10**digits
+
+
+def _canonical_money_components(value: Decimal) -> tuple[tuple[int, ...], int, int]:
+    parts = value.as_tuple()
+    digits = parts.digits
+    if len(digits) > MAX_ACTION_HASH_NUMBER_CHARACTERS:
+        _raise_action_hash_number_limit()
+    exponent = int(parts.exponent)
+    if exponent >= 0:
+        return digits, len(digits), exponent
+
+    fractional_digits = -exponent
+    trailing_zeros = 0
+    for digit in reversed(digits):
+        if digit != 0:
+            break
+        trailing_zeros += 1
+    removed_zeros = min(fractional_digits, trailing_zeros)
+    return digits, len(digits) - removed_zeros, exponent + removed_zeros
+
+
+def _canonical_money_text_length(retained_digits: int, exponent: int) -> int:
+    if exponent >= 0:
+        return retained_digits + exponent
+    fractional_digits = -exponent
+    if fractional_digits >= retained_digits:
+        return 2 + fractional_digits
+    return retained_digits + 1
+
+
+def _validate_action_hash_number_text(value: str) -> None:
+    if len(value) > MAX_ACTION_HASH_NUMBER_CHARACTERS:
+        _raise_action_hash_number_limit()
+
+
+def _raise_action_hash_number_limit() -> None:
+    raise ActionHashLimitError(
+        "action hash canonical number exceeds maximum of "
+        f"{MAX_ACTION_HASH_NUMBER_CHARACTERS} characters",
+        limit_enforced="action_hash_number_characters",
+    )
 
 
 def _require_request_text(value: str, field_name: str, maximum: int) -> None:

@@ -160,21 +160,24 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.36.0"
+    assert output["schema_version"] == "0.37.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
         "tool_call_nesting_depth": 64,
         "tool_call_nodes": 1_100_000,
+        "tool_call_number_characters": 1024,
         "tool_call_scalar_characters": 8 * 1024 * 1024,
         "tool_call_canonical_bytes": 64 * 1024 * 1024,
         "action_hash_canonical_bytes": 64 * 1024 * 1024,
         "action_hash_nesting_depth": 64,
         "action_hash_nodes": 1_100_000,
+        "action_hash_number_characters": 1024,
         "action_hash_scalar_characters": 8 * 1024 * 1024,
         "tool_result_summary_characters": 64 * 1024,
         "tool_result_output_nesting_depth": 64,
         "tool_result_output_nodes": 1_100_000,
+        "tool_result_output_number_characters": 1024,
         "tool_result_output_scalar_characters": 8 * 1024 * 1024,
         "tool_result_output_canonical_bytes": 64 * 1024 * 1024,
         "durable_json_bytes": 64 * 1024 * 1024,
@@ -229,6 +232,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "policy_payload_match_preflight": True,
         "policy_glob_match_preflight": True,
         "action_hash_preflight": True,
+        "canonical_number_preflight": True,
         "request_contract_preflight": True,
         "tool_call_contract_preflight": True,
         "tool_result_contract_preflight": True,
