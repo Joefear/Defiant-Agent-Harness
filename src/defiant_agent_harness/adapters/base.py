@@ -33,12 +33,36 @@ adapter is a thin translation rather than a rewrite.
 from __future__ import annotations
 
 import abc
+from copy import deepcopy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Iterable
 
-from ..contracts import ContentRef, ProposedAction, SideEffect, Trust
+from ..contracts import (
+    ActionHashLimitError,
+    ContentRef,
+    ProposedAction,
+    SideEffect,
+    Trust,
+    action_sha256_of,
+)
+from ..limits import (
+    MAX_TOOL_CALL_IDENTIFIER_CHARACTERS,
+    MAX_TOOL_CALL_NAME_CHARACTERS,
+)
 from ..money import money
+
+
+class ToolCallContractError(ValueError):
+    """A pre-adapter tool call cannot enter the authority path safely."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
+
+
+class ToolCallLimitError(ToolCallContractError):
+    """A pre-adapter tool call exceeded a fixed resource ceiling."""
 
 
 @dataclass
@@ -50,6 +74,132 @@ class ToolCall:
     call_id: str = ""
     server: str = ""  # originating MCP server, when proxying
     transport_params: dict[str, Any] = field(default_factory=dict)
+    _sealed_contract_hash: str = field(default="", init=False, repr=False)
+    _contract_sealed: bool = field(default=False, init=False, repr=False)
+
+    _CONTRACT_FIELDS = frozenset(
+        {"name", "arguments", "call_id", "server", "transport_params"}
+    )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_contract_sealed", False) and (
+            name in self._CONTRACT_FIELDS
+            or name in {"_sealed_contract_hash", "_contract_sealed"}
+        ):
+            raise ValueError("sealed tool call contract fields cannot be changed")
+        object.__setattr__(self, name, value)
+
+    def __post_init__(self) -> None:
+        self._validate_contract()
+
+    def seal_contract(self) -> str:
+        """Revalidate, detach, hash, and freeze one pre-adapter call."""
+        if self._contract_sealed:
+            self.require_unchanged()
+            return self._sealed_contract_hash
+        self._validate_contract()
+        arguments = deepcopy(self.arguments)
+        transport_params = deepcopy(self.transport_params)
+        contract_hash = _tool_call_contract_hash(
+            self._contract_surface(
+                arguments=arguments,
+                transport_params=transport_params,
+            )
+        )
+        object.__setattr__(self, "arguments", arguments)
+        object.__setattr__(self, "transport_params", transport_params)
+        object.__setattr__(self, "_sealed_contract_hash", contract_hash)
+        object.__setattr__(self, "_contract_sealed", True)
+        return contract_hash
+
+    def require_unchanged(self) -> None:
+        """Refuse nested mutation performed during adapter translation."""
+        if not self._contract_sealed:
+            raise ToolCallContractError(
+                "tool call contract is not sealed",
+                limit_enforced="tool_call_contract",
+            )
+        current_hash = _tool_call_contract_hash(self._contract_surface())
+        if current_hash != self._sealed_contract_hash:
+            raise ToolCallContractError(
+                "tool call contract changed during adapter translation",
+                limit_enforced="tool_call_mutation",
+            )
+
+    @property
+    def contract_hash(self) -> str:
+        if self._contract_sealed:
+            return self._sealed_contract_hash
+        return _tool_call_contract_hash(self._contract_surface())
+
+    def _validate_contract(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ToolCallContractError(
+                "tool call name must be a non-empty string",
+                limit_enforced="tool_call_name_contract",
+            )
+        if len(self.name) > MAX_TOOL_CALL_NAME_CHARACTERS:
+            raise ToolCallLimitError(
+                "tool call name exceeds maximum of "
+                f"{MAX_TOOL_CALL_NAME_CHARACTERS} characters",
+                limit_enforced="tool_call_name_characters",
+            )
+        for field_name in ("call_id", "server"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                raise ToolCallContractError(
+                    f"tool call {field_name} must be a string",
+                    limit_enforced="tool_call_identifier_contract",
+                )
+            if len(value) > MAX_TOOL_CALL_IDENTIFIER_CHARACTERS:
+                raise ToolCallLimitError(
+                    "tool call identifier exceeds maximum of "
+                    f"{MAX_TOOL_CALL_IDENTIFIER_CHARACTERS} characters",
+                    limit_enforced="tool_call_identifier_characters",
+                )
+        if not isinstance(self.arguments, dict):
+            raise ToolCallContractError(
+                "tool call arguments must be a dictionary",
+                limit_enforced="tool_call_arguments_contract",
+            )
+        if not isinstance(self.transport_params, dict):
+            raise ToolCallContractError(
+                "tool call transport_params must be a dictionary",
+                limit_enforced="tool_call_transport_params_contract",
+            )
+        _tool_call_contract_hash(self._contract_surface())
+
+    def _contract_surface(
+        self,
+        *,
+        arguments: dict[str, Any] | None = None,
+        transport_params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "arguments": self.arguments if arguments is None else arguments,
+            "call_id": self.call_id,
+            "server": self.server,
+            "transport_params": (
+                self.transport_params if transport_params is None else transport_params
+            ),
+        }
+
+
+def _tool_call_contract_hash(surface: dict[str, Any]) -> str:
+    try:
+        return action_sha256_of(surface)
+    except ActionHashLimitError as exc:
+        suffix = exc.limit_enforced.removeprefix("action_hash_")
+        raise ToolCallLimitError(
+            "tool call exceeds a fixed canonical-value ceiling",
+            limit_enforced=f"tool_call_{suffix}",
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise ToolCallContractError(
+            "tool call is not canonical JSON data",
+            limit_enforced="tool_call_contract",
+        ) from exc
 
 
 @dataclass

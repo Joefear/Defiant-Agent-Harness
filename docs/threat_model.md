@@ -606,6 +606,17 @@ reconciliation instead of fabricating an outcome or replaying the tool. This
 does not contain the tool, prove its reported status, or impose process-wide
 resource quotas.
 
+**Oversized or mutated pre-adapter tool calls.** Before v0.42, direct/native
+callers could construct or later mutate large, deeply nested, cyclic, or
+non-canonical `ToolCall` arguments and transport parameters before a bounded
+`ProposedAction` existed. An adapter could also rewrite nested call data during
+translation. v0.42 validates the complete call at construction and again at
+the owning boundary, detaches and seals it before `to_action`, then performs a
+fresh bounded hash before any authority work. Refusal is sanitized and creates
+no policy decision, approval, reservation, evidence, or execution. This
+detects contract drift; it does not sandbox arbitrary trusted Python code or
+provide a process-wide resource quota.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

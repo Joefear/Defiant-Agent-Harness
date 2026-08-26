@@ -63,6 +63,16 @@ class HermesAdapter(AgentAdapter):
 
 `ToolCall` deliberately mirrors the MCP `tools/call` shape (`name`, `arguments`, `call_id`, `server`) so a proxy adapter is a translation rather than a rewrite. `ToolCallOutcome.as_mcp_result()` emits a result an MCP client accepts without special-casing, with harness metadata under a `_defiant` key.
 
+Since v0.42, that translation input is itself an owned security contract. The
+harness revalidates, detaches, hashes, and seals the complete tool name,
+identifiers, arguments, and transport parameters before calling `to_action`.
+It re-hashes the live surface immediately after translation, before recovery or
+authority work. Top-level mutation is frozen and nested mutation is detected.
+An adapter must treat `ToolCall` as read-only; it may derive a new
+`ProposedAction`, but it may not normalize or rewrite the sealed call in place.
+Invalid, oversized, cyclic, non-canonical, or changed calls produce no policy
+decision, approval, reservation, evidence, grant, or tool execution.
+
 Since v0.40, the owning harness revalidates and seals `HarnessRequest` before
 `propose(task)` or direct call translation. A request with oversized task,
 identity, allowlist, or provenance metadata fails before adapter code runs.

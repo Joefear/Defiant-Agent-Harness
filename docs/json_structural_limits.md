@@ -44,7 +44,7 @@ documents, evidence exports, and external evidence witnesses.
 
 ## Read-only projection
 
-Command Core schema `0.35.0` exposes the current `strict_json_v3` profile, the
+Command Core schema `0.36.0` exposes the current `strict_json_v3` profile, the
 two structural ceilings, and structural-preflight posture. Command Center
 renders those values with the other fixed resource limits. Neither surface
 accepts JSON, changes a ceiling, adds an exception, retries input, repairs

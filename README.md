@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.41.
+logs. A full trusted-memory/DKE system is not part of v0.42.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.41 is
+## What v0.42 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -395,6 +395,15 @@ open for the existing explicit operator reconciliation path. Command Core and
 the strictly read-only Command Center expose only the fixed ceilings, posture,
 and sanitized reconciliation-required state.
 
+v0.42 closes the matching pre-adapter construction gap. Every `ToolCall` now
+has fixed name and identifier ceilings plus bounded canonical depth, node,
+scalar, and byte limits across arguments and transport parameters. The owning
+harness revalidates, detaches, hashes, and seals the complete call before
+adapter translation, then re-hashes it immediately afterward. Oversized,
+cyclic, non-canonical, or adapter-mutated calls fail before policy, approval,
+budget, evidence, or execution. Command Core and the strictly read-only Command
+Center expose only the fixed ceilings and fail-closed posture.
+
 ## Install
 
 ```bash
@@ -730,7 +739,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.41 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.42 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -768,6 +777,7 @@ matching ceilings,
 fixed lazy tool-name/target glob-subject and decision-wide glob-work ceilings,
 fixed bounded canonical action fingerprints with a final live capability check,
 fixed governed-request and provenance metadata complexity ceilings,
+fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
@@ -796,6 +806,10 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/policy_text_limits.md`,
 `docs/policy_payload_matching_limits.md`,
 `docs/policy_glob_matching_limits.md`,
+`docs/action_hashing_limits.md`,
+`docs/governed_request_limits.md`,
+`docs/tool_call_limits.md`,
+`docs/tool_result_limits.md`,
 `docs/yaml_structural_limits.md`,
 `docs/mcp_configuration_limits.md`,
 `docs/state_integrity.md`,

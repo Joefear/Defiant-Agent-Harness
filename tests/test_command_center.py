@@ -121,6 +121,12 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"unwitnessed_record_count" in javascript
     assert b"resource-limits" in body
     assert b"renderResourceLimits" in javascript
+    assert b"tool_call_name_characters" in javascript
+    assert b"tool_call_identifier_characters" in javascript
+    assert b"tool_call_nesting_depth" in javascript
+    assert b"tool_call_nodes" in javascript
+    assert b"tool_call_scalar_characters" in javascript
+    assert b"tool_call_canonical_bytes" in javascript
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
@@ -161,7 +167,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"provenance_text_item_characters" in javascript
     assert b"provenance_text_characters" in javascript
     assert (
-        b"governed request construction, action hashing, tool-result capture, "
+        b"governed request construction, tool-call translation, action hashing, "
+        b"tool-result capture, "
         b"payload matching, and glob matching bounded "
         b"and fail-closed" in javascript
     )

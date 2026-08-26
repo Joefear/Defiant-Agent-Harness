@@ -14,13 +14,12 @@ import pytest
 import defiant_agent_harness.policy.engine as policy_engine_module
 import defiant_agent_harness.contracts as contracts_module
 from defiant_agent_harness.adapters.mock import SCRIPTS, MockAgentAdapter
-from defiant_agent_harness.adapters.base import ToolCall
+from defiant_agent_harness.adapters.base import ToolCall, ToolCallLimitError
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
     AuthorityProfileStore,
 )
 from defiant_agent_harness.contracts import (
-    ActionHashLimitError,
     Decision,
     HarnessRequest,
     ResultStatus,
@@ -122,10 +121,10 @@ def test_oversized_action_hash_input_fails_before_authority_or_execution(
     request = HarnessRequest(task="oversized", user_id="tester", workspace_id="ws")
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 32)
 
-    with pytest.raises(ActionHashLimitError, match="scalar exceeds") as exc:
+    with pytest.raises(ToolCallLimitError, match="fixed canonical") as exc:
         harness.run(request)
 
-    assert exc.value.limit_enforced == "action_hash_scalar_characters"
+    assert exc.value.limit_enforced == "tool_call_scalar_characters"
     assert harness.evidence.records() == []
     assert harness.approvals.list_pending() == []
     assert harness.budget.balance_usd == 25

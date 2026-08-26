@@ -169,7 +169,9 @@ class Harness:
     ) -> ActionOutcome:
         self._require_execution_enabled()
         request.seal_contract()
+        call.seal_contract()
         action = self.adapter.to_action(call, request.request_id)
+        call.require_unchanged()
         return self._handle(
             action,
             request,
@@ -197,7 +199,9 @@ class Harness:
         """
         self._require_execution_enabled()
         request.seal_contract()
+        call.seal_contract()
         action = self.adapter.to_action(call, request.request_id)
+        call.require_unchanged()
         return self._handle(
             action,
             request,
