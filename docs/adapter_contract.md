@@ -69,6 +69,12 @@ identity, allowlist, or provenance metadata fails before adapter code runs.
 Adapters receive an accepted immutable request snapshot, not authority to raise
 or bypass those fixed ceilings.
 
+Since v0.41, a handler or external-completion adapter must also return a
+bounded canonical `ToolResult`. The owning harness revalidates, detaches,
+hashes, and seals accepted output before completion. Invalid post-execution
+output preserves an uncertain authorization for operator reconciliation; an
+adapter must never retry the call merely to obtain a smaller result.
+
 ## Provenance is the adapter's real job
 
 Policy quality is capped by provenance quality. An adapter that marks everything

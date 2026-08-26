@@ -57,6 +57,7 @@ from ..limits import (
     MAX_REQUEST_IDENTIFIER_CHARACTERS,
     MAX_REQUEST_TEXT_CHARACTERS,
     MAX_REQUEST_TEXT_ITEM_CHARACTERS,
+    MAX_TOOL_RESULT_SUMMARY_CHARACTERS,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -83,7 +84,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.34.0"
+SNAPSHOT_VERSION = "0.35.0"
 
 
 class CommandError(RuntimeError):
@@ -178,6 +179,17 @@ class CommandCore:
                     "action_hash_scalar_characters": (
                         MAX_ACTION_HASH_SCALAR_CHARACTERS
                     ),
+                    "tool_result_summary_characters": (
+                        MAX_TOOL_RESULT_SUMMARY_CHARACTERS
+                    ),
+                    "tool_result_output_nesting_depth": (MAX_ACTION_HASH_NESTING_DEPTH),
+                    "tool_result_output_nodes": MAX_ACTION_HASH_NODES,
+                    "tool_result_output_scalar_characters": (
+                        MAX_ACTION_HASH_SCALAR_CHARACTERS
+                    ),
+                    "tool_result_output_canonical_bytes": (
+                        MAX_ACTION_HASH_CANONICAL_BYTES
+                    ),
                     "durable_json_bytes": MAX_DURABLE_JSON_BYTES,
                     "evidence_export_bytes": MAX_EVIDENCE_EXPORT_BYTES,
                     "evidence_record_bytes": MAX_EVIDENCE_RECORD_BYTES,
@@ -249,6 +261,7 @@ class CommandCore:
                     "policy_glob_match_preflight": True,
                     "action_hash_preflight": True,
                     "request_contract_preflight": True,
+                    "tool_result_contract_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

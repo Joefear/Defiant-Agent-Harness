@@ -110,6 +110,11 @@ function renderResourceLimits(limits, configuration) {
     `action hash depth ${integer.format(limits.action_hash_nesting_depth)}`,
     `action hash nodes ${integer.format(limits.action_hash_nodes)}`,
     `action hash scalar ${integer.format(limits.action_hash_scalar_characters)} characters`,
+    `tool result summary ${integer.format(limits.tool_result_summary_characters)} characters`,
+    `tool result output ${bytes(limits.tool_result_output_canonical_bytes)}`,
+    `tool result depth ${integer.format(limits.tool_result_output_nesting_depth)}`,
+    `tool result nodes ${integer.format(limits.tool_result_output_nodes)}`,
+    `tool result scalar ${integer.format(limits.tool_result_output_scalar_characters)} characters`,
     `request task ${integer.format(limits.request_task_characters)} characters`,
     `request identifier ${integer.format(limits.request_identifier_characters)} characters`,
     `request allowed tools ${integer.format(limits.request_allowed_tool_count)} items`,
@@ -154,7 +159,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed request construction, action hashing, payload matching, and glob matching bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed request construction, action hashing, tool-result capture, payload matching, and glob matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

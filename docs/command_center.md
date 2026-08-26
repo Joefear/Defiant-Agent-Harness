@@ -56,6 +56,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   ceilings;
 - the fixed policy glob tool-name/target subject and aggregate work ceilings;
 - the fixed action-hash depth, node, scalar, and canonical-byte ceilings;
+- the fixed post-execution tool-result summary, depth, node, scalar, and
+  canonical-byte ceilings;
 - the fixed governed-request task, identifier, allowlist, provenance, and
   aggregate-text ceilings;
 - the fixed authority-YAML nesting-depth and constructed-node ceilings;
@@ -69,7 +71,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.34.0`. The browser cannot raise, disable, or replace them and never receives
+`0.35.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

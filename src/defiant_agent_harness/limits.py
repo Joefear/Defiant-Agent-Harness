@@ -101,3 +101,8 @@ MAX_PROVENANCE_REFS = 100_000
 MAX_PROVENANCE_TEXT_ITEM_CHARACTERS = 8_192
 MAX_REQUEST_TEXT_CHARACTERS = 8 * MIB
 MAX_PROVENANCE_TEXT_CHARACTERS = 8 * MIB
+
+# Tool handlers and external runtimes return data only after execution may have
+# occurred. Keep summaries small enough for durable evidence and apply the
+# bounded canonical-value contract to output before completion is claimed.
+MAX_TOOL_RESULT_SUMMARY_CHARACTERS = 64 * 1024

@@ -594,6 +594,18 @@ before proposal. Refusal is sanitized and creates no partial authority. This
 does not authenticate identifiers, prove provenance, or impose process-wide
 resource quotas.
 
+**Oversized or non-canonical post-execution output.** Before v0.41, a local
+handler or direct external-completion caller could return a large, deeply
+nested, cyclic, or unsupported value. Unbounded canonical hashing then ran
+after the tool may have produced a side effect and could fail before terminal
+evidence, budget settlement, or approval consumption. v0.41 applies fixed
+summary, depth, node, scalar, and canonical-byte ceilings; revalidates,
+detaches, hashes, and seals accepted results; and sanitizes refusal. A refusal
+preserves the sealed authorization and reservation for explicit operator
+reconciliation instead of fabricating an outcome or replaying the tool. This
+does not contain the tool, prove its reported status, or impose process-wide
+resource quotas.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

@@ -108,8 +108,9 @@ from .evidence_witness import (
     EvidenceWitnessPolicyState,
     EvidenceWitnessPolicyStore,
 )
+from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.40.0"
+__version__ = "0.41.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -173,6 +174,8 @@ __all__ = [
     "StateStorageState",
     "StateStorageStateStore",
     "Trust",
+    "ToolResultContractError",
+    "ToolResultLimitError",
     "WorkspaceIntegrityError",
     "WorkspaceIntegrityState",
     "WorkspaceIntegrityStateStore",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from defiant_agent_harness import contracts as contracts_module
 from defiant_agent_harness.contracts import (
     CapabilityGrant,
     Decision,
@@ -12,6 +13,7 @@ from defiant_agent_harness.contracts import (
     ProposedAction,
     ResultStatus,
     SideEffect,
+    sha256_of,
 )
 from defiant_agent_harness.evidence.store import GENESIS
 from defiant_agent_harness.tools.builtin import default_registry
@@ -19,9 +21,12 @@ from defiant_agent_harness.tools.registry import (
     ToolContractError,
     ToolRegistry,
     ToolResult,
+    ToolResultContractError,
+    ToolResultLimitError,
     ToolSpec,
     canonical_workspace_target,
 )
+from defiant_agent_harness.tools import registry as registry_module
 
 
 def _action(payload=None, tool="send_email", target="a@example.com"):
@@ -225,3 +230,89 @@ def test_registry_holds_raw_callables_privately():
             "specs",
             "validate_action",
         }, f"unexpected public callable '{name}' on ToolRegistry"
+
+
+def test_tool_result_accepts_exact_summary_limit_and_sanitizes_next(monkeypatch):
+    monkeypatch.setattr(registry_module, "MAX_TOOL_RESULT_SUMMARY_CHARACTERS", 4)
+
+    ToolResult(status="succeeded", summary="1234")
+    with pytest.raises(ToolResultLimitError, match="summary exceeds") as exc:
+        ToolResult(status="succeeded", summary="12345-secret")
+
+    assert exc.value.limit_enforced == "tool_result_summary_characters"
+    assert "secret" not in str(exc.value)
+
+
+def test_tool_result_maps_bounded_output_failure_without_echoing_content(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
+
+    ToolResult(status="succeeded", summary="accepted", output="1234")
+    with pytest.raises(ToolResultLimitError, match="fixed canonical") as exc:
+        ToolResult(status="succeeded", summary="refused", output="12345-secret")
+
+    assert exc.value.limit_enforced == "tool_result_output_scalar_characters"
+    assert "secret" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("constant", "maximum", "exact", "beyond", "limit_enforced"),
+    [
+        ("MAX_ACTION_HASH_NESTING_DEPTH", 1, [None], [[None]], "nesting_depth"),
+        ("MAX_ACTION_HASH_NODES", 2, [None], [None, None], "nodes"),
+        ("MAX_ACTION_HASH_CANONICAL_BYTES", 4, None, False, "canonical_bytes"),
+    ],
+)
+def test_tool_result_accepts_exact_output_bounds_and_maps_next_failure(
+    monkeypatch,
+    constant,
+    maximum,
+    exact,
+    beyond,
+    limit_enforced,
+):
+    monkeypatch.setattr(contracts_module, constant, maximum)
+
+    ToolResult(status="succeeded", summary="accepted", output=exact)
+    with pytest.raises(ToolResultLimitError) as exc:
+        ToolResult(status="succeeded", summary="refused", output=beyond)
+
+    assert exc.value.limit_enforced == f"tool_result_output_{limit_enforced}"
+
+
+def test_tool_result_rejects_noncanonical_output_with_sanitized_contract_error():
+    output = []
+    output.append(output)
+
+    with pytest.raises(ToolResultContractError, match="not canonical") as exc:
+        ToolResult(status="succeeded", summary="refused", output=output)
+
+    assert exc.value.limit_enforced == "tool_result_output_contract"
+
+
+def test_tool_result_seal_revalidates_detaches_and_freezes(monkeypatch):
+    output = {"nested": ["accepted"]}
+    result = ToolResult(status="succeeded", summary="accepted", output=output)
+    output["nested"].append("caller mutation")
+    result.output = "12345-secret"
+    original_limit = contracts_module.MAX_ACTION_HASH_SCALAR_CHARACTERS
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
+
+    with pytest.raises(ToolResultLimitError):
+        result.seal_contract()
+
+    monkeypatch.setattr(
+        contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", original_limit
+    )
+    safe_output = {"nested": ["safe"]}
+    expected_hash = sha256_of(safe_output)
+    result.output = safe_output
+    result.seal_contract()
+    safe_output["nested"].append("caller mutation")
+
+    assert result.output == {"nested": ["safe"]}
+    assert result.output_hash == expected_hash
+
+    with pytest.raises(ValueError, match="sealed tool result"):
+        result.output = {"changed": True}
+    with pytest.raises(ValueError, match="sealed tool result"):
+        result._contract_sealed = False

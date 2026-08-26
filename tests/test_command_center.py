@@ -147,6 +147,11 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"action_hash_nesting_depth" in javascript
     assert b"action_hash_nodes" in javascript
     assert b"action_hash_scalar_characters" in javascript
+    assert b"tool_result_summary_characters" in javascript
+    assert b"tool_result_output_nesting_depth" in javascript
+    assert b"tool_result_output_nodes" in javascript
+    assert b"tool_result_output_scalar_characters" in javascript
+    assert b"tool_result_output_canonical_bytes" in javascript
     assert b"request_task_characters" in javascript
     assert b"request_identifier_characters" in javascript
     assert b"request_allowed_tool_count" in javascript
@@ -156,8 +161,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"provenance_text_item_characters" in javascript
     assert b"provenance_text_characters" in javascript
     assert (
-        b"governed request construction, action hashing, payload matching, and "
-        b"glob matching bounded "
+        b"governed request construction, action hashing, tool-result capture, "
+        b"payload matching, and glob matching bounded "
         b"and fail-closed" in javascript
     )
     assert b"trusted_public_key_count" in javascript

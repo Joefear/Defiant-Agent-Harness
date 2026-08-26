@@ -46,7 +46,7 @@ that cannot be fingerprinted exactly.
 
 ## Read-only projection
 
-Command Core schema `0.34.0` publishes the four fixed ceilings under
+Command Core schema `0.35.0` publishes the four fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -61,5 +61,10 @@ process still requires deployment isolation and monitoring.
 
 v0.40 separately bounds governed-request and provenance metadata before action
 construction. See `governed_request_limits.md`.
+
+v0.41 reuses the same bounded canonical-value mechanics for tool-result output
+and publishes result-specific aliases for the shared depth, node, scalar, and
+canonical-byte ceilings. Result summary text has its own smaller ceiling. See
+`tool_result_limits.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
