@@ -30,6 +30,10 @@ Each mapping's entry count, aggregate deterministic key sort work, and complete
 output byte total are checked before mapping-key sorting or JSON encoding. The
 streaming hash counter independently enforces the byte ceiling after preflight.
 
+Mapping-key eligibility and sortable families are checked in a key-only pass
+before result values or encoder sorting. Existing invalid-key inputs retain the
+sanitized `tool_result_output_contract` classification.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
@@ -53,7 +57,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.41.0` publishes the summary and output ceilings under
+Command Core schema `0.42.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

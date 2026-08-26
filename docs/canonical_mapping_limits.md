@@ -36,7 +36,7 @@ unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.41.0` publishes the action, tool-call, and tool-result
+Command Core schema `0.42.0` publishes the action, tool-call, and tool-result
 aliases under `resource_limits` and reports
 `canonical_mapping_preflight: true`. Command Center renders only these fixed
 values and posture. It cannot submit a mapping, change a ceiling, approve,
@@ -55,3 +55,6 @@ This release adds no DKE, Spartan, remote Command, or Command Center authority.
 
 v0.47 separately bounds aggregate key-comparison amplification across all
 mappings in one fingerprint. See `canonical_mapping_sort_work.md`.
+
+v0.48 separately validates key eligibility and sortable families before values
+or encoder sorting. See `canonical_mapping_key_contract.md`.

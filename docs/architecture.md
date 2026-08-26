@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.47
+## What is deliberately absent from v0.48
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -704,6 +704,14 @@ Accepted hashes are unchanged, but over-budget values are deliberately refused.
 Command Core and Command Center expose only static posture. See
 `canonical_mapping_sort_work.md`.
 
+v0.48 gives every mapping a bounded key-only pass before values or encoder
+sorting. It accepts the same homogeneous string or numeric key families,
+supported enum subclasses, single `None` keys, and empty mappings that already
+hashed successfully. Mixed or unsupported key families retain the same
+sanitized contract failure but are now refused before `sort_keys=True` starts.
+Command Core and Command Center expose only static posture. See
+`canonical_mapping_key_contract.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -733,6 +741,10 @@ Command Core and Command Center expose only static posture. See
   counter or wall-clock timeout. Accepted mappings still sort their keys and
   repeated accepted hashing still consumes CPU. All ceilings are per
   fingerprint, not process-wide quotas.
+- **Canonical key preflight is not a Python sandbox.** v0.48 validates built-in
+  sortable families without invoking comparisons, but trusted subclasses can
+  still define process-local behavior. Python already running inside the
+  harness remains trusted and requires deployment isolation.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

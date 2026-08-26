@@ -55,7 +55,7 @@ the streaming counter remains a second check.
 
 ## Read-only projection
 
-Command Core schema `0.41.0` publishes the fixed ceilings under
+Command Core schema `0.42.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -98,5 +98,10 @@ v0.47 charges each canonical mapping key byte once per idealized logarithmic
 comparison round against one aggregate budget before encoder sorting. This is a
 new compatibility ceiling; accepted canonical hashes remain unchanged. See
 `canonical_mapping_sort_work.md`.
+
+v0.48 validates mapping-key eligibility and mutually sortable families before
+mapping values or encoder sorting. It preserves every previously successful
+hash and moves existing sanitized contract failures earlier. See
+`canonical_mapping_key_contract.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

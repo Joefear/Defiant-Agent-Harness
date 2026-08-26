@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import Enum, IntEnum
 
 import pytest
 
@@ -484,6 +485,65 @@ def test_action_hash_single_entry_mapping_requires_no_sort_work(monkeypatch):
     value = {"only": "value"}
 
     assert action_sha256_of(value) == sha256_of(value)
+
+
+def test_action_hash_accepts_existing_sortable_mapping_key_families():
+    class NumericKey(IntEnum):
+        THREE = 3
+
+    class TextKey(str, Enum):
+        BETA = "beta"
+
+    values = [
+        {"b": 1, "a": 2},
+        {False: 1, 1.5: 2, 2: 3, NumericKey.THREE: 4},
+        {TextKey.BETA: 1, "alpha": 2},
+        {None: "single null key"},
+    ]
+
+    for value in values:
+        assert action_sha256_of(value) == sha256_of(value)
+
+
+def test_action_hash_rejects_mixed_key_families_before_values_or_encoder(
+    monkeypatch,
+):
+    class GuardedMapping(dict):
+        def items(self):
+            raise AssertionError("invalid mapping values must not be traversed")
+
+    value = GuardedMapping({"secret-text-key": object(), 2: object()})
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive invalid mapping keys")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    with pytest.raises(ValueError, match="not canonical JSON data") as exc:
+        action_sha256_of(value)
+
+    assert "secret-text-key" not in str(exc.value)
+
+
+def test_action_hash_rejects_unsupported_keys_before_values_or_encoder(monkeypatch):
+    class PlainKey(Enum):
+        VALUE = "enum-secret"
+
+    class GuardedMapping(dict):
+        def items(self):
+            raise AssertionError("unsupported mapping values must not be traversed")
+
+    def unexpected_encode(*args, **kwargs):
+        raise AssertionError("JSON encoder must not receive unsupported mapping keys")
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder, "iterencode", unexpected_encode
+    )
+    for key in (Decimal("1"), PlainKey.VALUE, object()):
+        with pytest.raises(ValueError, match="not canonical JSON data") as exc:
+            action_sha256_of(GuardedMapping({key: object()}))
+        assert "secret" not in str(exc.value)
 
 
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):

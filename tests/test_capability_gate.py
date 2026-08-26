@@ -264,6 +264,18 @@ def test_tool_result_maps_canonical_number_failure(monkeypatch):
     assert exc.value.limit_enforced == "tool_result_output_number_characters"
 
 
+def test_tool_result_maps_invalid_mapping_key_contract():
+    with pytest.raises(ToolResultContractError) as exc:
+        ToolResult(
+            status="succeeded",
+            summary="invalid keys",
+            output={"text": 1, 2: "number"},
+        )
+
+    assert not isinstance(exc.value, ToolResultLimitError)
+    assert exc.value.limit_enforced == "tool_result_output_contract"
+
+
 def test_tool_result_maps_canonical_string_token_failure(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_STRING_TOKEN_BYTES", 8)
 
