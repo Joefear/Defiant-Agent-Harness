@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.33.0"
+    assert output["schema_version"] == "0.34.0"
     assert output["resource_limits"] == {
         "action_hash_canonical_bytes": 64 * 1024 * 1024,
         "action_hash_nesting_depth": 64,
@@ -194,6 +194,14 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "policy_match_tool_name_characters": 4096,
         "policy_match_target_characters": 1024 * 1024,
         "policy_glob_match_work_units": 64 * 1024 * 1024,
+        "request_task_characters": 1024 * 1024,
+        "request_identifier_characters": 4096,
+        "request_allowed_tool_count": 4096,
+        "request_allowed_tool_characters": 4096,
+        "request_text_characters": 8 * 1024 * 1024,
+        "provenance_ref_count": 100_000,
+        "provenance_text_item_characters": 8192,
+        "provenance_text_characters": 8 * 1024 * 1024,
         "trusted_public_key_count": 1024,
         "trusted_public_key_bytes": 64 * 1024,
         "trusted_public_key_set_bytes": 8 * 1024 * 1024,
@@ -210,6 +218,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "policy_payload_match_preflight": True,
         "policy_glob_match_preflight": True,
         "action_hash_preflight": True,
+        "request_contract_preflight": True,
         "yaml_aliases_allowed": False,
         "duplicate_keys_allowed": False,
         "non_finite_json_numbers_allowed": False,

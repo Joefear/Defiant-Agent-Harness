@@ -49,6 +49,14 @@ from ..limits import (
     MAX_POLICY_RULES,
     MAX_POLICY_TEXT_CHARACTERS,
     MAX_POLICY_TEXT_ITEM_CHARACTERS,
+    MAX_PROVENANCE_REFS,
+    MAX_PROVENANCE_TEXT_CHARACTERS,
+    MAX_PROVENANCE_TEXT_ITEM_CHARACTERS,
+    MAX_REQUEST_ALLOWED_TOOL_CHARACTERS,
+    MAX_REQUEST_ALLOWED_TOOLS,
+    MAX_REQUEST_IDENTIFIER_CHARACTERS,
+    MAX_REQUEST_TEXT_CHARACTERS,
+    MAX_REQUEST_TEXT_ITEM_CHARACTERS,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -75,7 +83,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.33.0"
+SNAPSHOT_VERSION = "0.34.0"
 
 
 class CommandError(RuntimeError):
@@ -210,6 +218,20 @@ class CommandCore:
                         MAX_POLICY_MATCH_TARGET_CHARACTERS
                     ),
                     "policy_glob_match_work_units": (MAX_POLICY_GLOB_MATCH_WORK_UNITS),
+                    "request_task_characters": MAX_REQUEST_TEXT_ITEM_CHARACTERS,
+                    "request_identifier_characters": (
+                        MAX_REQUEST_IDENTIFIER_CHARACTERS
+                    ),
+                    "request_allowed_tool_count": MAX_REQUEST_ALLOWED_TOOLS,
+                    "request_allowed_tool_characters": (
+                        MAX_REQUEST_ALLOWED_TOOL_CHARACTERS
+                    ),
+                    "request_text_characters": MAX_REQUEST_TEXT_CHARACTERS,
+                    "provenance_ref_count": MAX_PROVENANCE_REFS,
+                    "provenance_text_item_characters": (
+                        MAX_PROVENANCE_TEXT_ITEM_CHARACTERS
+                    ),
+                    "provenance_text_characters": MAX_PROVENANCE_TEXT_CHARACTERS,
                     "trusted_public_key_count": MAX_TRUSTED_PUBLIC_KEYS,
                     "trusted_public_key_bytes": MAX_TRUSTED_PUBLIC_KEY_BYTES,
                     "trusted_public_key_set_bytes": MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -226,6 +248,7 @@ class CommandCore:
                     "policy_payload_match_preflight": True,
                     "policy_glob_match_preflight": True,
                     "action_hash_preflight": True,
+                    "request_contract_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

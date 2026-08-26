@@ -63,6 +63,12 @@ class HermesAdapter(AgentAdapter):
 
 `ToolCall` deliberately mirrors the MCP `tools/call` shape (`name`, `arguments`, `call_id`, `server`) so a proxy adapter is a translation rather than a rewrite. `ToolCallOutcome.as_mcp_result()` emits a result an MCP client accepts without special-casing, with harness metadata under a `_defiant` key.
 
+Since v0.40, the owning harness revalidates and seals `HarnessRequest` before
+`propose(task)` or direct call translation. A request with oversized task,
+identity, allowlist, or provenance metadata fails before adapter code runs.
+Adapters receive an accepted immutable request snapshot, not authority to raise
+or bypass those fixed ceilings.
+
 ## Provenance is the adapter's real job
 
 Policy quality is capped by provenance quality. An adapter that marks everything

@@ -87,3 +87,17 @@ MAX_ACTION_HASH_NESTING_DEPTH = 64
 MAX_ACTION_HASH_NODES = 1_100_000
 MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
 MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB
+
+# A governed request is consumed before an action exists: its task reaches the
+# adapter, its allowlist drives request-scope authorization, and its context and
+# provenance may be copied into approvals and evidence. Bound collection and
+# constructed-text volume at contract creation rather than relying on later
+# action, state-file, or evidence ceilings.
+MAX_REQUEST_TEXT_ITEM_CHARACTERS = 1 * MIB
+MAX_REQUEST_IDENTIFIER_CHARACTERS = 4_096
+MAX_REQUEST_ALLOWED_TOOLS = 4_096
+MAX_REQUEST_ALLOWED_TOOL_CHARACTERS = 4_096
+MAX_PROVENANCE_REFS = 100_000
+MAX_PROVENANCE_TEXT_ITEM_CHARACTERS = 8_192
+MAX_REQUEST_TEXT_CHARACTERS = 8 * MIB
+MAX_PROVENANCE_TEXT_CHARACTERS = 8 * MIB

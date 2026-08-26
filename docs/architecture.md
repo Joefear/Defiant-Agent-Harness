@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.39
+## What is deliberately absent from v0.40
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -639,6 +639,14 @@ bytes per hash. The owning control path detaches caller containers and reuses
 one sealed snapshot; capability spend re-hashes live fields once to detect
 nested mutation. Command Core and Command Center expose only static posture.
 See `action_hashing_limits.md`.
+
+v0.40 bounds governed-request construction before adapter proposal or any
+authority work. Tasks, identifiers, allowlists, and provenance metadata have
+fixed item, collection, and aggregate text ceilings. The owning harness
+revalidates, detaches, and seals the request so mutation after construction
+cannot amplify proposal, request-scope membership, policy context, approval,
+or evidence work. Command Core and Command Center expose only static posture.
+See `governed_request_limits.md`.
 
 ## Known limits
 

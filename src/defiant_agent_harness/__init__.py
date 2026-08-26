@@ -23,6 +23,7 @@ from .contracts import (
     GuardrailDecision,
     HarnessRequest,
     ProposedAction,
+    RequestLimitError,
     ResultStatus,
     Sensitivity,
     SideEffect,
@@ -108,7 +109,7 @@ from .evidence_witness import (
     EvidenceWitnessPolicyStore,
 )
 
-__version__ = "0.39.0"
+__version__ = "0.40.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -153,6 +154,7 @@ __all__ = [
     "OperationJournal",
     "OperationJournalError",
     "ProposedAction",
+    "RequestLimitError",
     "ResultStatus",
     "RuntimeArtifactAssurance",
     "RuntimeArtifactError",

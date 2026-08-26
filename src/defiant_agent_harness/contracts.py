@@ -19,13 +19,21 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Iterable
 
 from .limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
     MAX_ACTION_HASH_NESTING_DEPTH,
     MAX_ACTION_HASH_NODES,
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
+    MAX_PROVENANCE_REFS,
+    MAX_PROVENANCE_TEXT_CHARACTERS,
+    MAX_PROVENANCE_TEXT_ITEM_CHARACTERS,
+    MAX_REQUEST_ALLOWED_TOOL_CHARACTERS,
+    MAX_REQUEST_ALLOWED_TOOLS,
+    MAX_REQUEST_IDENTIFIER_CHARACTERS,
+    MAX_REQUEST_TEXT_CHARACTERS,
+    MAX_REQUEST_TEXT_ITEM_CHARACTERS,
 )
 from .money import ZERO, money, money_text
 
@@ -60,6 +68,14 @@ def sha256_of(obj: Any) -> str:
 
 class ActionHashLimitError(ValueError):
     """Action-controlled canonical hashing exceeded a fixed resource ceiling."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
+
+
+class RequestLimitError(ValueError):
+    """Governed request or provenance metadata exceeded a fixed ceiling."""
 
     def __init__(self, message: str, *, limit_enforced: str):
         super().__init__(message)
@@ -199,6 +215,8 @@ class ContentRef:
         _require_text(self.ref_id, "ref_id")
         _require_text(self.origin, "origin")
         _require_text(self.content_hash, "content_hash")
+        for field_name in ("ref_id", "origin", "content_hash", "label"):
+            _require_provenance_text(getattr(self, field_name), field_name)
         if not isinstance(self.trust, Trust):
             object.__setattr__(self, "trust", Trust(self.trust))
 
@@ -242,28 +260,105 @@ class HarnessRequest:
     budget_limit_usd: Decimal | None = None
     inputs: list[ContentRef] = field(default_factory=list)
     created_at: str = field(default_factory=utc_now)
+    _contract_sealed: bool = field(default=False, init=False, repr=False)
+
+    _CONTRACT_FIELDS = frozenset(
+        {
+            "task",
+            "user_id",
+            "workspace_id",
+            "request_id",
+            "task_type",
+            "sensitivity",
+            "allowed_tools",
+            "budget_limit_usd",
+            "inputs",
+            "created_at",
+        }
+    )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_contract_sealed", False) and (
+            name in self._CONTRACT_FIELDS or name == "_contract_sealed"
+        ):
+            raise ValueError("sealed request contract fields cannot be changed")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
-        _require_text(self.task, "task")
-        _require_text(self.user_id, "user_id")
-        _require_text(self.workspace_id, "workspace_id")
-        _require_text(self.request_id, "request_id")
+        if not isinstance(self.allowed_tools, list):
+            raise ValueError("allowed_tools must be a list")
+        if not isinstance(self.inputs, list):
+            raise ValueError("inputs must be a list")
+        self._validate_contract()
+
+    def _validate_contract(self) -> None:
         if not isinstance(self.sensitivity, Sensitivity):
             self.sensitivity = Sensitivity(self.sensitivity)
         if self.budget_limit_usd is not None:
             self.budget_limit_usd = money(
                 self.budget_limit_usd, field_name="budget_limit_usd"
             )
+        self.created_at = _utc_timestamp(self.created_at, "created_at")
+        _require_text(self.task, "task")
+        _require_text(self.user_id, "user_id")
+        _require_text(self.workspace_id, "workspace_id")
+        _require_text(self.request_id, "request_id")
+        _require_text(self.task_type, "task_type")
+        _require_request_text(self.task, "task", MAX_REQUEST_TEXT_ITEM_CHARACTERS)
+        for field_name in ("user_id", "workspace_id", "request_id", "task_type"):
+            _require_request_text(
+                getattr(self, field_name),
+                field_name,
+                MAX_REQUEST_IDENTIFIER_CHARACTERS,
+            )
+        if not isinstance(self.allowed_tools, (list, tuple)):
+            raise ValueError("allowed_tools must be a list")
+        if len(self.allowed_tools) > MAX_REQUEST_ALLOWED_TOOLS:
+            raise RequestLimitError(
+                "request allowed tool count exceeds maximum of "
+                f"{MAX_REQUEST_ALLOWED_TOOLS}",
+                limit_enforced="request_allowed_tools",
+            )
+        if any(
+            not isinstance(name, str) or not name.strip() for name in self.allowed_tools
+        ):
+            raise ValueError("allowed_tools must contain non-empty strings")
+        for name in self.allowed_tools:
+            _require_request_text(
+                name,
+                "allowed tool",
+                MAX_REQUEST_ALLOWED_TOOL_CHARACTERS,
+            )
+        if not isinstance(self.inputs, (list, tuple)):
+            raise ValueError("inputs must be a list")
+        if len(self.inputs) > MAX_PROVENANCE_REFS:
+            raise RequestLimitError(
+                "request input provenance count exceeds maximum of "
+                f"{MAX_PROVENANCE_REFS}",
+                limit_enforced="request_provenance_refs",
+            )
         if any(not isinstance(ref, ContentRef) for ref in self.inputs):
             raise ValueError("inputs must contain ContentRef objects")
-        self.created_at = _utc_timestamp(self.created_at, "created_at")
+        _validate_request_text_volume(self)
+
+    def seal_contract(self) -> None:
+        """Validate, detach, and freeze the request used by the control path."""
+        if self._contract_sealed:
+            return
+        self._validate_contract()
+        object.__setattr__(self, "allowed_tools", tuple(self.allowed_tools))
+        object.__setattr__(self, "inputs", tuple(self.inputs))
+        object.__setattr__(self, "_contract_sealed", True)
 
     def to_dict(self) -> dict:
-        return _enum_safe(asdict(self))
+        data = _enum_safe(asdict(self))
+        data.pop("_contract_sealed", None)
+        return data
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "HarnessRequest":
         data = dict(raw)
+        data.pop("_contract_sealed", None)
         data["sensitivity"] = Sensitivity(data.get("sensitivity", "internal"))
         data["inputs"] = [
             ContentRef(
@@ -325,8 +420,17 @@ class ProposedAction:
             raise ValueError("payload must be a dictionary")
         if not isinstance(self.side_effect_level, SideEffect):
             self.side_effect_level = SideEffect(self.side_effect_level)
+        if not isinstance(self.payload_sources, list):
+            raise ValueError("payload_sources must be a list")
+        if len(self.payload_sources) > MAX_PROVENANCE_REFS:
+            raise RequestLimitError(
+                "action payload provenance count exceeds maximum of "
+                f"{MAX_PROVENANCE_REFS}",
+                limit_enforced="action_provenance_refs",
+            )
         if any(not isinstance(ref, ContentRef) for ref in self.payload_sources):
             raise ValueError("payload_sources must contain ContentRef objects")
+        _validate_provenance_text_volume(self.payload_sources)
         self.estimated_cost_usd = money(
             self.estimated_cost_usd, field_name="estimated_cost_usd"
         )
@@ -726,6 +830,78 @@ def _validate_action_hash_scalar(value: str) -> None:
             f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
             limit_enforced="action_hash_scalar_characters",
         )
+
+
+def _require_request_text(value: str, field_name: str, maximum: int) -> None:
+    if len(value) > maximum:
+        raise RequestLimitError(
+            f"request {field_name} exceeds maximum of {maximum} characters",
+            limit_enforced="request_text_item",
+        )
+
+
+def _require_provenance_text(value: Any, field_name: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    if len(value) > MAX_PROVENANCE_TEXT_ITEM_CHARACTERS:
+        raise RequestLimitError(
+            "provenance metadata item exceeds maximum of "
+            f"{MAX_PROVENANCE_TEXT_ITEM_CHARACTERS} characters",
+            limit_enforced="provenance_text_item",
+        )
+
+
+def _validate_request_text_volume(request: HarnessRequest) -> None:
+    def values() -> Iterable[str]:
+        yield request.task
+        yield request.user_id
+        yield request.workspace_id
+        yield request.request_id
+        yield request.task_type
+        yield from request.allowed_tools
+        for ref in request.inputs:
+            yield ref.ref_id
+            yield ref.origin
+            yield ref.content_hash
+            yield ref.label
+
+    _require_aggregate_text(
+        values(),
+        maximum=MAX_REQUEST_TEXT_CHARACTERS,
+        label="request text",
+        limit_enforced="request_text_characters",
+    )
+
+
+def _validate_provenance_text_volume(refs: list[ContentRef]) -> None:
+    values = (
+        value
+        for ref in refs
+        for value in (ref.ref_id, ref.origin, ref.content_hash, ref.label)
+    )
+    _require_aggregate_text(
+        values,
+        maximum=MAX_PROVENANCE_TEXT_CHARACTERS,
+        label="action provenance text",
+        limit_enforced="action_provenance_text_characters",
+    )
+
+
+def _require_aggregate_text(
+    values: Iterable[str],
+    *,
+    maximum: int,
+    label: str,
+    limit_enforced: str,
+) -> None:
+    used = 0
+    for value in values:
+        if len(value) > maximum - used:
+            raise RequestLimitError(
+                f"{label} exceeds maximum of {maximum} characters",
+                limit_enforced=limit_enforced,
+            )
+        used += len(value)
 
 
 def _require_text(value: Any, field_name: str) -> None:

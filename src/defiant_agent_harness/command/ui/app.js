@@ -110,6 +110,14 @@ function renderResourceLimits(limits, configuration) {
     `action hash depth ${integer.format(limits.action_hash_nesting_depth)}`,
     `action hash nodes ${integer.format(limits.action_hash_nodes)}`,
     `action hash scalar ${integer.format(limits.action_hash_scalar_characters)} characters`,
+    `request task ${integer.format(limits.request_task_characters)} characters`,
+    `request identifier ${integer.format(limits.request_identifier_characters)} characters`,
+    `request allowed tools ${integer.format(limits.request_allowed_tool_count)} items`,
+    `request allowed tool ${integer.format(limits.request_allowed_tool_characters)} characters`,
+    `request text aggregate ${integer.format(limits.request_text_characters)} characters`,
+    `provenance refs ${integer.format(limits.provenance_ref_count)}`,
+    `provenance text item ${integer.format(limits.provenance_text_item_characters)} characters`,
+    `provenance text aggregate ${integer.format(limits.provenance_text_characters)} characters`,
     `state ${bytes(limits.durable_json_bytes)}`,
     `evidence record ${bytes(limits.evidence_record_bytes)}`,
     `evidence export ${bytes(limits.evidence_export_bytes)}`,
@@ -146,7 +154,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed action hashing, payload matching, and glob matching bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed request construction, action hashing, payload matching, and glob matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
