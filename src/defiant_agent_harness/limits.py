@@ -88,6 +88,13 @@ MAX_ACTION_HASH_NODES = 1_100_000
 MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
 MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB
 
+# A ToolCall exists before an adapter can construct a ProposedAction. Bound its
+# explicit transport identity fields independently, then apply the complete
+# bounded canonical-value contract above to its combined arguments and
+# transport parameters before any adapter translation work begins.
+MAX_TOOL_CALL_NAME_CHARACTERS = 4_096
+MAX_TOOL_CALL_IDENTIFIER_CHARACTERS = 4_096
+
 # A governed request is consumed before an action exists: its task reaches the
 # adapter, its allowlist drives request-scope authorization, and its context and
 # provenance may be copied into approvals and evidence. Bound collection and

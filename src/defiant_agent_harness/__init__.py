@@ -29,6 +29,7 @@ from .contracts import (
     SideEffect,
     Trust,
 )
+from .adapters.base import ToolCallContractError, ToolCallLimitError
 from .authority_profile import (
     AuthorityProfileError,
     AuthorityProfileState,
@@ -110,7 +111,7 @@ from .evidence_witness import (
 )
 from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.41.0"
+__version__ = "0.42.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -176,6 +177,8 @@ __all__ = [
     "Trust",
     "ToolResultContractError",
     "ToolResultLimitError",
+    "ToolCallContractError",
+    "ToolCallLimitError",
     "WorkspaceIntegrityError",
     "WorkspaceIntegrityState",
     "WorkspaceIntegrityStateStore",

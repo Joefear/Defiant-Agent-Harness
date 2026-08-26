@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.41
+## What is deliberately absent from v0.42
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -656,6 +656,14 @@ instead of inventing a terminal result or replaying the tool. Command Core and
 Command Center expose only static posture and sanitized recovery state. See
 `tool_result_limits.md`.
 
+v0.42 moves bounded canonical ownership one step earlier, before an adapter can
+translate a `ToolCall` into a `ProposedAction`. The complete name, call/server
+identifiers, arguments, and transport parameters are revalidated, detached,
+hashed, and sealed. A second live hash after `to_action` detects nested adapter
+mutation before recovery, policy, approval, reservation, evidence, or tool
+execution. Command Core and Command Center expose only static posture. See
+`tool_call_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -671,6 +679,10 @@ Command Center expose only static posture and sanitized recovery state. See
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for
   explicit operator reconciliation; it cannot discover the truth itself.
+- **Tool-call limits do not sandbox trusted adapter code.** v0.42 detects
+  bounded-contract mutation before authority work, but Python already running
+  inside the harness process remains trusted and still requires deployment
+  isolation against arbitrary process-level behavior.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
 - **MCP has no standard actual-cost field.** The proxy settles successful paid
   calls at the conservative configured estimate unless a later adapter can

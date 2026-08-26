@@ -58,6 +58,8 @@ from ..limits import (
     MAX_REQUEST_TEXT_CHARACTERS,
     MAX_REQUEST_TEXT_ITEM_CHARACTERS,
     MAX_TOOL_RESULT_SUMMARY_CHARACTERS,
+    MAX_TOOL_CALL_IDENTIFIER_CHARACTERS,
+    MAX_TOOL_CALL_NAME_CHARACTERS,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -84,7 +86,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.35.0"
+SNAPSHOT_VERSION = "0.36.0"
 
 
 class CommandError(RuntimeError):
@@ -173,6 +175,16 @@ class CommandCore:
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
                 "resource_limits": {
+                    "tool_call_name_characters": MAX_TOOL_CALL_NAME_CHARACTERS,
+                    "tool_call_identifier_characters": (
+                        MAX_TOOL_CALL_IDENTIFIER_CHARACTERS
+                    ),
+                    "tool_call_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
+                    "tool_call_nodes": MAX_ACTION_HASH_NODES,
+                    "tool_call_scalar_characters": (
+                        MAX_ACTION_HASH_SCALAR_CHARACTERS
+                    ),
+                    "tool_call_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
                     "action_hash_nodes": MAX_ACTION_HASH_NODES,
@@ -261,6 +273,7 @@ class CommandCore:
                     "policy_glob_match_preflight": True,
                     "action_hash_preflight": True,
                     "request_contract_preflight": True,
+                    "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
