@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.46
+## What is deliberately absent from v0.47
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -696,6 +696,14 @@ are unchanged, but mappings above the new ceiling are deliberately refused.
 Command Core and Command Center expose only static posture. See
 `canonical_mapping_limits.md`.
 
+v0.47 charges every exact canonical key-token byte once per idealized
+`ceil(log2(mapping entries))` comparison round against a 67,108,864-unit budget
+shared across the complete value. A breach fails before encoder sorting. Tool
+calls, action fingerprints, and tool results expose their own sanitized aliases.
+Accepted hashes are unchanged, but over-budget values are deliberately refused.
+Command Core and Command Center expose only static posture. See
+`canonical_mapping_sort_work.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -720,9 +728,11 @@ Command Core and Command Center expose only static posture. See
   mappings are still sorted and repeated hashing still consumes CPU. Deployment
   quotas and monitoring remain necessary.
 - **Canonical-mapping limits do not eliminate sorting.** v0.46 bounds each
-  mapping at 65,536 entries before traversal, but accepted mappings still sort
-  their keys and repeated accepted hashing still consumes CPU. The aggregate
-  node and byte limits are per fingerprint, not process-wide quotas.
+  mapping at 65,536 entries before traversal. v0.47 also applies an aggregate
+  deterministic key-volume/comparison-round budget, but it is not an exact CPU
+  counter or wall-clock timeout. Accepted mappings still sort their keys and
+  repeated accepted hashing still consumes CPU. All ceilings are per
+  fingerprint, not process-wide quotas.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for
