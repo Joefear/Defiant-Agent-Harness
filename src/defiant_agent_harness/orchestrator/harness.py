@@ -214,6 +214,7 @@ class Harness:
         execution_key: str = "",
         external_execution: bool = False,
     ) -> ActionOutcome:
+        action.seal_fingerprints()
         self.recover_operation()
         self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
@@ -339,6 +340,7 @@ class Harness:
             )
 
         action = pending.held_action()
+        action.seal_fingerprints()
         request = pending.held_request()
         original_decision = pending.held_decision()
         if original_decision.ruleset_hash != self.policy.ruleset_hash:
@@ -401,6 +403,7 @@ class Harness:
         self._require_execution_enabled()
         self.recover_operation()
         self.state_integrity.require_safe()
+        action.seal_fingerprints()
         records = self.evidence.by_action(action.action_id)
         authorization = next(
             (
@@ -504,6 +507,7 @@ class Harness:
             )
 
         action = pending.held_action()
+        action.seal_fingerprints()
         request = pending.held_request()
         original_decision = pending.held_decision()
 
@@ -618,6 +622,7 @@ class Harness:
         for approval in self.approvals.due():
             try:
                 action = approval.held_action()
+                action.seal_fingerprints()
                 request = approval.held_request()
                 decision = approval.held_decision()
             except ApprovalError:
@@ -686,6 +691,7 @@ class Harness:
         if existing_approval is None:
             raise ApprovalError(f"unknown approval {approval_id}")
         action = existing_approval.held_action()
+        action.seal_fingerprints()
         terminal_record = next(
             (
                 record

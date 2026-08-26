@@ -109,6 +109,17 @@ def test_target_substitution_voids_the_grant():
         registry.execute(action, grant)
 
 
+def test_nested_payload_mutation_after_fingerprint_seal_voids_grant():
+    registry = default_registry()
+    action = _action({"message": {"body": "approved"}})
+    grant = _grant_for(registry, action)
+    action.seal_fingerprints()
+    action.payload["message"]["body"] = "substituted"
+
+    with pytest.raises(GrantError, match="action changed after authorization"):
+        registry.execute(action, grant)
+
+
 def test_grant_for_a_different_tool_is_refused():
     registry = default_registry()
     action = _action()

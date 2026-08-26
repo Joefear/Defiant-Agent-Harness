@@ -63,6 +63,10 @@ JSON uses sorted keys and compact separators. Enums serialize to string values,
 timestamps normalize to UTC, and exact decimal values serialize as plain
 decimal strings. Non-finite numbers are rejected.
 
+For action payload, provenance-content, and authorization fingerprints, v0.39
+streams those same canonical bytes through the bounded contract documented in
+`action_hashing_limits.md`. Previously valid hashes do not change.
+
 `record_hash` covers every field except itself, including `previous_record_hash`. The first record chains to `GENESIS` (`sha256:` followed by 64 zeros).
 
 ## What the chain proves, and what it does not

@@ -21,6 +21,7 @@ from ..contracts import (
     Sensitivity,
     SideEffect,
     Trust,
+    action_sha256_of,
     sha256_of,
 )
 from ..limits import MAX_HOOK_EVENT_BYTES, MAX_TRUSTED_PUBLIC_KEYS
@@ -248,7 +249,7 @@ class CopilotHookAdapter(AgentAdapter):
 
     def provenance_for(self, call: ToolCall) -> list[ContentRef]:
         payload = self.payload_for(call)
-        digest = sha256_of(
+        digest = action_sha256_of(
             {
                 "runner": self.runner_name,
                 "call_id": call.call_id,
@@ -260,7 +261,7 @@ class CopilotHookAdapter(AgentAdapter):
                 ref_id="ref_hook_" + digest.split(":", 1)[-1][:24],
                 origin=f"agent:{self.runner_name}",
                 trust=Trust.DERIVED,
-                content_hash=sha256_of(payload),
+                content_hash=action_sha256_of(payload),
                 label=f"native arguments for {payload['native_tool_name']}",
             )
         ]
@@ -455,7 +456,7 @@ class CopilotHookGate:
         native_name: str,
         tool_input: dict[str, Any],
     ) -> str:
-        return sha256_of(
+        return action_sha256_of(
             {
                 "mapping_version": self.mapping_version,
                 "execution_owner": self.execution_owner,
@@ -580,7 +581,7 @@ def _synthetic_tool_use_id(
     native_name: str,
     tool_input: dict[str, Any],
 ) -> str:
-    digest = sha256_of(
+    digest = action_sha256_of(
         {
             "session_id": _string_field(event, "session_id", "sessionId"),
             "cwd": _string_field(event, "cwd"),

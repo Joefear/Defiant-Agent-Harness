@@ -47,7 +47,7 @@ executed and no approval is created.
 
 ## Read-only projection
 
-Command Core schema `0.32.0` publishes all three ceilings under
+Command Core schema `0.33.0` publishes all three ceilings under
 `resource_limits` and reports `policy_glob_match_preflight: true` in the static
 authority posture. Command Center renders the values. Neither surface can
 change a limit, grant an exception, upload policy, approve, or execute.
@@ -55,10 +55,10 @@ change a limit, grant an exception, upload policy, approve, or execute.
 ## Limits of the control
 
 Work units are a deterministic implementation budget, not measured CPU time.
-This control does not replace the Python runtime's glob implementation, bound
-action payload or authorization hashing, constrain non-glob context equality
-checks, impose process-wide CPU/memory/wall-clock quotas, or contain a
-compromised host. Deployment review, monitoring, and OS resource controls
-remain necessary.
+This control does not replace the Python runtime's glob implementation,
+constrain non-glob context equality checks, impose process-wide
+CPU/memory/wall-clock quotas, or contain a compromised host. v0.39 separately
+bounds action payload and authorization fingerprints; deployment review,
+monitoring, and OS resource controls remain necessary.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

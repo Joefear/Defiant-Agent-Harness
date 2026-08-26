@@ -14,6 +14,7 @@ evidence and the complete action.
 """
 
 from .contracts import (
+    ActionHashLimitError,
     CapabilityGrant,
     ContentRef,
     Decision,
@@ -107,9 +108,10 @@ from .evidence_witness import (
     EvidenceWitnessPolicyStore,
 )
 
-__version__ = "0.38.0"
+__version__ = "0.39.0"
 
 __all__ = [
+    "ActionHashLimitError",
     "CapabilityGrant",
     "AuthorizationReconciliationOutcome",
     "AuthorizationReconciliationSubject",

@@ -106,7 +106,11 @@ function renderResourceLimits(limits, configuration) {
     return;
   }
   const details = [
-    `Resource ceilings: state ${bytes(limits.durable_json_bytes)}`,
+    `Resource ceilings: action hash canonical input ${bytes(limits.action_hash_canonical_bytes)}`,
+    `action hash depth ${integer.format(limits.action_hash_nesting_depth)}`,
+    `action hash nodes ${integer.format(limits.action_hash_nodes)}`,
+    `action hash scalar ${integer.format(limits.action_hash_scalar_characters)} characters`,
+    `state ${bytes(limits.durable_json_bytes)}`,
     `evidence record ${bytes(limits.evidence_record_bytes)}`,
     `evidence export ${bytes(limits.evidence_export_bytes)}`,
     `MCP message ${bytes(limits.mcp_message_bytes)}`,
@@ -142,7 +146,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed payload and glob matching bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed action hashing, payload matching, and glob matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

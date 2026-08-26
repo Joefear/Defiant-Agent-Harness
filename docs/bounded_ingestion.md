@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.32.0` projects them under `resource_limits`, and Command Center only
+schema `0.33.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.27 extends the YAML boundary with the `strict_yaml_v1` parser profile for
@@ -65,6 +65,9 @@ used by `payload_contains` rules. See `policy_payload_matching_limits.md`.
 
 v0.38 separately bounds action-controlled glob subjects and decision-wide
 known-tool/rule glob work. See `policy_glob_matching_limits.md`.
+
+v0.39 separately bounds canonical action payload, provenance-content, and
+authorization fingerprints. See `action_hashing_limits.md`.
 
 ## Parser discipline
 

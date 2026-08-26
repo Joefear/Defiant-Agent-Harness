@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.38.
+logs. A full trusted-memory/DKE system is not part of v0.39.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.38 is
+## What v0.39 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -366,6 +366,16 @@ Exact limits retain existing `fnmatch` and short-circuit semantics; breaches
 produce a sanitized `policy_match_limit` decision in blocked evidence without
 execution or approval. Command Core and the strictly read-only Command Center
 expose only the fixed ceilings and posture.
+
+v0.39 bounds action-controlled canonical hashing before policy, approvals,
+budget reservation, grants, or execution. Payload and complete authorization
+fingerprints accept at most 64 levels, 1,100,000 nodes, 8 Mi characters in one
+scalar, and 64 MiB of canonical JSON per hash. Governed actions detach caller
+containers and reuse one sealed fingerprint snapshot; the final capability
+spend independently re-hashes live fields so nested mutation still fails
+closed. Hashes for existing valid actions remain byte-for-byte compatible.
+Command Core and the strictly read-only Command Center expose only the fixed
+ceilings and posture.
 
 ## Install
 
@@ -702,7 +712,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.38 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.39 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -738,6 +748,7 @@ fixed per-item and complete-ruleset policy text ceilings,
 fixed single-pass governed-payload depth, node, text, and aggregate substring
 matching ceilings,
 fixed lazy tool-name/target glob-subject and decision-wide glob-work ceilings,
+fixed bounded canonical action fingerprints with a final live capability check,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
 The hook controls tool calls that emit supported lifecycle events. Direct

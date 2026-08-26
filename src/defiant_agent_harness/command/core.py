@@ -17,6 +17,10 @@ from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
+    MAX_ACTION_HASH_CANONICAL_BYTES,
+    MAX_ACTION_HASH_NESTING_DEPTH,
+    MAX_ACTION_HASH_NODES,
+    MAX_ACTION_HASH_SCALAR_CHARACTERS,
     MAX_DURABLE_JSON_BYTES,
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
@@ -71,7 +75,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.32.0"
+SNAPSHOT_VERSION = "0.33.0"
 
 
 class CommandError(RuntimeError):
@@ -160,6 +164,12 @@ class CommandCore:
                 "runtime_artifacts": audit_payload["stores"]["runtime_artifacts"],
                 "launch_envelope": audit_payload["stores"]["launch_envelope"],
                 "resource_limits": {
+                    "action_hash_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
+                    "action_hash_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
+                    "action_hash_nodes": MAX_ACTION_HASH_NODES,
+                    "action_hash_scalar_characters": (
+                        MAX_ACTION_HASH_SCALAR_CHARACTERS
+                    ),
                     "durable_json_bytes": MAX_DURABLE_JSON_BYTES,
                     "evidence_export_bytes": MAX_EVIDENCE_EXPORT_BYTES,
                     "evidence_record_bytes": MAX_EVIDENCE_RECORD_BYTES,
@@ -215,6 +225,7 @@ class CommandCore:
                     "policy_text_preflight": True,
                     "policy_payload_match_preflight": True,
                     "policy_glob_match_preflight": True,
+                    "action_hash_preflight": True,
                     "yaml_aliases_allowed": False,
                     "duplicate_keys_allowed": False,
                     "non_finite_json_numbers_allowed": False,

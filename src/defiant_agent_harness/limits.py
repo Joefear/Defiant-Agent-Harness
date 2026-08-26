@@ -76,3 +76,14 @@ MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS = 64 * MIB
 MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS = 4_096
 MAX_POLICY_MATCH_TARGET_CHARACTERS = 1 * MIB
 MAX_POLICY_GLOB_MATCH_WORK_UNITS = 64 * MIB
+
+# Every policy decision, approval, capability grant, and evidence record binds
+# the governed action through canonical SHA-256 fingerprints.  Bound action-
+# controlled structure before JSON encoding and bound the encoded byte stream
+# consumed by each fingerprint calculation.  The byte ceiling accommodates
+# the worst-case canonical escaping of one maximum-size MCP or hook document
+# without turning a transport-valid call into an authority bypass.
+MAX_ACTION_HASH_NESTING_DEPTH = 64
+MAX_ACTION_HASH_NODES = 1_100_000
+MAX_ACTION_HASH_SCALAR_CHARACTERS = 8 * MIB
+MAX_ACTION_HASH_CANONICAL_BYTES = 64 * MIB

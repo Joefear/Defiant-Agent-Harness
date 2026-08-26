@@ -24,6 +24,7 @@ from ..contracts import (
     ResultStatus,
     Sensitivity,
     Trust,
+    action_sha256_of,
     sha256_of,
 )
 from ..money import money
@@ -294,7 +295,7 @@ class McpStdioProxy:
             )
 
         authority_params = _authority_params(params)
-        execution_key = sha256_of(
+        execution_key = action_sha256_of(
             {
                 "server": self.config.server_name,
                 "runner": self.config.runner_name,
