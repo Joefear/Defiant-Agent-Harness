@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.38
+## What is deliberately absent from v0.39
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -631,6 +631,15 @@ semantics, and breaches return sanitized `policy_match_limit` blocks through
 the normal evidence path. The shared state also eliminates v0.37's duplicate
 tool/target prefix evaluation. See `policy_glob_matching_limits.md`.
 
+v0.39 bounds canonical action fingerprints before an action reaches policy,
+approval, reservation, grants, or execution. Payload and authorization hashes
+retain their exact existing canonical bytes while enforcing 64 levels,
+1,100,000 nodes, 8,388,608 characters per scalar, and 67,108,864 canonical
+bytes per hash. The owning control path detaches caller containers and reuses
+one sealed snapshot; capability spend re-hashes live fields once to detect
+nested mutation. Command Core and Command Center expose only static posture.
+See `action_hashing_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -638,10 +647,10 @@ tool/target prefix evaluation. See `policy_glob_matching_limits.md`.
   directory must be access-controlled and is not suitable for evidence export.
 - **Evidence is append-only by convention at the filesystem layer.** Anyone with write access to the file can truncate it; the chain makes alteration and deletion *detectable*, not impossible. Off-box replication is the answer, and it belongs to Command.
 - **Deterministic phrase matching is bypassable by paraphrase.** See above.
-- **Action hashing remains a separately bounded deployment concern.** v0.37
-  bounds payload materialization and substring searches, and v0.38 bounds
-  policy glob subjects and aggregate work. Action payload and authorization
-  hashing still occur outside those matcher budgets.
+- **Action hash limits are per fingerprint, not process quotas.** v0.39 bounds
+  each canonical payload, provenance-content, and authorization fingerprint.
+  Total traffic, CPU, memory, and wall-clock consumption across many accepted
+  actions still require deployment monitoring and OS controls.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
 - **MCP has no standard actual-cost field.** The proxy settles successful paid
   calls at the conservative configured estimate unless a later adapter can

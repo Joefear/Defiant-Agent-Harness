@@ -466,9 +466,9 @@ substring tests consume a shared 67,108,864-unit budget. A breach fails closed
 as `policy_match_limit`, records sanitized blocked evidence, and never creates
 an approval or invokes the tool.
 
-This does not bound action hashing, tool/target glob work, process-wide
-resources, or a compromised host. v0.38 adds a separate glob contract; hashing
-and process controls remain deployment concerns.
+This does not bound tool/target glob work, process-wide resources, or a
+compromised host. v0.38 adds a separate glob contract and v0.39 adds bounded
+action fingerprints; process controls remain deployment concerns.
 
 ### 30. Policy glob subject and work amplification
 
@@ -485,9 +485,9 @@ Checks remain ordered and short-circuit on the first match. A breach fails
 closed as `policy_match_limit`, adds no approval or execution, and omits the
 glob subject from its diagnostic inputs.
 
-The budget approximates search work rather than measuring CPU. It does not
-bound action hashing, non-glob context comparisons, process-wide resources, or
-a compromised host.
+The budget approximates search work rather than measuring CPU. v0.39 separately
+bounds action fingerprints; non-glob context comparisons, process-wide
+resources, and a compromised host remain outside this control.
 
 ## What we do not defend against
 
@@ -575,6 +575,14 @@ and non-finite JSON numbers, and fails closed with sanitized diagnostics. The
 limits are per document or evidence record; total evidence history, cumulative
 traffic, parser CPU within a permitted document, and process-wide memory still
 require deployment monitoring and OS resource controls.
+
+**Oversized or repeatedly hashed action input.** v0.39 validates action hash
+structure and scalars before canonical encoding, streams a maximum of 64 MiB
+per fingerprint into SHA-256, and reuses one detached, sealed fingerprint
+snapshot through policy, approval, and evidence. Capability spend performs one
+fresh bounded authorization hash so a nested post-seal mutation is refused.
+Input that cannot be fingerprinted exactly is rejected before authority or
+execution; the control does not provide a process-wide CPU or memory quota.
 
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or

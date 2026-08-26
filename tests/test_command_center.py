@@ -143,7 +143,14 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy_match_tool_name_characters" in javascript
     assert b"policy_match_target_characters" in javascript
     assert b"policy_glob_match_work_units" in javascript
-    assert b"governed payload and glob matching bounded and fail-closed" in javascript
+    assert b"action_hash_canonical_bytes" in javascript
+    assert b"action_hash_nesting_depth" in javascript
+    assert b"action_hash_nodes" in javascript
+    assert b"action_hash_scalar_characters" in javascript
+    assert (
+        b"governed action hashing, payload matching, and glob matching bounded "
+        b"and fail-closed" in javascript
+    )
     assert b"trusted_public_key_count" in javascript
     assert b"trusted_public_key_bytes" in javascript
     assert b"trusted_public_key_set_bytes" in javascript

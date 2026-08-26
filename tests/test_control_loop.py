@@ -12,6 +12,7 @@ import re
 import pytest
 
 import defiant_agent_harness.policy.engine as policy_engine_module
+import defiant_agent_harness.contracts as contracts_module
 from defiant_agent_harness.adapters.mock import SCRIPTS, MockAgentAdapter
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.authority_profile import (
@@ -19,6 +20,7 @@ from defiant_agent_harness.authority_profile import (
     AuthorityProfileStore,
 )
 from defiant_agent_harness.contracts import (
+    ActionHashLimitError,
     Decision,
     HarnessRequest,
     ResultStatus,
@@ -102,6 +104,30 @@ def test_injected_exfiltration_is_blocked(tmp_path):
     assert o.status is ResultStatus.BLOCKED
     assert "block_untrusted_side_effect" in o.decision.policy_ids
     assert o.action.payload_trust is Trust.UNTRUSTED
+
+
+def test_oversized_action_hash_input_fails_before_authority_or_execution(
+    tmp_path, monkeypatch
+):
+    adapter = MockAgentAdapter(
+        script=[
+            ToolCall(
+                name="send_email",
+                arguments={"to": "a@example.com", "body": "x" * 33},
+            )
+        ]
+    )
+    harness = build_harness(tmp_path, adapter, starting_budget_usd=25)
+    request = HarnessRequest(task="oversized", user_id="tester", workspace_id="ws")
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 32)
+
+    with pytest.raises(ActionHashLimitError, match="scalar exceeds") as exc:
+        harness.run(request)
+
+    assert exc.value.limit_enforced == "action_hash_scalar_characters"
+    assert harness.evidence.records() == []
+    assert harness.approvals.list_pending() == []
+    assert harness.budget.balance_usd == 25
 
 
 def test_injected_publish_is_blocked(tmp_path):

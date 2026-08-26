@@ -15,11 +15,18 @@ import enum
 import hashlib
 import json
 import uuid
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from .limits import (
+    MAX_ACTION_HASH_CANONICAL_BYTES,
+    MAX_ACTION_HASH_NESTING_DEPTH,
+    MAX_ACTION_HASH_NODES,
+    MAX_ACTION_HASH_SCALAR_CHARACTERS,
+)
 from .money import ZERO, money, money_text
 
 
@@ -49,6 +56,49 @@ def canonical_json(obj: Any) -> str:
 
 def sha256_of(obj: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(obj).encode("utf-8")).hexdigest()
+
+
+class ActionHashLimitError(ValueError):
+    """Action-controlled canonical hashing exceeded a fixed resource ceiling."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
+
+
+def action_sha256_of(obj: Any) -> str:
+    """Hash action material without constructing an unbounded JSON string.
+
+    This preserves the byte-for-byte canonical encoding used by ``sha256_of``
+    while validating action-controlled structure first and feeding encoder
+    chunks directly into SHA-256 under a fixed byte ceiling.
+    """
+
+    _validate_action_hash_structure(obj)
+    encoder = json.JSONEncoder(
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+        default=_action_hash_default,
+    )
+    digest = hashlib.sha256()
+    encoded_bytes = 0
+    try:
+        for chunk in encoder.iterencode(obj):
+            raw = chunk.encode("utf-8")
+            if len(raw) > MAX_ACTION_HASH_CANONICAL_BYTES - encoded_bytes:
+                raise ActionHashLimitError(
+                    "action canonical hash input exceeds maximum of "
+                    f"{MAX_ACTION_HASH_CANONICAL_BYTES} bytes",
+                    limit_enforced="action_hash_canonical_bytes",
+                )
+            digest.update(raw)
+            encoded_bytes += len(raw)
+    except ActionHashLimitError:
+        raise
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise ValueError("action hash input is not canonical JSON data") from exc
+    return "sha256:" + digest.hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +208,7 @@ class ContentRef:
             ref_id=new_id("ref"),
             origin=origin,
             trust=trust,
-            content_hash=sha256_of(content),
+            content_hash=action_sha256_of(content),
             label=label,
         )
 
@@ -243,6 +293,29 @@ class ProposedAction:
     payload_sources: list[ContentRef] = field(default_factory=list)
     estimated_cost_usd: Decimal = ZERO
     created_at: str = field(default_factory=utc_now)
+    _sealed_payload_hash: str = field(default="", init=False, repr=False)
+    _sealed_authorization_hash: str = field(default="", init=False, repr=False)
+    _fingerprints_sealed: bool = field(default=False, init=False, repr=False)
+
+    _AUTHORIZATION_FIELDS = frozenset(
+        {
+            "action_id",
+            "request_id",
+            "tool_name",
+            "target",
+            "payload",
+            "side_effect_level",
+            "payload_sources",
+            "estimated_cost_usd",
+        }
+    )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self._AUTHORIZATION_FIELDS and getattr(
+            self, "_fingerprints_sealed", False
+        ):
+            raise ValueError("sealed action authorization fields cannot be changed")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
         _require_text(self.tool_name, "tool_name")
@@ -266,7 +339,9 @@ class ProposedAction:
         If the payload changes by one byte, every approval and grant issued
         against the old payload becomes invalid.
         """
-        return sha256_of(self.payload)
+        if self._fingerprints_sealed:
+            return self._sealed_payload_hash
+        return action_sha256_of(self.payload)
 
     @property
     def payload_trust(self) -> Trust:
@@ -275,21 +350,64 @@ class ProposedAction:
     @property
     def authorization_hash(self) -> str:
         """Bind authority to the complete policy-relevant action surface."""
-        return sha256_of(
-            {
-                "action_id": self.action_id,
-                "request_id": self.request_id,
-                "tool_name": self.tool_name,
-                "target": self.target,
-                "payload": self.payload,
-                "side_effect_level": self.side_effect_level,
-                "payload_sources": [asdict(ref) for ref in self.payload_sources],
-                "estimated_cost_usd": self.estimated_cost_usd,
-            }
+        if self._fingerprints_sealed:
+            return self._sealed_authorization_hash
+        return action_sha256_of(self._authorization_surface())
+
+    def seal_fingerprints(self) -> tuple[str, str]:
+        """Detach, hash once, and seal the action used by the control path."""
+        if self._fingerprints_sealed:
+            return self._sealed_payload_hash, self._sealed_authorization_hash
+
+        # Validate before copying so cycles or attacker-defined objects cannot
+        # amplify deepcopy work. Then detach caller-owned containers before
+        # establishing the authority snapshot.
+        _validate_action_hash_structure(self.payload)
+        _validate_action_hash_structure(self._authorization_surface())
+        payload = deepcopy(self.payload)
+        sources = deepcopy(self.payload_sources)
+        payload_hash = action_sha256_of(payload)
+        authorization_hash = action_sha256_of(
+            self._authorization_surface(payload=payload, payload_sources=sources)
         )
+        object.__setattr__(self, "payload", payload)
+        object.__setattr__(self, "payload_sources", sources)
+        object.__setattr__(self, "_sealed_payload_hash", payload_hash)
+        object.__setattr__(self, "_sealed_authorization_hash", authorization_hash)
+        object.__setattr__(self, "_fingerprints_sealed", True)
+        return payload_hash, authorization_hash
+
+    def current_authorization_hash(self) -> str:
+        """Re-hash live fields for the final capability boundary check."""
+        return action_sha256_of(self._authorization_surface())
+
+    def _authorization_surface(
+        self,
+        *,
+        payload: dict | None = None,
+        payload_sources: list[ContentRef] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "action_id": self.action_id,
+            "request_id": self.request_id,
+            "tool_name": self.tool_name,
+            "target": self.target,
+            "payload": self.payload if payload is None else payload,
+            "side_effect_level": self.side_effect_level,
+            "payload_sources": [
+                asdict(ref)
+                for ref in (
+                    self.payload_sources if payload_sources is None else payload_sources
+                )
+            ],
+            "estimated_cost_usd": self.estimated_cost_usd,
+        }
 
     def to_dict(self) -> dict:
         d = _enum_safe(asdict(self))
+        d.pop("_sealed_payload_hash", None)
+        d.pop("_sealed_authorization_hash", None)
+        d.pop("_fingerprints_sealed", None)
         d["payload_hash"] = self.payload_hash
         d["payload_trust"] = self.payload_trust.value
         d["authorization_hash"] = self.authorization_hash
@@ -412,11 +530,12 @@ class CapabilityGrant:
             raise GrantError("grant/action id mismatch")
         if action.tool_name != self.tool_name:
             raise GrantError("grant/tool mismatch")
-        if action.authorization_hash != self.authorization_hash:
+        presented_hash = action.current_authorization_hash()
+        if presented_hash != self.authorization_hash:
             raise GrantError(
                 "action changed after authorization -- grant is void "
                 f"(authorized {self.authorization_hash}, "
-                f"presented {action.authorization_hash})"
+                f"presented {presented_hash})"
             )
         object.__setattr__(self, "_spent", True)
 
@@ -523,6 +642,90 @@ def _enum_safe(obj: Any) -> Any:
     if isinstance(obj, Decimal):
         return money_text(obj)
     return obj
+
+
+def _action_hash_default(obj: Any) -> Any:
+    """JSONEncoder fallback matching the existing canonical conversion."""
+    if isinstance(obj, enum.Enum):
+        return obj.value
+    if isinstance(obj, Decimal):
+        return money_text(obj)
+    raise TypeError(f"unsupported action hash value type: {type(obj).__name__}")
+
+
+def _validate_action_hash_structure(obj: Any) -> None:
+    """Preflight action data without copying or echoing attacker input."""
+
+    nodes = 0
+    active_containers: set[int] = set()
+
+    def visit(value: Any, depth: int) -> None:
+        nonlocal nodes
+        if depth > MAX_ACTION_HASH_NESTING_DEPTH:
+            raise ActionHashLimitError(
+                "action hash input exceeds maximum nesting depth of "
+                f"{MAX_ACTION_HASH_NESTING_DEPTH}",
+                limit_enforced="action_hash_nesting_depth",
+            )
+        nodes += 1
+        if nodes > MAX_ACTION_HASH_NODES:
+            raise ActionHashLimitError(
+                "action hash input exceeds maximum node count of "
+                f"{MAX_ACTION_HASH_NODES}",
+                limit_enforced="action_hash_nodes",
+            )
+
+        if isinstance(value, enum.Enum):
+            visit(value.value, depth)
+            return
+        if isinstance(value, Decimal):
+            text = money_text(value)
+            _validate_action_hash_scalar(text)
+            return
+        if isinstance(value, str):
+            _validate_action_hash_scalar(value)
+            return
+        if value is None or isinstance(value, (bool, int, float)):
+            return
+        if isinstance(value, dict):
+            marker = id(value)
+            if marker in active_containers:
+                raise ValueError("action hash input contains a cyclic container")
+            active_containers.add(marker)
+            try:
+                for key, child in value.items():
+                    # Keys are part of the canonical surface even though JSON's
+                    # encoder visits them differently from mapping values.
+                    visit(key, depth + 1)
+                    visit(child, depth + 1)
+            finally:
+                active_containers.remove(marker)
+            return
+        if isinstance(value, (list, tuple)):
+            marker = id(value)
+            if marker in active_containers:
+                raise ValueError("action hash input contains a cyclic container")
+            active_containers.add(marker)
+            try:
+                for child in value:
+                    visit(child, depth + 1)
+            finally:
+                active_containers.remove(marker)
+            return
+        # Preserve the old canonical encoder's rejection behavior, but do so
+        # before it can recurse through an attacker-defined object.
+        _action_hash_default(value)
+
+    visit(obj, 0)
+
+
+def _validate_action_hash_scalar(value: str) -> None:
+    if len(value) > MAX_ACTION_HASH_SCALAR_CHARACTERS:
+        raise ActionHashLimitError(
+            "action hash scalar exceeds maximum of "
+            f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
+            limit_enforced="action_hash_scalar_characters",
+        )
 
 
 def _require_text(value: Any, field_name: str) -> None:
