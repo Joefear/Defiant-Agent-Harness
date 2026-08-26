@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.31.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.32.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -23,6 +23,7 @@ contains:
   ceilings;
 - fixed per-item and complete-ruleset policy text ceilings;
 - fixed governed-payload matching depth, node, text, and aggregate work ceilings;
+- fixed policy glob tool-name/target subject and aggregate work ceilings;
 - fixed authority-YAML nesting-depth and constructed-node ceilings;
 - fixed per-collection and aggregate MCP authority-configuration ceilings;
 - approval status counts, reconciliation-required state, and safe metadata for
@@ -66,8 +67,7 @@ contains:
   native-hook events, MCP configuration, and each policy pack; and
 - the static authority-YAML and authority-JSON parser profiles plus explicit
   alias, nesting, lexical-token, scalar-token, MCP-collection, policy-text,
-  policy-payload-matching,
-  duplicate-key,
+  policy-payload-matching, policy-glob-matching, duplicate-key,
   non-finite-number, and strict-UTF-8 posture.
 
 Use `--request <request_id>` to project one request and `--limit <count>` to

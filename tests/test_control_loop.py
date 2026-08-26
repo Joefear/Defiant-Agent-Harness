@@ -459,6 +459,41 @@ rules:
     assert harness.evidence.verify().ok
 
 
+def test_policy_glob_match_limit_blocks_and_records_sanitized_evidence(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_TARGET_CHARACTERS", 5)
+    policy = tmp_path / "bounded-glob.yaml"
+    policy.write_text(
+        """version: test
+rules:
+  - id: inspect_target
+    tools: [send_email]
+    targets: ['*']
+    effect: allow
+""",
+        encoding="utf-8",
+    )
+    state = tmp_path / "state"
+
+    harness, _, [outcome] = run(
+        state,
+        "send_email",
+        packs=[str(policy)],
+    )
+
+    assert outcome.status is ResultStatus.BLOCKED
+    assert outcome.decision.policy_ids == ["policy_match_limit"]
+    assert outcome.approval_id == ""
+    record = harness.evidence.get(outcome.evidence_record_id)
+    assert record["result_status"] == "blocked"
+    assert record["decision_inputs"]["limit_enforced"] == "policy_glob_matching"
+    assert "merchant@example.com" not in outcome.decision.reason
+    assert "merchant@example.com" not in repr(outcome.decision.decision_inputs)
+    assert record["target"] == "merchant@example.com"
+    assert harness.evidence.verify().ok
+
+
 def test_chain_holds_across_a_mixed_session(tmp_path):
     h, req, _ = run(tmp_path, "send_email")
     for scenario in ["blocked_folder", "delete", "injected_exfiltration"]:

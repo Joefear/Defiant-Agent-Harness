@@ -17,6 +17,7 @@ Properties this engine guarantees, and which the tests enforce:
 from __future__ import annotations
 
 import fnmatch
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -33,9 +34,12 @@ from ..contracts import (
 )
 from ..limits import (
     MAX_POLICY_KNOWN_TOOLS,
+    MAX_POLICY_GLOB_MATCH_WORK_UNITS,
     MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
     MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH,
     MAX_POLICY_MATCH_PAYLOAD_NODES,
+    MAX_POLICY_MATCH_TARGET_CHARACTERS,
+    MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS,
     MAX_POLICY_PACK_BYTES,
     MAX_POLICY_PACKS,
     MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS,
@@ -75,6 +79,10 @@ class PolicyError(ValueError):
 
 class PolicyMatchLimitError(RuntimeError):
     """A governed action exceeded deterministic policy-matching ceilings."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
 
 
 @dataclass(frozen=True)
@@ -128,20 +136,33 @@ class Rule:
         action: ProposedAction,
         context: dict,
         *,
-        payload_text: str = "",
-        payload_match_budget: _PayloadMatchBudget | None = None,
+        match_state: _PolicyMatchState | None = None,
     ) -> bool:
-        if not self.matches_payload_prefix(action):
+        state = match_state or _PolicyMatchState()
+        if self.tools and not state.matches_any_glob(
+            action.tool_name,
+            self.tools,
+            subject_label="tool name",
+            maximum_characters=MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS,
+        ):
+            return False
+        if self.side_effect_at_least is not None:
+            threshold = SideEffect(self.side_effect_at_least)
+            if side_effect_rank(action.side_effect_level) < side_effect_rank(threshold):
+                return False
+        if self.targets and not state.matches_any_glob(
+            action.target,
+            self.targets,
+            subject_label="target",
+            maximum_characters=MAX_POLICY_MATCH_TARGET_CHARACTERS,
+        ):
             return False
         if self.payload_contains:
-            if payload_match_budget is None:
-                raise PolicyMatchLimitError(
-                    "payload substring matching requires bounded evaluation state"
-                )
+            payload_text = state.payload_text_for(action.payload)
             found = False
             for term in self.payload_contains:
                 lowered_term = term.lower()
-                payload_match_budget.charge(len(payload_text) + len(lowered_term))
+                state.charge_payload_work(len(payload_text) + len(lowered_term))
                 if lowered_term in payload_text:
                     found = True
                     break
@@ -156,22 +177,6 @@ class Rule:
                 return False
         return True
 
-    def matches_payload_prefix(self, action: ProposedAction) -> bool:
-        """Whether evaluation reaches this rule's payload condition."""
-        if self.tools and not any(
-            fnmatch.fnmatch(action.tool_name, p) for p in self.tools
-        ):
-            return False
-        if self.side_effect_at_least is not None:
-            threshold = SideEffect(self.side_effect_at_least)
-            if side_effect_rank(action.side_effect_level) < side_effect_rank(threshold):
-                return False
-        if self.targets and not any(
-            fnmatch.fnmatch(action.target, p) for p in self.targets
-        ):
-            return False
-        return True
-
 
 _TRUST_RANK = {Trust.TRUSTED: 0, Trust.DERIVED: 1, Trust.UNTRUSTED: 2}
 
@@ -182,16 +187,59 @@ def _trust_satisfies(actual: Trust, required_max: Trust) -> bool:
 
 
 @dataclass
-class _PayloadMatchBudget:
-    used: int = 0
+class _PolicyMatchState:
+    payload_work_used: int = 0
+    glob_work_used: int = 0
+    _payload_text: str | None = None
 
-    def charge(self, units: int) -> None:
-        if units > MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS - self.used:
+    def charge_payload_work(self, units: int) -> None:
+        if units > MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS - self.payload_work_used:
             raise PolicyMatchLimitError(
                 "policy payload substring work exceeds maximum of "
-                f"{MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS} units"
+                f"{MAX_POLICY_PAYLOAD_MATCH_WORK_UNITS} units",
+                limit_enforced="policy_payload_matching",
             )
-        self.used += units
+        self.payload_work_used += units
+
+    def matches_any_glob(
+        self,
+        subject: str,
+        patterns: list[str],
+        *,
+        subject_label: str,
+        maximum_characters: int,
+    ) -> bool:
+        if len(subject) > maximum_characters:
+            raise PolicyMatchLimitError(
+                f"policy glob {subject_label} exceeds maximum of "
+                f"{maximum_characters} characters",
+                limit_enforced="policy_glob_matching",
+            )
+        normalized_subject = os.path.normcase(subject)
+        if len(normalized_subject) > maximum_characters:
+            raise PolicyMatchLimitError(
+                f"normalized policy glob {subject_label} exceeds maximum of "
+                f"{maximum_characters} characters",
+                limit_enforced="policy_glob_matching",
+            )
+        for pattern in patterns:
+            normalized_pattern = os.path.normcase(pattern)
+            units = len(normalized_subject) + len(normalized_pattern)
+            if units > MAX_POLICY_GLOB_MATCH_WORK_UNITS - self.glob_work_used:
+                raise PolicyMatchLimitError(
+                    "policy glob match work exceeds maximum of "
+                    f"{MAX_POLICY_GLOB_MATCH_WORK_UNITS} units",
+                    limit_enforced="policy_glob_matching",
+                )
+            self.glob_work_used += units
+            if fnmatch.fnmatchcase(normalized_subject, normalized_pattern):
+                return True
+        return False
+
+    def payload_text_for(self, payload: Any) -> str:
+        if self._payload_text is None:
+            self._payload_text = _bounded_payload_text(payload)
+        return self._payload_text
 
 
 def _bounded_payload_text(payload: Any) -> str:
@@ -206,7 +254,8 @@ def _bounded_payload_text(payload: Any) -> str:
         if len(value) > MAX_POLICY_MATCH_PAYLOAD_CHARACTERS - character_count:
             raise PolicyMatchLimitError(
                 "policy match payload text exceeds maximum of "
-                f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters"
+                f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters",
+                limit_enforced="policy_payload_matching",
             )
         parts.append(value)
         character_count += len(value)
@@ -216,13 +265,15 @@ def _bounded_payload_text(payload: Any) -> str:
         if depth > MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH:
             raise PolicyMatchLimitError(
                 "policy match payload nesting exceeds maximum depth of "
-                f"{MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH}"
+                f"{MAX_POLICY_MATCH_PAYLOAD_NESTING_DEPTH}",
+                limit_enforced="policy_payload_matching",
             )
         node_count += 1
         if node_count > MAX_POLICY_MATCH_PAYLOAD_NODES:
             raise PolicyMatchLimitError(
                 "policy match payload node count exceeds maximum of "
-                f"{MAX_POLICY_MATCH_PAYLOAD_NODES}"
+                f"{MAX_POLICY_MATCH_PAYLOAD_NODES}",
+                limit_enforced="policy_payload_matching",
             )
         if isinstance(value, dict):
             for index, child in enumerate(value.values()):
@@ -243,7 +294,8 @@ def _bounded_payload_text(payload: Any) -> str:
     if len(lowered) > MAX_POLICY_MATCH_PAYLOAD_CHARACTERS:
         raise PolicyMatchLimitError(
             "normalized policy match payload text exceeds maximum of "
-            f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters"
+            f"{MAX_POLICY_MATCH_PAYLOAD_CHARACTERS} characters",
+            limit_enforced="policy_payload_matching",
         )
     return lowered
 
@@ -253,18 +305,20 @@ def _policy_match_limit_decision(
     engine: PolicyEngine,
     action: ProposedAction,
 ) -> GuardrailDecision:
+    decision_inputs = {
+        "side_effect_level": action.side_effect_level.value,
+        "policy_name": engine.name,
+        "limit_enforced": error.limit_enforced,
+    }
+    if error.limit_enforced != "policy_glob_matching":
+        decision_inputs["tool_name"] = action.tool_name
     return GuardrailDecision(
         decision=Decision.BLOCK,
         reason=str(error),
         policy_ids=["policy_match_limit"],
         policy_version=engine.version,
         ruleset_hash=engine.ruleset_hash,
-        decision_inputs={
-            "tool_name": action.tool_name,
-            "side_effect_level": action.side_effect_level.value,
-            "policy_name": engine.name,
-            "limit_enforced": "policy_payload_matching",
-        },
+        decision_inputs=decision_inputs,
     )
 
 
@@ -406,7 +460,11 @@ class PolicyEngine:
             }
         )
 
-    def is_known_tool(self, tool_name: str) -> bool:
+    def is_known_tool(
+        self,
+        tool_name: str,
+        match_state: _PolicyMatchState | None = None,
+    ) -> bool:
         """A tool nobody classified is the most dangerous kind of tool.
 
         If a pack declares `known_tools`, anything outside that list is refused
@@ -415,7 +473,13 @@ class PolicyEngine:
         """
         if not self.known_tools:
             return True
-        return any(fnmatch.fnmatch(tool_name, p) for p in self.known_tools)
+        state = match_state or _PolicyMatchState()
+        return state.matches_any_glob(
+            tool_name,
+            self.known_tools,
+            subject_label="tool name",
+            maximum_characters=MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS,
+        )
 
     # -- loading ---------------------------------------------------------
 
@@ -522,42 +586,33 @@ class PolicyEngine:
     ) -> GuardrailDecision:
         context = context or {}
 
-        # Unclassified tools never reach the rule set.
-        if not self.is_known_tool(action.tool_name):
-            return GuardrailDecision(
-                decision=Decision.BLOCK,
-                reason=(
-                    f"tool '{action.tool_name}' is not declared in any loaded policy "
-                    "pack's known_tools; unclassified tools are refused"
-                ),
-                policy_ids=["unknown_tool"],
-                policy_version=self.version,
-                ruleset_hash=self.ruleset_hash,
-                decision_inputs={
-                    "tool_name": action.tool_name,
-                    "known_tools": sorted(self.known_tools),
-                    "policy_name": self.name,
-                    "authority_inputs": self.authority_inputs,
-                },
-            )
-
+        match_state = _PolicyMatchState()
         try:
-            payload_rules_present = any(
-                rule.payload_contains and rule.matches_payload_prefix(action)
-                for rule in self.rules
-            )
-            payload_text = (
-                _bounded_payload_text(action.payload) if payload_rules_present else ""
-            )
-            payload_match_budget = _PayloadMatchBudget()
+            # Unclassified tools never reach the rule set.
+            if not self.is_known_tool(action.tool_name, match_state):
+                return GuardrailDecision(
+                    decision=Decision.BLOCK,
+                    reason=(
+                        f"tool '{action.tool_name}' is not declared in any loaded "
+                        "policy pack's known_tools; unclassified tools are refused"
+                    ),
+                    policy_ids=["unknown_tool"],
+                    policy_version=self.version,
+                    ruleset_hash=self.ruleset_hash,
+                    decision_inputs={
+                        "tool_name": action.tool_name,
+                        "known_tools": sorted(self.known_tools),
+                        "policy_name": self.name,
+                        "authority_inputs": self.authority_inputs,
+                    },
+                )
             matched = [
                 rule
                 for rule in self.rules
                 if rule.matches(
                     action,
                     context,
-                    payload_text=payload_text,
-                    payload_match_budget=payload_match_budget,
+                    match_state=match_state,
                 )
             ]
         except PolicyMatchLimitError as exc:

@@ -467,8 +467,27 @@ as `policy_match_limit`, records sanitized blocked evidence, and never creates
 an approval or invokes the tool.
 
 This does not bound action hashing, tool/target glob work, process-wide
-resources, or a compromised host. Those remain separate deployment and future
-hardening concerns.
+resources, or a compromised host. v0.38 adds a separate glob contract; hashing
+and process controls remain deployment concerns.
+
+### 30. Policy glob subject and work amplification
+
+An action controls its tool name and target while authority can contain many
+bounded glob patterns. Before v0.38, known-tool classification and rule
+tool/target matching had no shared work budget. v0.37 also evaluated rule
+tool/target prefixes once to discover payload matching and again during final
+rule evaluation.
+
+v0.38 caps tool-name glob subjects at 4,096 characters and target subjects at
+1,048,576. Known-tool and rule comparisons share 67,108,864 deterministic work
+units, charged as subject length plus pattern length per attempted comparison.
+Checks remain ordered and short-circuit on the first match. A breach fails
+closed as `policy_match_limit`, adds no approval or execution, and omits the
+glob subject from its diagnostic inputs.
+
+The budget approximates search work rather than measuring CPU. It does not
+bound action hashing, non-glob context comparisons, process-wide resources, or
+a compromised host.
 
 ## What we do not defend against
 

@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.37
+## What is deliberately absent from v0.38
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -623,6 +623,14 @@ returns a sanitized `policy_match_limit` block through the normal evidence
 path. Command Core and Command Center expose only the fixed static posture. See
 `policy_payload_matching_limits.md`.
 
+v0.38 gives known-tool classification and every rule one decision-scoped glob
+budget. Tool-name subjects are capped at 4,096 characters, target subjects at
+1,048,576, and attempted comparisons share 67,108,864 work units. Subject
+checks are lazy, comparisons preserve ordered short-circuit `fnmatch`
+semantics, and breaches return sanitized `policy_match_limit` blocks through
+the normal evidence path. The shared state also eliminates v0.37's duplicate
+tool/target prefix evaluation. See `policy_glob_matching_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -630,9 +638,10 @@ path. Command Core and Command Center expose only the fixed static posture. See
   directory must be access-controlled and is not suitable for evidence export.
 - **Evidence is append-only by convention at the filesystem layer.** Anyone with write access to the file can truncate it; the chain makes alteration and deletion *detectable*, not impossible. Off-box replication is the answer, and it belongs to Command.
 - **Deterministic phrase matching is bypassable by paraphrase.** See above.
-- **Glob and hashing work remain separately bounded deployment concerns.**
-  v0.37 bounds payload materialization and substring searches, not tool/target
-  glob evaluation or action payload hashing.
+- **Action hashing remains a separately bounded deployment concern.** v0.37
+  bounds payload materialization and substring searches, and v0.38 bounds
+  policy glob subjects and aggregate work. Action payload and authorization
+  hashing still occur outside those matcher budgets.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
 - **MCP has no standard actual-cost field.** The proxy settles successful paid
   calls at the conservative configured estimate unless a later adapter can
