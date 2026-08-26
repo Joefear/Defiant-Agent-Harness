@@ -11,6 +11,7 @@ import re
 
 import pytest
 
+import defiant_agent_harness.policy.engine as policy_engine_module
 from defiant_agent_harness.adapters.mock import SCRIPTS, MockAgentAdapter
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.authority_profile import (
@@ -423,6 +424,39 @@ def test_evidence_contains_no_raw_payload(tmp_path):
     h, _, [o] = run(tmp_path, "send_email")
     blob = str(h.evidence.get(o.evidence_record_id))
     assert "plain-English summary" not in blob
+
+
+def test_policy_payload_match_limit_blocks_and_records_sanitized_evidence(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(policy_engine_module, "MAX_POLICY_MATCH_PAYLOAD_CHARACTERS", 10)
+    policy = tmp_path / "bounded-payload.yaml"
+    policy.write_text(
+        """version: test
+rules:
+  - id: inspect_payload
+    tools: [send_email]
+    payload_contains: [not-present]
+    effect: allow
+""",
+        encoding="utf-8",
+    )
+    state = tmp_path / "state"
+
+    harness, _, [outcome] = run(
+        state,
+        "send_email",
+        packs=[str(policy)],
+    )
+
+    assert outcome.status is ResultStatus.BLOCKED
+    assert outcome.decision.policy_ids == ["policy_match_limit"]
+    assert outcome.approval_id == ""
+    record = harness.evidence.get(outcome.evidence_record_id)
+    assert record["result_status"] == "blocked"
+    assert record["decision_inputs"]["limit_enforced"] == "policy_payload_matching"
+    assert "plain-English summary" not in repr(record)
+    assert harness.evidence.verify().ok
 
 
 def test_chain_holds_across_a_mixed_session(tmp_path):

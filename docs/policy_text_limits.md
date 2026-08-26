@@ -40,7 +40,7 @@ redactions, or source paths.
 
 ## Read-only projection
 
-Command Core schema `0.30.0` publishes `policy_text_item_characters` and
+Command Core schema `0.31.0` publishes `policy_text_item_characters` and
 `policy_text_characters` under `resource_limits`, plus the static
 `policy_text_preflight` posture. Command Center only renders these values. It
 cannot upload policy, change a ceiling, grant an exception, activate a ruleset,
@@ -48,11 +48,9 @@ or execute an action.
 
 ## Limits of the control
 
-This control bounds operator-authored policy text, not the size of a governed
-action payload or the wall-clock cost of every accepted glob or substring
-comparison. It does not prove policy correctness, replace adversarial policy
-tests, impose a process-wide CPU or memory quota, or contain a compromised
-host. Per-document bytes, YAML structure, ruleset collection counts, deployment
-review, and OS resource controls remain separate defenses.
+This control bounds operator-authored policy text, not all matcher work. v0.37
+adds governed-payload depth, node, text, and aggregate substring-work ceilings;
+see `policy_payload_matching_limits.md`. Tool/target glob work, action hashing,
+process-wide CPU or memory, and host containment remain separate concerns.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

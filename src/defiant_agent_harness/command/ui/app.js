@@ -127,6 +127,10 @@ function renderResourceLimits(limits, configuration) {
     `policy rule list items ${integer.format(limits.policy_rule_list_items)}`,
     `policy text item ${integer.format(limits.policy_text_item_characters)} characters`,
     `policy text aggregate ${integer.format(limits.policy_text_characters)} characters`,
+    `policy match payload depth ${integer.format(limits.policy_match_payload_nesting_depth)}`,
+    `policy match payload nodes ${integer.format(limits.policy_match_payload_nodes)}`,
+    `policy match payload ${integer.format(limits.policy_match_payload_characters)} characters`,
+    `policy payload match work ${integer.format(limits.policy_payload_match_work_units)} units`,
     `trusted keys ${integer.format(limits.trusted_public_key_count)}`,
     `trusted key ${bytes(limits.trusted_public_key_bytes)}`,
     `trusted key set ${bytes(limits.trusted_public_key_set_bytes)}`,
@@ -135,7 +139,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; governed payload matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
