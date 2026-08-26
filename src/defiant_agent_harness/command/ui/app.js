@@ -116,6 +116,9 @@ function renderResourceLimits(limits, configuration) {
     `JSON string token ${integer.format(limits.json_string_token_characters)} characters`,
     `JSON number token ${integer.format(limits.json_number_token_characters)} characters`,
     `MCP config ${bytes(limits.mcp_config_bytes)}`,
+    `MCP config collection ${integer.format(limits.mcp_config_collection_items)} items`,
+    `MCP dependency pins ${integer.format(limits.mcp_dependency_file_pins)}`,
+    `MCP launch environment ${integer.format(limits.mcp_launch_environment_entries)} entries`,
     `policy pack ${bytes(limits.policy_pack_bytes)}`,
     `policy packs ${integer.format(limits.policy_pack_count)}`,
     `policy rules ${integer.format(limits.policy_rule_count)}`,
@@ -130,7 +133,7 @@ function renderResourceLimits(limits, configuration) {
   ];
   if (configuration) {
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

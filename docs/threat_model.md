@@ -415,6 +415,25 @@ or establish that accepted authority is correct. The 1 MiB document limit,
 complete-policy collection limits, deployment review, and OS controls remain
 separate defenses.
 
+### 27. MCP configuration collection amplification
+
+Byte and YAML-node ceilings do not directly limit the number of entries in one
+semantically expensive MCP field. Large command vectors, tool maps, header
+maps, artifact manifests, dependency pin sets, and launch-environment fields
+can amplify validation, path construction, hashing, and startup work. CLI
+command overrides also bypass the YAML byte boundary.
+
+v0.35 caps every relevant collection at 4,096 items before element validation
+or path construction. It separately caps dependency file pins at 8,192 across
+all roots and launch-environment entries at 4,096 across all four fields.
+Duplicates count as supplied, failures are sanitized, and no upstream process
+or remote session is created after refusal.
+
+These bounds do not validate the correctness of accepted authority, cap the
+size or cost of hashing referenced files, impose a process-wide resource
+quota, or contain a compromised host. Artifact inventory limits, operator
+review, immutable deployment, and OS controls remain separate defenses.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.

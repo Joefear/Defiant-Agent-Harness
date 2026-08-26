@@ -28,7 +28,7 @@ variables or policy settings.
 
 ## Read-only projection
 
-Command Core schema `0.28.0` publishes `yaml_nesting_depth`, `yaml_nodes`, and
+Command Core schema `0.29.0` publishes `yaml_nesting_depth`, `yaml_nodes`, and
 the `strict_yaml_v2` profile. Command Center displays that fixed posture. It
 cannot upload authority YAML, change either ceiling, accept an exception, or
 launch an upstream.
@@ -40,5 +40,9 @@ memory quota and does not stream construction. The existing 1 MiB byte ceiling
 bounds individual scalar content. Policy-specific collection limits separately
 bound the complete ruleset across files. Operators must still review policy and
 MCP authority, protect configuration paths, and apply OS resource controls.
+
+v0.35 adds lower semantic collection ceilings for MCP configuration after this
+parser preflight and before entry transformation. See
+`mcp_configuration_limits.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

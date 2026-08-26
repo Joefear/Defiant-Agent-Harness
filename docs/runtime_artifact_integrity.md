@@ -56,6 +56,12 @@ requires exactly a canonical relative `path` and `sha256`. Relative paths use
 must be non-empty. Unknown fields fail loading. Relative root paths resolve
 against the configuration file.
 
+v0.35 checks artifact and dependency-root collections before constructing
+paths or pin objects. Each collection, including each root's `files`, is capped
+at 4,096 items, and all dependency roots together may declare at most 8,192
+file pins. These loader limits apply before the separate runtime inventory and
+hashing work described below.
+
 `required` must be a boolean. Artifact entries require exactly `role`, `path`,
 and `sha256`; unknown fields fail loading. Roles are unique lowercase logical
 names and exactly one must be `executable`. Relative artifact paths resolve

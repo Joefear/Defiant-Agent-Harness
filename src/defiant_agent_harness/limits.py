@@ -39,6 +39,12 @@ MAX_HOOK_EVENT_BYTES = 10 * MIB
 # Structural preflight counts each scalar plus each mapping/sequence start as
 # one node before PyYAML constructs the authority document.
 MAX_MCP_CONFIG_BYTES = 1 * MIB
+# MCP configuration is authority input, not a bulk manifest. Bound each
+# collection before transforming entries into runtime objects or resolving
+# paths, and separately bound the aggregate startup work that spans fields.
+MAX_MCP_CONFIG_COLLECTION_ITEMS = 4_096
+MAX_MCP_DEPENDENCY_FILE_PINS = 8_192
+MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES = 4_096
 MAX_POLICY_PACK_BYTES = 1 * MIB
 MAX_YAML_NESTING_DEPTH = 64
 MAX_YAML_NODES = 100_000

@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.34
+## What is deliberately absent from v0.35
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -596,6 +596,15 @@ nodes before PyYAML constructs a policy pack or MCP configuration. Exact limits
 remain accepted; existing byte, alias, duplicate-key, UTF-8, and safe-loader
 controls remain in force. Command Core and Command Center expose only the
 static posture. See `yaml_structural_limits.md`.
+
+v0.35 adds an MCP-specific collection preflight after YAML construction and
+before element validation, path handling, runtime object construction, hashing,
+or startup. Each effective command, header, tool, artifact, dependency-root,
+dependency-file, or launch-environment collection is capped at 4,096 items;
+dependency pins are capped at 8,192 across roots and launch-environment entries
+at 4,096 across fields. CLI command overrides use the same path. Command Core
+and Command Center expose only the static ceilings and cannot mutate authority.
+See `mcp_configuration_limits.md`.
 
 ## Known limits
 

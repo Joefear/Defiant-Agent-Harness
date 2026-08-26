@@ -30,6 +30,11 @@ lists of variable names; `set` maps names to literal string values. Unknown
 fields, nonstrings, NUL characters, duplicate or case-conflicting names, and a
 name supplied by more than one source fail configuration loading.
 
+v0.35 caps each of the four collections at 4,096 items and their supplied
+entries at 4,096 in aggregate before variable validation, sorting, working-
+directory resolution, or process construction. Duplicate and conflicting
+names count as supplied before the existing strict validation refuses them.
+
 The presence of this block enables restricted mode and requires an explicit
 `server.cwd`. Defiant resolves that directory before authority-profile
 resolution, refuses a missing, nondirectory, symlinked, or harness-state path,
