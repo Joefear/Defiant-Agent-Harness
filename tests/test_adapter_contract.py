@@ -94,7 +94,9 @@ def test_tool_call_accepts_exact_structural_bounds_and_maps_next_failure(
 def test_tool_call_accepts_exact_canonical_byte_bound_and_maps_next(monkeypatch):
     call = ToolCall("x")
     exact_bytes = len(canonical_json(call._contract_surface()).encode("utf-8"))
-    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact_bytes)
+    monkeypatch.setattr(
+        contracts_module, "MAX_ACTION_HASH_CANONICAL_BYTES", exact_bytes
+    )
 
     ToolCall("x")
     with pytest.raises(ToolCallLimitError) as exc:

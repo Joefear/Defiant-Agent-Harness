@@ -181,9 +181,7 @@ class ToolCall:
             "call_id": self.call_id,
             "server": self.server,
             "transport_params": (
-                self.transport_params
-                if transport_params is None
-                else transport_params
+                self.transport_params if transport_params is None else transport_params
             ),
         }
 

@@ -181,9 +181,7 @@ class CommandCore:
                     ),
                     "tool_call_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
                     "tool_call_nodes": MAX_ACTION_HASH_NODES,
-                    "tool_call_scalar_characters": (
-                        MAX_ACTION_HASH_SCALAR_CHARACTERS
-                    ),
+                    "tool_call_scalar_characters": (MAX_ACTION_HASH_SCALAR_CHARACTERS),
                     "tool_call_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_canonical_bytes": MAX_ACTION_HASH_CANONICAL_BYTES,
                     "action_hash_nesting_depth": MAX_ACTION_HASH_NESTING_DEPTH,
