@@ -7,6 +7,7 @@ import pytest
 
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.adapters.mock import MockAgentAdapter, SCRIPTS
+from defiant_agent_harness import contracts as contracts_module
 from defiant_agent_harness.budgets.ledger import BudgetError, BudgetLedger
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.contracts import HarnessRequest, ResultStatus, SideEffect
@@ -19,7 +20,12 @@ from defiant_agent_harness.operator_identity import (
 )
 from defiant_agent_harness.orchestrator.harness import build_harness
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
-from defiant_agent_harness.tools.registry import ToolRegistry, ToolResult, ToolSpec
+from defiant_agent_harness.tools.registry import (
+    ToolRegistry,
+    ToolResult,
+    ToolResultLimitError,
+    ToolSpec,
+)
 
 
 class SimulatedCrash(RuntimeError):
@@ -107,6 +113,127 @@ def _approval_harness(state, counter, *, trusted_keys=None):
 def _budget_entries(state, kind):
     budget = json.loads((state / "budget.json").read_text(encoding="utf-8"))
     return [entry for entry in budget["entries"] if entry["kind"] == kind]
+
+
+def _oversized_result_registry(monkeypatch, counter, *, approval_backed=False):
+    registry = ToolRegistry()
+    tool_name = "spend" if approval_backed else "summarize"
+    side_effect = SideEffect.SPEND if approval_backed else SideEffect.NONE
+    estimate = Decimal("250") if approval_backed else Decimal("5")
+
+    def execute(_action):
+        counter["calls"] += 1
+        with monkeypatch.context() as bounded:
+            bounded.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
+            return ToolResult(
+                status="succeeded",
+                summary="provider reported success",
+                output="12345-secret-result",
+                cost_usd=Decimal("7"),
+            )
+
+    registry.register(
+        ToolSpec(
+            tool_name,
+            side_effect,
+            "Return a deliberately oversized post-execution result.",
+            cost_estimate_usd=estimate,
+        ),
+        execute,
+    )
+    return registry
+
+
+def test_oversized_direct_result_preserves_open_authorization_for_reconciliation(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    counter = {"calls": 0}
+    harness = build_harness(
+        state,
+        MockAgentAdapter(
+            script=[ToolCall(name="summarize", arguments={"text": "fixture"})]
+        ),
+        starting_budget_usd="20",
+        tools=_oversized_result_registry(monkeypatch, counter),
+    )
+
+    with pytest.raises(ToolResultLimitError) as exc:
+        harness.run(_request())
+
+    assert "secret-result" not in str(exc.value)
+    assert counter["calls"] == 1
+    assert harness.budget.summary()["reserved_usd"] == "5"
+    [authorization] = harness.evidence.records()
+    assert authorization["result_status"] == "skipped"
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+    assert report.status == "recovery_required"
+    assert report.counts["authorization_reconciliations_required"] == 1
+    assert snapshot["reconciliation_required"] is True
+    assert "secret-result" not in json.dumps(snapshot)
+
+
+def test_oversized_approval_result_preserves_execution_and_reservation(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    counter = {"calls": 0}
+    harness = build_harness(
+        state,
+        MockAgentAdapter(script=SCRIPTS["overspend"]),
+        starting_budget_usd="500",
+        tools=_oversized_result_registry(
+            monkeypatch,
+            counter,
+            approval_backed=True,
+        ),
+    )
+    [pending] = harness.run(_request())
+
+    with pytest.raises(ToolResultLimitError):
+        harness.resume(pending.approval_id, True, "alice", "approved exact spend")
+
+    approval = harness.approvals.get(pending.approval_id)
+    assert approval is not None and approval.status == "executing"
+    assert counter["calls"] == 1
+    assert harness.budget.summary()["reserved_usd"] == "250"
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+    assert report.status == "recovery_required"
+    assert snapshot["reconciliation_required"] is True
+    assert snapshot["approvals"]["reconciliation_required_count"] == 1
+
+
+def test_oversized_external_completion_preserves_open_authorization(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    counter = {"calls": 0}
+    harness = _direct_harness(state, counter)
+    request = _request()
+    authorized = harness.preflight_external_call(
+        ToolCall(name="summarize", arguments={"text": "external fixture"}),
+        request,
+        execution_owner="fixture:external-result-limit",
+        execution_key="fixture-result-limit",
+    )
+
+    with monkeypatch.context() as bounded:
+        bounded.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
+        with pytest.raises(ToolResultLimitError):
+            harness.complete_external_call(
+                authorized.action,
+                request,
+                authorized.decision,
+                tool_response="12345-secret-result",
+            )
+
+    assert counter["calls"] == 0
+    assert harness.budget.summary()["reserved_usd"] == "5"
+    report = StateIntegrityAuditor(state).audit()
+    assert report.status == "recovery_required"
+    assert report.counts["authorization_reconciliations_required"] == 1
 
 
 def test_restart_recovers_known_result_before_budget_without_reexecution(

@@ -961,6 +961,7 @@ class Harness:
         approval_id: str,
     ) -> EvidenceRecord:
         """Journal a known tool result before completing local state."""
+        result.validate_fields()
         actual = (
             ZERO
             if result.dry_run
@@ -969,6 +970,7 @@ class Harness:
             else estimate
         )
         result.cost_usd = actual
+        result.seal_contract()
         status = (
             ResultStatus.SUCCEEDED
             if result.status == "succeeded"

@@ -14,12 +14,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Iterable
 
 from ..contracts import (
+    ActionHashLimitError,
     CapabilityGrant,
     Decision,
     EvidenceRecord,
@@ -27,9 +29,11 @@ from ..contracts import (
     ProposedAction,
     ResultStatus,
     SideEffect,
+    action_sha256_of,
     canonical_json,
     sha256_of,
 )
+from ..limits import MAX_TOOL_RESULT_SUMMARY_CHARACTERS
 from ..money import ZERO, money
 from ..workspace_integrity import (
     WorkspaceIntegrityError,
@@ -40,6 +44,18 @@ from ..workspace_integrity import (
 
 class ToolContractError(RuntimeError):
     """An action disagrees with the registry's authoritative contract."""
+
+
+class ToolResultContractError(ValueError):
+    """A post-execution result cannot be accepted as canonical evidence."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
+
+
+class ToolResultLimitError(ToolResultContractError):
+    """A post-execution result exceeded a fixed resource ceiling."""
 
 
 @dataclass(frozen=True)
@@ -86,15 +102,95 @@ class ToolResult:
     output: Any = None
     cost_usd: Decimal = ZERO
     dry_run: bool = False
+    _sealed_output_hash: str = field(default="", init=False, repr=False)
+    _contract_sealed: bool = field(default=False, init=False, repr=False)
+
+    _CONTRACT_FIELDS = frozenset({"status", "summary", "output", "cost_usd", "dry_run"})
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_contract_sealed", False) and (
+            name in self._CONTRACT_FIELDS
+            or name in {"_sealed_output_hash", "_contract_sealed"}
+        ):
+            raise ValueError("sealed tool result contract fields cannot be changed")
+        object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
-        if self.status not in {"succeeded", "failed"}:
-            raise ValueError(f"invalid tool result status: {self.status}")
-        self.cost_usd = money(self.cost_usd, field_name="tool result cost_usd")
+        self._validate_contract()
+
+    def validate_fields(self) -> None:
+        """Normalize scalar fields before completion cost is selected."""
+        self._validate_fields()
+
+    def seal_contract(self) -> None:
+        """Revalidate, detach, hash, and freeze one returned tool result."""
+        if self._contract_sealed:
+            return
+        self._validate_contract()
+        output = deepcopy(self.output)
+        output_hash = _tool_result_output_hash(output)
+        object.__setattr__(self, "output", output)
+        object.__setattr__(self, "_sealed_output_hash", output_hash)
+        object.__setattr__(self, "_contract_sealed", True)
+
+    def _validate_fields(self) -> None:
+        if not isinstance(self.status, str) or self.status not in {
+            "succeeded",
+            "failed",
+        }:
+            raise ToolResultContractError(
+                "tool result status is invalid",
+                limit_enforced="tool_result_status",
+            )
+        if not isinstance(self.summary, str):
+            raise ToolResultContractError(
+                "tool result summary must be a string",
+                limit_enforced="tool_result_summary_contract",
+            )
+        if len(self.summary) > MAX_TOOL_RESULT_SUMMARY_CHARACTERS:
+            raise ToolResultLimitError(
+                "tool result summary exceeds maximum of "
+                f"{MAX_TOOL_RESULT_SUMMARY_CHARACTERS} characters",
+                limit_enforced="tool_result_summary_characters",
+            )
+        if not isinstance(self.dry_run, bool):
+            raise ToolResultContractError(
+                "tool result dry_run must be a boolean",
+                limit_enforced="tool_result_dry_run",
+            )
+        try:
+            self.cost_usd = money(self.cost_usd, field_name="tool result cost_usd")
+        except ValueError as exc:
+            raise ToolResultContractError(
+                "tool result cost is invalid",
+                limit_enforced="tool_result_cost",
+            ) from exc
+
+    def _validate_contract(self) -> None:
+        self._validate_fields()
+        _tool_result_output_hash(self.output)
 
     @property
     def output_hash(self) -> str:
-        return sha256_of(self.output)
+        if self._contract_sealed:
+            return self._sealed_output_hash
+        return _tool_result_output_hash(self.output)
+
+
+def _tool_result_output_hash(output: Any) -> str:
+    try:
+        return action_sha256_of(output)
+    except ActionHashLimitError as exc:
+        suffix = exc.limit_enforced.removeprefix("action_hash_")
+        raise ToolResultLimitError(
+            "tool result output exceeds a fixed canonical-value ceiling",
+            limit_enforced=f"tool_result_output_{suffix}",
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise ToolResultContractError(
+            "tool result output is not canonical JSON data",
+            limit_enforced="tool_result_output_contract",
+        ) from exc
 
 
 class ToolRegistry:
@@ -300,12 +396,22 @@ class ToolRegistry:
 
         try:
             result = fn(action)
+        except ToolResultContractError:
+            # The grant is already spent. Leave the sealed authorization open
+            # for approval-backed or approval-free reconciliation rather than
+            # pretending the post-execution outcome is known.
+            raise
         except Exception as exc:  # tool failure is data, not a harness crash
             return ToolResult(
                 status="failed",
                 summary=f"{type(exc).__name__}: {exc}",
                 output=None,
                 cost_usd=spec.cost_estimate_usd,
+            )
+        if not isinstance(result, ToolResult):
+            raise ToolResultContractError(
+                "tool returned an invalid result contract after execution",
+                limit_enforced="tool_result_contract",
             )
         result.dry_run = False
         return result

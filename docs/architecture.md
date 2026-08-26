@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.40
+## What is deliberately absent from v0.41
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -648,6 +648,14 @@ cannot amplify proposal, request-scope membership, policy context, approval,
 or evidence work. Command Core and Command Center expose only static posture.
 See `governed_request_limits.md`.
 
+v0.41 bounds post-execution tool-result capture before known-result journaling,
+budget settlement, or terminal evidence. Accepted summaries and canonical
+outputs have fixed ceilings, are detached, hashed, and sealed. Refused output
+leaves the authorization and any reservation open for explicit reconciliation
+instead of inventing a terminal result or replaying the tool. Command Core and
+Command Center expose only static posture and sanitized recovery state. See
+`tool_result_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -659,6 +667,10 @@ See `governed_request_limits.md`.
   each canonical payload, provenance-content, and authorization fingerprint.
   Total traffic, CPU, memory, and wall-clock consumption across many accepted
   actions still require deployment monitoring and OS controls.
+- **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
+  result capture, but a handler may have performed its side effect before it
+  returns invalid output. Defiant preserves the uncertain authorization for
+  explicit operator reconciliation; it cannot discover the truth itself.
 - **`estimate_cost` is a stub** for everything except explicit spend amounts. Token-cost estimation per runner is adapter work.
 - **MCP has no standard actual-cost field.** The proxy settles successful paid
   calls at the conservative configured estimate unless a later adapter can

@@ -30,7 +30,7 @@ no-overwrite rule.
 
 ## Read-only visibility
 
-Command Core schema `0.34.0` publishes `evidence_export_bytes` under
+Command Core schema `0.35.0` publishes `evidence_export_bytes` under
 `resource_limits`. Command Center renders that static value with the other
 ceilings. Neither surface accepts an export, changes the limit, signs or
 verifies a document, uploads a key, or mutates harness state.
