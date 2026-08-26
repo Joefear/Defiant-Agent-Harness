@@ -279,6 +279,13 @@ def test_tool_result_maps_canonical_string_token_failure(monkeypatch):
     [
         ("MAX_ACTION_HASH_NESTING_DEPTH", 1, [None], [[None]], "nesting_depth"),
         ("MAX_ACTION_HASH_NODES", 2, [None], [None, None], "nodes"),
+        (
+            "MAX_ACTION_HASH_MAPPING_ENTRIES",
+            1,
+            {"a": 1},
+            {"a": 1, "secret": 2},
+            "mapping_entries",
+        ),
         ("MAX_ACTION_HASH_CANONICAL_BYTES", 4, None, False, "canonical_bytes"),
     ],
 )

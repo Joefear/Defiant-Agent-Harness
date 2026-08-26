@@ -55,16 +55,18 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - the fixed governed-payload matching depth, node, text, and aggregate work
   ceilings;
 - the fixed policy glob tool-name/target subject and aggregate work ceilings;
-- the fixed action-hash depth, node, scalar-character, escaped-string-token,
-  number-token, and canonical-byte ceilings;
+- the fixed action-hash depth, node, per-mapping entry, scalar-character,
+  escaped-string-token, number-token, and canonical-byte ceilings;
+- canonical mapping-entry preflight before key traversal or sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
 - the fixed pre-render escaped canonical-string token ceiling;
-- the fixed pre-adapter tool-call name, identifier, depth, node,
+- the fixed pre-adapter tool-call name, identifier, depth, node, per-mapping
+  entry, scalar-character, escaped-string-token, number-token, and
+  canonical-byte ceilings;
+- the fixed post-execution tool-result summary, depth, node, per-mapping entry,
   scalar-character, escaped-string-token, number-token, and canonical-byte
   ceilings;
-- the fixed post-execution tool-result summary, depth, node, scalar-character,
-  escaped-string-token, number-token, and canonical-byte ceilings;
 - the fixed governed-request task, identifier, allowlist, provenance, and
   aggregate-text ceilings;
 - the fixed authority-YAML nesting-depth and constructed-node ceilings;
@@ -78,7 +80,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.39.0`. The browser cannot raise, disable, or replace them and never receives
+`0.40.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

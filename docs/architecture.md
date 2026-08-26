@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.45
+## What is deliberately absent from v0.46
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -687,6 +687,15 @@ before `sort_keys` or `JSONEncoder`; the existing streaming counter remains a
 second assertion. Command Core and Command Center expose only static posture.
 See `canonical_value_preflight.md`.
 
+v0.46 caps every canonical mapping at 65,536 entries before the structural
+preflight visits its keys or values and before the encoder sorts them. This
+bounds the largest individual key sort while the existing node and byte
+ceilings bound total traversal and output. Tool calls, action fingerprints,
+and tool results expose their own sanitized aliases. Accepted canonical hashes
+are unchanged, but mappings above the new ceiling are deliberately refused.
+Command Core and Command Center expose only static posture. See
+`canonical_mapping_limits.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -710,6 +719,10 @@ See `canonical_value_preflight.md`.
   aggregate values from entering encoder sorting or emission, but accepted
   mappings are still sorted and repeated hashing still consumes CPU. Deployment
   quotas and monitoring remain necessary.
+- **Canonical-mapping limits do not eliminate sorting.** v0.46 bounds each
+  mapping at 65,536 entries before traversal, but accepted mappings still sort
+  their keys and repeated accepted hashing still consumes CPU. The aggregate
+  node and byte limits are per fingerprint, not process-wide quotas.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

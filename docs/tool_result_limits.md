@@ -14,6 +14,7 @@ One accepted `ToolResult` allows at most:
 - 65,536 characters in its summary;
 - 64 nested output mappings or sequences;
 - 1,100,000 output nodes;
+- 65,536 entries in any one output mapping;
 - 8,388,608 characters in one output string;
 - 67,108,864 bytes in one escaped canonical output string token;
 - 1,024 characters in one canonical integer, float, or decimal token; and
@@ -24,9 +25,9 @@ objects, non-finite numbers, and values outside a fixed ceiling are refused.
 Exact limits are accepted. Failure messages identify the ceiling class without
 echoing result content.
 
-The complete output byte total is calculated before mapping-key sorting or JSON
-encoding. The streaming hash counter independently enforces the same ceiling
-after preflight.
+Each mapping's entry count and the complete output byte total are checked
+before mapping-key sorting or JSON encoding. The streaming hash counter
+independently enforces the byte ceiling after preflight.
 
 ## Owning-boundary behavior
 
@@ -51,7 +52,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.39.0` publishes the summary and output ceilings under
+Command Core schema `0.40.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

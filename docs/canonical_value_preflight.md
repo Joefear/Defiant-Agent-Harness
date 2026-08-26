@@ -32,7 +32,7 @@ hashes are unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.39.0` reports `canonical_value_preflight: true` with the
+Command Core schema `0.40.0` reports `canonical_value_preflight: true` with the
 existing fixed resource ceilings. Command Center renders only this posture. It
 cannot submit a value, change a limit, approve, reconcile, or execute.
 
@@ -44,3 +44,6 @@ not a wall-clock timeout, cumulative traffic quota, operating-system sandbox,
 or defense against trusted Python already executing inside the process.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.46 separately bounds the entry count of each accepted mapping before key
+traversal or sorting. See `canonical_mapping_limits.md`.
