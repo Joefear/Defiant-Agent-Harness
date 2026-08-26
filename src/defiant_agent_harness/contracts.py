@@ -896,13 +896,16 @@ def _validate_action_hash_structure(obj: Any) -> None:
             active_containers.add(marker)
             try:
                 consume(2)
-                for index, (key, child) in enumerate(value.items()):
-                    if index:
-                        consume(1)
-                    # Keys are part of the canonical surface even though JSON's
-                    # encoder visits them differently from mapping values.
+                # Complete the key-controlled portion of this mapping before
+                # touching any value. A late oversized or non-finite key must
+                # not permit an earlier value to trigger attacker-controlled
+                # traversal first.
+                for key in dict.keys(value):
                     key_width = visit_key(key, depth + 1)
                     consume_mapping_sort_work(key_width, sort_rounds)
+                for index, (_, child) in enumerate(value.items()):
+                    if index:
+                        consume(1)
                     consume(1)
                     visit(child, depth + 1)
             finally:

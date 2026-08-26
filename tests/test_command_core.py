@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.42.0"
+    assert output["schema_version"] == "0.43.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
@@ -247,6 +247,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "canonical_mapping_preflight": True,
         "canonical_mapping_sort_preflight": True,
         "canonical_mapping_key_preflight": True,
+        "complete_mapping_key_preflight": True,
         "request_contract_preflight": True,
         "tool_call_contract_preflight": True,
         "tool_result_contract_preflight": True,

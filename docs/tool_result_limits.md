@@ -34,6 +34,11 @@ Mapping-key eligibility and sortable families are checked in a key-only pass
 before result values or encoder sorting. Existing invalid-key inputs retain the
 sanitized `tool_result_output_contract` classification.
 
+Every eligible key then receives its complete scalar, escaped-token,
+finite/canonical-number, node, canonical-byte, and sort-work checks before any
+mapping value is visited. A key ceiling breach retains the corresponding
+sanitized `tool_result_output_*` limit classification.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
@@ -57,7 +62,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.42.0` publishes the summary and output ceilings under
+Command Core schema `0.43.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

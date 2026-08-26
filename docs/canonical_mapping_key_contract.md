@@ -28,8 +28,10 @@ by the encoder. Tool-call and tool-result owners therefore retain their
 existing `tool_call_contract` and `tool_result_output_contract` failures. Keys,
 values, and exception details are not echoed.
 
-The existing numeric, string, entry-count, sort-work, node, and canonical-byte
-preflights remain responsible for their independent ceilings.
+v0.49 completes the key-only pass before values: every eligible key receives
+the existing numeric, string, node, canonical-byte, and aggregate sort-work
+checks before mapping value traversal begins. See
+`complete_mapping_key_preflight.md`.
 
 ## Compatibility
 
@@ -40,10 +42,11 @@ sanitized public failure type and owning contract classification.
 
 ## Read-only projection
 
-Command Core schema `0.42.0` reports
-`canonical_mapping_key_preflight: true`. Command Center renders only that
-static posture. It cannot submit a mapping, alter the contract, approve,
-reconcile, or execute.
+Command Core schema `0.43.0` reports
+`canonical_mapping_key_preflight: true` and
+`complete_mapping_key_preflight: true`. Command Center renders only that static
+posture. It cannot submit a mapping, alter the contract, approve, reconcile, or
+execute.
 
 ## Limits of the control
 

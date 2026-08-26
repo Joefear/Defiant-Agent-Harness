@@ -38,7 +38,7 @@ remain unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.42.0` publishes
+Command Core schema `0.43.0` publishes
 `action_hash_string_token_bytes`, `tool_call_string_token_bytes`, and
 `tool_result_output_string_token_bytes` under `resource_limits`, plus
 `canonical_string_preflight: true`. Command Center renders only this static
