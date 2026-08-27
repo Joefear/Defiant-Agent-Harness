@@ -47,7 +47,7 @@ executed and no approval is created.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` publishes all three ceilings under
+Command Core schema `0.44.0` publishes all three ceilings under
 `resource_limits` and reports `policy_glob_match_preflight: true` in the static
 authority posture. Command Center renders the values. Neither surface can
 change a limit, grant an exception, upload policy, approve, or execute.

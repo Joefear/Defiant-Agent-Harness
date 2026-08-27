@@ -55,7 +55,7 @@ the streaming counter remains a second check.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` publishes the fixed ceilings under
+Command Core schema `0.44.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -108,5 +108,10 @@ v0.49 validates every eligible key's complete canonical token and charges its
 node, byte, and aggregate sort-work costs before any mapping value is visited.
 This preserves successful canonical bytes and hashes while making invalid-key
 failure precedence deterministic. See `complete_mapping_key_preflight.md`.
+
+v0.50 returns a detached built-in snapshot from the bounded traversal and feeds
+that exact snapshot to the streaming encoder. Caller mutation or container
+subclass iteration hooks cannot replace the already validated structure during
+a second encoder pass. See `validated_canonical_snapshot.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.49.
+logs. A full trusted-memory/DKE system is not part of v0.50.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.49 is
+## What v0.50 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -463,6 +463,14 @@ attacker-controlled value to be inspected first. Exact accepted canonical bytes
 and hashes remain unchanged; Command Core exposes static posture and Command
 Center remains strictly read-only.
 
+v0.50 binds encoding to the exact built-in snapshot produced by bounded
+canonical validation. The encoder no longer traverses live caller containers a
+second time, so mutation between preflight and encoding cannot introduce
+unvalidated depth, nodes, mapping entries, keys, or sort work. Built-in
+container storage is copied without invoking subclass iteration hooks, and
+mutable Enum values are resolved during the validated pass. Ordinary accepted
+canonical bytes and hashes remain unchanged; Command Center remains read-only.
+
 ## Install
 
 ```bash
@@ -798,7 +806,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.49 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.50 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -839,6 +847,7 @@ fixed per-mapping canonical-entry ceilings before key traversal or sorting,
 fixed aggregate canonical mapping sort-work ceilings before encoder sorting,
 fixed canonical mapping-key eligibility before value traversal or sorting,
 fixed complete canonical mapping-key token validation before any mapping value,
+fixed detached validated canonical snapshots before encoder traversal,
 fixed complete canonical-value byte preflight before sorting or encoding,
 fixed pre-render canonical-string token byte ceilings,
 fixed pre-encoding canonical-number token ceilings,
@@ -875,6 +884,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/action_hashing_limits.md`,
 `docs/canonical_mapping_key_contract.md`,
 `docs/complete_mapping_key_preflight.md`,
+`docs/validated_canonical_snapshot.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,

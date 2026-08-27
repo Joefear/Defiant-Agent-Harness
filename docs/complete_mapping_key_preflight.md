@@ -43,7 +43,7 @@ deterministically because the key-controlled surface is completed first.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` reports
+Command Core schema `0.44.0` reports
 `complete_mapping_key_preflight: true` alongside the existing key-family,
 mapping-size, sort-work, canonical-value, string, and number posture. Command
 Center renders only static posture. It cannot submit input, alter limits,
@@ -56,5 +56,9 @@ timeout or cumulative process quota. Accepted mappings still require value
 traversal and encoder sorting. Trusted Python subclasses remain inside the
 process trust boundary, and Python already executing in the harness process
 still requires deployment isolation.
+
+v0.50 additionally detaches the validated built-in structure before encoder
+sorting, closing mutation between this key/value preflight and encoding. See
+`validated_canonical_snapshot.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

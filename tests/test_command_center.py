@@ -180,7 +180,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"provenance_text_characters" in javascript
     assert (
         b"canonical mapping key families and complete key tokens, size, sort work, "
-        b"values, strings, and numbers preflighted; "
+        b"values, strings, and numbers preflighted into a detached validated "
+        b"snapshot; "
         b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "
