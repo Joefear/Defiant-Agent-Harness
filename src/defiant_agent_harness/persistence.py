@@ -498,14 +498,22 @@ def read_json(
     return data
 
 
-def atomic_write_json(path: str | Path, data: dict[str, Any]) -> None:
+def atomic_write_json(
+    path: str | Path,
+    data: dict[str, Any],
+    *,
+    max_bytes: int | None = None,
+) -> None:
+    maximum = MAX_DURABLE_JSON_BYTES if max_bytes is None else max_bytes
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError("JSON state byte ceiling must be a positive integer")
     destination = Path(path)
     root = prepare_storage_root(destination.parent)
     before = inspect_state_file(destination)
     tmp = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
     try:
         with open_state_file(tmp, "x", encoding="utf-8") as fh:
-            bounded = _BoundedTextWriter(fh, MAX_DURABLE_JSON_BYTES)
+            bounded = _BoundedTextWriter(fh, maximum)
             json.dump(data, bounded, indent=2, sort_keys=True, allow_nan=False)
             fh.flush()
             os.fsync(fh.fileno())

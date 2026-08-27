@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.57
+## What is deliberately absent from v0.58
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -778,6 +778,12 @@ normalizes its bounded string keys and values to exact built-ins, and gives the
 same owned snapshot to rule matching and decision attribution. Invalid,
 oversized, ambiguous, or capture-unstable context blocks before matching and is
 not retained in the refusal. See `validated_policy_context_snapshot.md`.
+
+v0.58 gives every prepared or loaded crash-journal operation one bounded
+canonical observation. Its hash and schema validation consume that snapshot,
+then the retained payload is recursively frozen and exposed only through fresh
+built-in projections. The store-specific 4 MiB limit applies to both reads and
+writes. See `validated_operation_journal_snapshot.md`.
 
 ## Known limits
 

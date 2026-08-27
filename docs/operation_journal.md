@@ -25,9 +25,16 @@ prepared approval/evidence snapshots and exact reservation identifiers. The
 state directory remains confidential because these snapshots can contain held
 action material and operator attestations.
 
-v0.13 writes journal schema `0.3.0`. Readers continue to accept v0.11 schema
-`0.1.0` and v0.12 schema `0.2.0`, allowing an empty or active older journal to
-upgrade without losing its recovery intent.
+v0.58 writes journal schema `0.4.0`. Readers continue to accept v0.11 schema
+`0.1.0`, v0.12 schema `0.2.0`, and v0.13 schema `0.3.0`, allowing an empty or
+active older journal to upgrade without losing its recovery intent. Every
+accepted operation is captured and hashed under the bounded v0.58 canonical
+snapshot contract before recovery.
+
+The complete journal has a symmetric 4 MiB read/write ceiling. An over-limit
+operation is refused without publishing an unreadable journal or mutating the
+approval, budget, or evidence stores. Retained payloads are recursively sealed;
+callers receive only fresh built-in projections.
 
 ## Recovery
 

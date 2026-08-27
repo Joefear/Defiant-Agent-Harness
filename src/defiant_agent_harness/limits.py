@@ -12,6 +12,11 @@ MAX_EVIDENCE_RECORD_BYTES = 16 * MIB
 # export is published or emitted.
 MAX_EVIDENCE_EXPORT_BYTES = 64 * MIB
 
+# The crash-recovery journal contains authority-bearing prepared operations.
+# Keep its canonical snapshot and durable JSON publication under one symmetric
+# ceiling so the writer cannot create a journal the recovery reader refuses.
+MAX_OPERATION_JOURNAL_BYTES = 4 * MIB
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

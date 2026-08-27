@@ -36,7 +36,7 @@ unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.51.0` publishes the action, tool-call, and tool-result
+Command Core schema `0.52.0` publishes the action, tool-call, and tool-result
 aliases under `resource_limits` and reports
 `canonical_mapping_preflight: true`. Command Center renders only these fixed
 values and posture. It cannot submit a mapping, change a ceiling, approve,

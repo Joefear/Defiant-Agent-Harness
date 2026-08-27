@@ -763,6 +763,16 @@ both operations. Invalid context blocks with sanitized metadata before
 matching. This remains an in-process data contract, not thread transaction
 isolation or a Python sandbox.
 
+**Operation-journal copy drift and asymmetric size limits.** Through v0.57,
+prepared and loaded crash operations were deep-copied around validation and
+hashing, retained a publicly mutable nested payload, and could be written under
+the broader durable-state limit even though recovery refused journals above
+4 MiB. Copy hooks, later mutation, or an interrupted oversized operation could
+therefore make recovery diverge from the accepted observation. v0.58 captures
+and hashes one bounded canonical snapshot, seals the private retained tree, and
+enforces the 4 MiB ceiling on both publication and recovery reads. It does not
+infer an unknown external outcome or make trusted in-process Python untrusted.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

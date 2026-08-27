@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from .approvals.store import PendingApproval
@@ -12,10 +12,11 @@ from .contracts import (
     Decision,
     EvidenceRecord,
     ResultStatus,
+    authority_snapshot_and_sha256_of,
     new_id,
-    sha256_of,
     utc_now,
 )
+from .limits import MAX_OPERATION_JOURNAL_BYTES
 from .money import money, money_text
 from .operator_identity import AuthorizationReconciliationSubject
 from .persistence import (
@@ -26,8 +27,8 @@ from .persistence import (
 )
 
 JOURNAL_SCHEMA = "defiant.operation_journal"
-JOURNAL_VERSION = "0.3.0"
-_SUPPORTED_JOURNAL_VERSIONS = {"0.1.0", "0.2.0", JOURNAL_VERSION}
+JOURNAL_VERSION = "0.4.0"
+_SUPPORTED_JOURNAL_VERSIONS = {"0.1.0", "0.2.0", "0.3.0", JOURNAL_VERSION}
 OPERATION_KINDS = {
     "approval_create",
     "approval_reject",
@@ -43,7 +44,6 @@ _OPERATION_FIELDS = {
     "payload",
     "payload_hash",
 }
-_MAX_BYTES = 4 * 1024 * 1024
 
 
 class OperationJournalError(RuntimeError):
@@ -100,45 +100,107 @@ class ExecutionCompletionSubject:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class JournalOperation:
     operation_id: str
     kind: str
     prepared_at: str
-    payload: dict[str, Any]
+    _payload: Any = dataclass_field(repr=False)
     payload_hash: str
+
+    def __init__(
+        self,
+        operation_id: str,
+        kind: str,
+        prepared_at: str,
+        payload: dict[str, Any],
+        payload_hash: str,
+    ) -> None:
+        validated = type(self).from_dict(
+            {
+                "operation_id": operation_id,
+                "kind": kind,
+                "prepared_at": prepared_at,
+                "payload": payload,
+                "payload_hash": payload_hash,
+            }
+        )
+        object.__setattr__(self, "operation_id", validated.operation_id)
+        object.__setattr__(self, "kind", validated.kind)
+        object.__setattr__(self, "prepared_at", validated.prepared_at)
+        object.__setattr__(self, "_payload", validated._payload)
+        object.__setattr__(self, "payload_hash", validated.payload_hash)
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        snapshot = _thaw_payload(self._payload)
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("sealed journal payload root is invalid")
+        return snapshot
 
     @classmethod
     def prepare(cls, kind: str, payload: dict[str, Any]) -> "JournalOperation":
-        if kind not in OPERATION_KINDS:
-            raise OperationJournalError(f"unsupported journal operation: {kind}")
-        if not isinstance(payload, dict) or not payload:
+        normalized_kind = _journal_text(kind, "operation kind")
+        if normalized_kind not in OPERATION_KINDS:
+            raise OperationJournalError("unsupported journal operation")
+        if not isinstance(payload, dict) or dict.__len__(payload) == 0:
             raise OperationJournalError("journal payload must be a non-empty object")
-        prepared = deepcopy(payload)
-        _validate_payload(kind, prepared)
-        return cls(new_id("op"), kind, utc_now(), prepared, sha256_of(prepared))
+        prepared, payload_hash = _snapshot_payload(payload)
+        _validate_payload(normalized_kind, prepared)
+        return cls._adopt(
+            new_id("op"),
+            normalized_kind,
+            utc_now(),
+            prepared,
+            payload_hash,
+        )
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "JournalOperation":
-        if set(raw) != _OPERATION_FIELDS:
+        operation = _snapshot_operation(raw)
+        if set(operation) != _OPERATION_FIELDS:
             raise OperationJournalError("journal operation fields do not match schema")
-        operation_id = raw.get("operation_id")
-        kind = raw.get("kind")
-        prepared_at = raw.get("prepared_at")
-        payload = raw.get("payload")
-        payload_hash = raw.get("payload_hash")
+        operation_id = operation.get("operation_id")
+        kind = operation.get("kind")
+        prepared_at = operation.get("prepared_at")
+        payload = operation.get("payload")
+        payload_hash = operation.get("payload_hash")
         if not isinstance(operation_id, str) or not operation_id.startswith("op_"):
             raise OperationJournalError("journal operation id is invalid")
         if kind not in OPERATION_KINDS:
             raise OperationJournalError("journal operation kind is invalid")
         if not isinstance(prepared_at, str) or not prepared_at:
             raise OperationJournalError("journal prepared_at is invalid")
-        if not isinstance(payload, dict) or not payload:
+        if not isinstance(payload, dict) or dict.__len__(payload) == 0:
             raise OperationJournalError("journal payload is invalid")
-        if payload_hash != sha256_of(payload):
+        prepared, computed_hash = _snapshot_payload(payload)
+        if payload_hash != computed_hash:
             raise OperationJournalError("journal payload hash is invalid")
-        _validate_payload(kind, payload)
-        return cls(operation_id, kind, prepared_at, deepcopy(payload), payload_hash)
+        _validate_payload(kind, prepared)
+        return cls._adopt(
+            operation_id,
+            kind,
+            prepared_at,
+            prepared,
+            payload_hash,
+        )
+
+    @classmethod
+    def _adopt(
+        cls,
+        operation_id: str,
+        kind: str,
+        prepared_at: str,
+        payload: dict[str, Any],
+        payload_hash: str,
+    ) -> "JournalOperation":
+        operation = object.__new__(cls)
+        object.__setattr__(operation, "operation_id", str.__str__(operation_id))
+        object.__setattr__(operation, "kind", str.__str__(kind))
+        object.__setattr__(operation, "prepared_at", str.__str__(prepared_at))
+        object.__setattr__(operation, "_payload", _freeze_payload(payload))
+        object.__setattr__(operation, "payload_hash", str.__str__(payload_hash))
+        return operation
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -160,9 +222,7 @@ class OperationJournal:
         if not self.path.exists():
             return None
         try:
-            if self.path.stat().st_size > _MAX_BYTES:
-                raise OperationJournalError("operation journal is too large")
-            raw = read_json(self.path)
+            raw = read_json(self.path, max_bytes=MAX_OPERATION_JOURNAL_BYTES)
         except OperationJournalError:
             raise
         except (OSError, RuntimeError) as exc:
@@ -209,7 +269,64 @@ class OperationJournal:
                 "schema_version": JOURNAL_VERSION,
                 "active": active.to_dict() if active is not None else None,
             },
+            max_bytes=MAX_OPERATION_JOURNAL_BYTES,
         )
+
+
+def _snapshot_operation(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise OperationJournalError("journal operation must be an object")
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            raw,
+            maximum_canonical_bytes=MAX_OPERATION_JOURNAL_BYTES,
+        )
+    except ValueError as exc:
+        raise OperationJournalError(
+            "journal operation exceeds bounded canonical contract"
+        ) from exc
+    if not isinstance(snapshot, dict):
+        raise OperationJournalError("journal operation must be an object")
+    return snapshot
+
+
+def _snapshot_payload(payload: Any) -> tuple[dict[str, Any], str]:
+    try:
+        snapshot, digest = authority_snapshot_and_sha256_of(
+            payload,
+            maximum_canonical_bytes=MAX_OPERATION_JOURNAL_BYTES,
+        )
+    except ValueError as exc:
+        raise OperationJournalError(
+            "journal payload exceeds bounded canonical contract"
+        ) from exc
+    if not isinstance(snapshot, dict) or not snapshot:
+        raise OperationJournalError("journal payload must be a non-empty object")
+    return snapshot, digest
+
+
+def _freeze_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _freeze_payload(child) for key, child in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_payload(child) for child in value)
+    return value
+
+
+def _thaw_payload(value: Any) -> Any:
+    if isinstance(value, MappingProxyType):
+        return {key: _thaw_payload(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_payload(child) for child in value]
+    return value
+
+
+def _journal_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or not str.__str__(value).strip():
+        raise OperationJournalError(f"journal {field_name} is invalid")
+    return str.__str__(value)
 
 
 def _validate_payload(kind: str, payload: dict[str, Any]) -> None:

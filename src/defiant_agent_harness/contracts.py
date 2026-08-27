@@ -16,7 +16,7 @@ import hashlib
 import json
 import math
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
@@ -145,17 +145,60 @@ def authority_snapshot_of(obj: Any) -> Any:
     """
 
     try:
-        return _validate_action_hash_structure(
-            obj,
-            limits=_AUTHORITY_RECORD_CANONICAL_LIMITS,
-        )
+        return _validate_action_hash_structure(obj, limits=_authority_snapshot_limits())
     except ActionHashLimitError as exc:
         raise ValueError("authority snapshot exceeds canonical limits") from exc
     except (TypeError, ValueError) as exc:
         raise ValueError("authority snapshot must contain canonical data") from exc
 
 
-def _sha256_of_validated_action_snapshot(snapshot: Any) -> str:
+def authority_snapshot_and_sha256_of(
+    obj: Any,
+    *,
+    maximum_canonical_bytes: int | None = None,
+) -> tuple[Any, str]:
+    """Capture one fixed-profile authority snapshot and hash that observation."""
+
+    limits = _authority_snapshot_limits(maximum_canonical_bytes)
+    try:
+        snapshot = _validate_action_hash_structure(obj, limits=limits)
+        digest = _sha256_of_validated_action_snapshot(
+            snapshot,
+            maximum_canonical_bytes=limits.canonical_bytes,
+        )
+    except ActionHashLimitError as exc:
+        raise ValueError("authority snapshot exceeds canonical limits") from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError("authority snapshot must contain canonical data") from exc
+    return snapshot, digest
+
+
+def _authority_snapshot_limits(
+    maximum_canonical_bytes: int | None = None,
+) -> _CanonicalSnapshotLimits:
+    if maximum_canonical_bytes is None:
+        return _AUTHORITY_RECORD_CANONICAL_LIMITS
+    if (
+        type(maximum_canonical_bytes) is not int
+        or maximum_canonical_bytes < 1
+        or maximum_canonical_bytes > _AUTHORITY_RECORD_CANONICAL_LIMITS.canonical_bytes
+    ):
+        raise ValueError("authority snapshot byte ceiling is invalid")
+    return replace(
+        _AUTHORITY_RECORD_CANONICAL_LIMITS,
+        canonical_bytes=maximum_canonical_bytes,
+        string_token_bytes=min(
+            maximum_canonical_bytes,
+            _AUTHORITY_RECORD_CANONICAL_LIMITS.string_token_bytes,
+        ),
+    )
+
+
+def _sha256_of_validated_action_snapshot(
+    snapshot: Any,
+    *,
+    maximum_canonical_bytes: int = MAX_ACTION_HASH_CANONICAL_BYTES,
+) -> str:
     """Hash a snapshot returned by ``_validate_action_hash_structure``."""
 
     encoder = json.JSONEncoder(
@@ -170,8 +213,8 @@ def _sha256_of_validated_action_snapshot(snapshot: Any) -> str:
     try:
         for chunk in encoder.iterencode(snapshot):
             raw = chunk.encode("utf-8")
-            if len(raw) > MAX_ACTION_HASH_CANONICAL_BYTES - encoded_bytes:
-                _raise_action_hash_canonical_limit()
+            if len(raw) > maximum_canonical_bytes - encoded_bytes:
+                _raise_action_hash_canonical_limit(maximum_canonical_bytes)
             digest.update(raw)
             encoded_bytes += len(raw)
     except ActionHashLimitError:
@@ -1381,10 +1424,10 @@ def _raise_action_hash_number_limit(maximum: int | None = None) -> None:
     )
 
 
-def _raise_action_hash_canonical_limit() -> None:
+def _raise_action_hash_canonical_limit(maximum: int | None = None) -> None:
+    limit = MAX_ACTION_HASH_CANONICAL_BYTES if maximum is None else maximum
     raise ActionHashLimitError(
-        "action canonical hash input exceeds maximum of "
-        f"{MAX_ACTION_HASH_CANONICAL_BYTES} bytes",
+        f"action canonical hash input exceeds maximum of {limit} bytes",
         limit_enforced="action_hash_canonical_bytes",
     )
 
