@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.53
+## What is deliberately absent from v0.54
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -748,6 +748,15 @@ actions, tool calls, and tool results therefore cannot carry caller-defined
 scalar comparison, hashing, formatting, numeric-conversion, or copy behavior
 into later authority work. Normalization collisions between exotic mapping
 keys fail closed. See `validated_scalar_ownership.md`.
+
+v0.54 extends exact validated ownership to `GuardrailDecision`,
+`CapabilityGrant`, and `EvidenceRecord`. Decision and evidence collections are
+captured from built-in storage under the canonical ceilings, retained text and
+decimals are normalized, and each record revalidates before propagation,
+grant claims, evidence hashing, or serialization. A finite negative remaining
+balance uses bounded signed-decimal rendering so an actual overrun remains
+representable without permitting negative costs or reservations. See
+`validated_authority_record_ownership.md`.
 
 ## Known limits
 

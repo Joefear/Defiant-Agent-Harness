@@ -90,7 +90,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.47.0"
+SNAPSHOT_VERSION = "0.48.0"
 
 
 class CommandError(RuntimeError):
@@ -315,6 +315,7 @@ class CommandCore:
                     "validated_snapshot_ownership": True,
                     "validated_contract_collection_snapshots": True,
                     "validated_scalar_ownership": True,
+                    "validated_authority_record_ownership": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

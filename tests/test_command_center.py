@@ -186,6 +186,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
         b"snapshotted from built-in storage before validation; "
         b"accepted scalar subclasses normalized to exact built-in values before "
         b"ownership; "
+        b"policy decisions, capability grants, and evidence records retain "
+        b"bounded exact built-in snapshots; "
         b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "

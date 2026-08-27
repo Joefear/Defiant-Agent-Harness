@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.53.
+logs. A full trusted-memory/DKE system is not part of v0.54.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.53 is
+## What v0.54 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -494,6 +494,16 @@ created by normalization fail closed instead of overwriting a value. Ordinary
 accepted canonical bytes and hashes remain unchanged; Command Center remains
 strictly read-only.
 
+v0.54 applies the same exact-observation ownership rule to the remaining
+authority records. Policy decisions, capability grants, and evidence records
+normalize retained scalars and capture bounded built-in collection snapshots
+before decision propagation, HMAC claims, chain hashing, or JSON serialization.
+Evidence sealing no longer carries accepted caller-defined iteration,
+comparison, formatting, or deep-copy hooks into later authority work. Finite
+negative remaining balances now use a bounded signed-decimal representation so
+real overruns can be recorded honestly without relaxing non-negative cost or
+reservation rules. Command Center remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -829,7 +839,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.53 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.54 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -878,6 +888,8 @@ fixed pre-encoding canonical-number token ceilings,
 fixed governed-request and provenance metadata complexity ceilings,
 fixed validated built-in snapshots for request and provenance collections,
 fixed validated built-in scalar ownership across governed contracts,
+fixed validated built-in ownership across policy decisions, capability grants,
+and evidence records,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -914,6 +926,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_snapshot_ownership.md`,
 `docs/validated_contract_collection_snapshots.md`,
 `docs/validated_scalar_ownership.md`,
+`docs/validated_authority_record_ownership.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,

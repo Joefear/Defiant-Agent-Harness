@@ -18,7 +18,7 @@ import math
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any, Iterable
 
@@ -86,6 +86,30 @@ class RequestLimitError(ValueError):
     def __init__(self, message: str, *, limit_enforced: str):
         super().__init__(message)
         self.limit_enforced = limit_enforced
+
+
+@dataclass(frozen=True)
+class _CanonicalSnapshotLimits:
+    canonical_bytes: int
+    mapping_entries: int
+    mapping_sort_work_units: int
+    nesting_depth: int
+    nodes: int
+    number_characters: int
+    scalar_characters: int
+    string_token_bytes: int
+
+
+_AUTHORITY_RECORD_CANONICAL_LIMITS = _CanonicalSnapshotLimits(
+    canonical_bytes=MAX_ACTION_HASH_CANONICAL_BYTES,
+    mapping_entries=MAX_ACTION_HASH_MAPPING_ENTRIES,
+    mapping_sort_work_units=MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS,
+    nesting_depth=MAX_ACTION_HASH_NESTING_DEPTH,
+    nodes=MAX_ACTION_HASH_NODES,
+    number_characters=MAX_ACTION_HASH_NUMBER_CHARACTERS,
+    scalar_characters=MAX_ACTION_HASH_SCALAR_CHARACTERS,
+    string_token_bytes=MAX_ACTION_HASH_STRING_TOKEN_BYTES,
+)
 
 
 def action_sha256_of(obj: Any) -> str:
@@ -612,19 +636,35 @@ class GuardrailDecision:
     decided_at: str = field(default_factory=utc_now)
 
     def __post_init__(self) -> None:
+        self._validate_contract()
+
+    def _validate_contract(self) -> None:
         if not isinstance(self.decision, Decision):
             self.decision = Decision(self.decision)
-        _require_text(self.reason, "decision reason")
-        if not self.policy_ids or any(
-            not isinstance(policy_id, str) or not policy_id
-            for policy_id in self.policy_ids
-        ):
+        self.reason = _require_text(self.reason, "decision reason")
+        self.policy_ids = _authority_string_list_snapshot(
+            self.policy_ids,
+            "policy_ids",
+        )
+        if not self.policy_ids or any(not policy_id for policy_id in self.policy_ids):
             raise ValueError("policy_ids must contain at least one non-empty id")
+        self.policy_version = _exact_text(self.policy_version, "policy_version")
+        self.ruleset_hash = _exact_text(self.ruleset_hash, "ruleset_hash")
+        self.approval_scope = _exact_text(self.approval_scope, "approval_scope")
+        self.redactions = _authority_string_list_snapshot(
+            self.redactions,
+            "redactions",
+        )
+        self.decision_inputs = _authority_mapping_snapshot(
+            self.decision_inputs,
+            "decision_inputs",
+        )
         self.decided_at = _utc_timestamp(self.decided_at, "decided_at")
         if self.expires_at is not None:
             self.expires_at = _utc_timestamp(self.expires_at, "expires_at")
 
     def to_dict(self) -> dict:
+        self._validate_contract()
         return _enum_safe(asdict(self))
 
     @classmethod
@@ -663,6 +703,9 @@ class CapabilityGrant:
     _spent: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._validate_contract()
+
+    def _validate_contract(self) -> None:
         for name in (
             "action_id",
             "tool_name",
@@ -671,10 +714,14 @@ class CapabilityGrant:
             "evidence_record_hash",
             "grant_id",
         ):
-            _require_text(getattr(self, name), name)
+            setattr(self, name, _require_text(getattr(self, name), name))
         self.issued_at = _utc_timestamp(self.issued_at, "issued_at")
+        self.signature = _exact_text(self.signature, "signature")
+        if type(self._spent) is not bool:
+            raise ValueError("_spent must be boolean")
 
     def claims(self) -> dict[str, str]:
+        self._validate_contract()
         return {
             "action_id": self.action_id,
             "tool_name": self.tool_name,
@@ -687,6 +734,7 @@ class CapabilityGrant:
 
     def spend(self, action: ProposedAction) -> None:
         """Consume the grant. Raises if it does not match, or is already used."""
+        self._validate_contract()
         if self._spent:
             raise GrantError(f"capability grant {self.grant_id} already spent")
         if action.action_id != self.action_id:
@@ -750,20 +798,71 @@ class EvidenceRecord:
     record_hash: str = ""
 
     def __post_init__(self) -> None:
-        _require_text(self.request_id, "request_id")
-        _require_text(self.action_id, "action_id")
+        self._validate_contract()
+
+    def _validate_contract(self) -> None:
+        self.request_id = _require_text(self.request_id, "request_id")
+        self.action_id = _require_text(self.action_id, "action_id")
         if not isinstance(self.decision, Decision):
             self.decision = Decision(self.decision)
         if not isinstance(self.result_status, ResultStatus):
             self.result_status = ResultStatus(self.result_status)
+        for name in (
+            "schema_name",
+            "schema_version",
+            "record_id",
+        ):
+            setattr(self, name, _require_text(getattr(self, name), name))
+        for name in (
+            "agent_runner",
+            "model_id",
+            "user_id",
+            "workspace_id",
+            "tool_name",
+            "target",
+            "side_effect_level",
+            "policy_version",
+            "ruleset_hash",
+            "decision_reason",
+            "payload_hash",
+            "authorization_hash",
+            "payload_trust",
+            "output_hash",
+            "result_summary",
+            "reconciliation_outcome",
+            "reconciled_by",
+            "reconciliation_note",
+            "previous_record_hash",
+            "record_hash",
+        ):
+            setattr(self, name, _exact_text(getattr(self, name), name))
+        if self.approved_by is not None:
+            self.approved_by = _exact_text(self.approved_by, "approved_by")
+        self.policy_ids = _authority_string_list_snapshot(
+            self.policy_ids,
+            "policy_ids",
+        )
+        self.decision_inputs = _authority_mapping_snapshot(
+            self.decision_inputs,
+            "decision_inputs",
+        )
+        self.input_refs = _authority_mapping_list_snapshot(
+            self.input_refs,
+            "input_refs",
+        )
         self.cost_usd = money(self.cost_usd, field_name="cost_usd")
         if self.budget_remaining_usd is not None:
             # An actual model call may overrun its reservation, so a remaining
             # balance can be negative. Preserve it honestly in evidence.
-            value = Decimal(str(self.budget_remaining_usd))
+            value = _signed_decimal(
+                self.budget_remaining_usd,
+                "budget_remaining_usd",
+            )
             if not value.is_finite():
                 raise ValueError("budget_remaining_usd must be finite")
             self.budget_remaining_usd = value
+        if type(self.dry_run) is not bool:
+            raise ValueError("dry_run must be boolean")
         self.timestamp = _utc_timestamp(self.timestamp, "timestamp")
         if self.approved_at is not None:
             self.approved_at = _utc_timestamp(self.approved_at, "approved_at")
@@ -772,7 +871,13 @@ class EvidenceRecord:
 
     def body(self) -> dict:
         """Everything except the record's own hash -- the hashed surface."""
-        d = _enum_safe(asdict(self))
+        self._validate_contract()
+        d = asdict(self)
+        if self.budget_remaining_usd is not None:
+            d["budget_remaining_usd"] = _bounded_signed_decimal_text(
+                self.budget_remaining_usd
+            )
+        d = _enum_safe(d)
         d.pop("record_hash", None)
         return d
 
@@ -784,8 +889,13 @@ class EvidenceRecord:
         return self
 
     def to_dict(self) -> dict:
-        d = _enum_safe(asdict(self))
-        return d
+        self._validate_contract()
+        d = asdict(self)
+        if self.budget_remaining_usd is not None:
+            d["budget_remaining_usd"] = _bounded_signed_decimal_text(
+                self.budget_remaining_usd
+            )
+        return _enum_safe(d)
 
 
 # ---------------------------------------------------------------------------
@@ -816,8 +926,23 @@ def _action_hash_default(obj: Any) -> Any:
     raise TypeError(f"unsupported action hash value type: {type(obj).__name__}")
 
 
-def _validate_action_hash_structure(obj: Any) -> Any:
+def _validate_action_hash_structure(
+    obj: Any,
+    *,
+    limits: _CanonicalSnapshotLimits | None = None,
+) -> Any:
     """Preflight action data and return its detached built-in snapshot."""
+
+    canonical_limits = limits or _CanonicalSnapshotLimits(
+        canonical_bytes=MAX_ACTION_HASH_CANONICAL_BYTES,
+        mapping_entries=MAX_ACTION_HASH_MAPPING_ENTRIES,
+        mapping_sort_work_units=MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS,
+        nesting_depth=MAX_ACTION_HASH_NESTING_DEPTH,
+        nodes=MAX_ACTION_HASH_NODES,
+        number_characters=MAX_ACTION_HASH_NUMBER_CHARACTERS,
+        scalar_characters=MAX_ACTION_HASH_SCALAR_CHARACTERS,
+        string_token_bytes=MAX_ACTION_HASH_STRING_TOKEN_BYTES,
+    )
 
     nodes = 0
     canonical_bytes = 0
@@ -826,23 +951,23 @@ def _validate_action_hash_structure(obj: Any) -> Any:
 
     def claim_node(depth: int) -> None:
         nonlocal nodes
-        if depth > MAX_ACTION_HASH_NESTING_DEPTH:
+        if depth > canonical_limits.nesting_depth:
             raise ActionHashLimitError(
                 "action hash input exceeds maximum nesting depth of "
-                f"{MAX_ACTION_HASH_NESTING_DEPTH}",
+                f"{canonical_limits.nesting_depth}",
                 limit_enforced="action_hash_nesting_depth",
             )
         nodes += 1
-        if nodes > MAX_ACTION_HASH_NODES:
+        if nodes > canonical_limits.nodes:
             raise ActionHashLimitError(
                 "action hash input exceeds maximum node count of "
-                f"{MAX_ACTION_HASH_NODES}",
+                f"{canonical_limits.nodes}",
                 limit_enforced="action_hash_nodes",
             )
 
     def consume(width: int) -> None:
         nonlocal canonical_bytes
-        if width > MAX_ACTION_HASH_CANONICAL_BYTES - canonical_bytes:
+        if width > canonical_limits.canonical_bytes - canonical_bytes:
             _raise_action_hash_canonical_limit()
         canonical_bytes += width
 
@@ -850,11 +975,11 @@ def _validate_action_hash_structure(obj: Any) -> Any:
         nonlocal mapping_sort_work
         if not rounds:
             return
-        remaining = MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS - mapping_sort_work
+        remaining = canonical_limits.mapping_sort_work_units - mapping_sort_work
         if width > remaining // rounds:
             raise ActionHashLimitError(
                 "action hash mapping sort work exceeds maximum of "
-                f"{MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS} units",
+                f"{canonical_limits.mapping_sort_work_units} units",
                 limit_enforced="action_hash_mapping_sort_work_units",
             )
         mapping_sort_work += width * rounds
@@ -881,13 +1006,23 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             return visit_key(value.value, depth)
         if isinstance(value, Decimal):
             normalized = Decimal(value)
-            text = _bounded_money_text(normalized)
-            width = _validate_action_hash_string_token(text)
+            text = _bounded_money_text(
+                normalized,
+                maximum=canonical_limits.number_characters,
+            )
+            width = _validate_action_hash_string_token(
+                text,
+                maximum=canonical_limits.string_token_bytes,
+            )
             consume(width)
             return text, width
         if isinstance(value, str):
             normalized = str.__str__(value)
-            width = _validate_action_hash_scalar(normalized)
+            width = _validate_action_hash_scalar(
+                normalized,
+                scalar_maximum=canonical_limits.scalar_characters,
+                string_token_maximum=canonical_limits.string_token_bytes,
+            )
             consume(width)
             return normalized, width
         if isinstance(value, bool):
@@ -899,7 +1034,13 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             return None, 6
         if isinstance(value, int):
             normalized = int.__int__(value)
-            width = _validate_action_hash_integer(normalized) + 2
+            width = (
+                _validate_action_hash_integer(
+                    normalized,
+                    maximum=canonical_limits.number_characters,
+                )
+                + 2
+            )
             consume(width)
             return normalized, width
         if isinstance(value, float):
@@ -907,7 +1048,10 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             if not math.isfinite(normalized):
                 raise ValueError("action hash input contains a non-finite number")
             text = float.__repr__(normalized)
-            _validate_action_hash_number_text(text)
+            _validate_action_hash_number_text(
+                text,
+                maximum=canonical_limits.number_characters,
+            )
             width = len(text) + 2
             consume(width)
             return normalized, width
@@ -918,12 +1062,26 @@ def _validate_action_hash_structure(obj: Any) -> Any:
         if isinstance(value, enum.Enum):
             return visit(value.value, depth)
         if isinstance(value, Decimal):
-            text = _bounded_money_text(Decimal(value))
-            consume(_validate_action_hash_string_token(text))
+            text = _bounded_money_text(
+                Decimal(value),
+                maximum=canonical_limits.number_characters,
+            )
+            consume(
+                _validate_action_hash_string_token(
+                    text,
+                    maximum=canonical_limits.string_token_bytes,
+                )
+            )
             return text
         if isinstance(value, str):
             normalized = str.__str__(value)
-            consume(_validate_action_hash_scalar(normalized))
+            consume(
+                _validate_action_hash_scalar(
+                    normalized,
+                    scalar_maximum=canonical_limits.scalar_characters,
+                    string_token_maximum=canonical_limits.string_token_bytes,
+                )
+            )
             return normalized
         if isinstance(value, bool):
             consume(4 if value else 5)
@@ -933,22 +1091,30 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             return None
         if isinstance(value, int):
             normalized = int.__int__(value)
-            consume(_validate_action_hash_integer(normalized))
+            consume(
+                _validate_action_hash_integer(
+                    normalized,
+                    maximum=canonical_limits.number_characters,
+                )
+            )
             return normalized
         if isinstance(value, float):
             normalized = float.__float__(value)
             if not math.isfinite(normalized):
                 raise ValueError("action hash input contains a non-finite number")
             text = float.__repr__(normalized)
-            _validate_action_hash_number_text(text)
+            _validate_action_hash_number_text(
+                text,
+                maximum=canonical_limits.number_characters,
+            )
             consume(len(text))
             return normalized
         if isinstance(value, dict):
             entry_count = dict.__len__(value)
-            if entry_count > MAX_ACTION_HASH_MAPPING_ENTRIES:
+            if entry_count > canonical_limits.mapping_entries:
                 raise ActionHashLimitError(
                     "action hash mapping exceeds maximum entry count of "
-                    f"{MAX_ACTION_HASH_MAPPING_ENTRIES}",
+                    f"{canonical_limits.mapping_entries}",
                     limit_enforced="action_hash_mapping_entries",
                 )
             keys = list(dict.keys(value))
@@ -1024,25 +1190,40 @@ def _validate_action_hash_structure(obj: Any) -> Any:
         raise ValueError("action hash input changed during canonical snapshot") from exc
 
 
-def _validate_action_hash_scalar(value: str) -> int:
-    if len(value) > MAX_ACTION_HASH_SCALAR_CHARACTERS:
+def _validate_action_hash_scalar(
+    value: str,
+    *,
+    scalar_maximum: int | None = None,
+    string_token_maximum: int | None = None,
+) -> int:
+    scalar_limit = (
+        MAX_ACTION_HASH_SCALAR_CHARACTERS if scalar_maximum is None else scalar_maximum
+    )
+    if len(value) > scalar_limit:
         raise ActionHashLimitError(
-            "action hash scalar exceeds maximum of "
-            f"{MAX_ACTION_HASH_SCALAR_CHARACTERS} characters",
+            f"action hash scalar exceeds maximum of {scalar_limit} characters",
             limit_enforced="action_hash_scalar_characters",
         )
-    return _validate_action_hash_string_token(value)
+    return _validate_action_hash_string_token(
+        value,
+        maximum=string_token_maximum,
+    )
 
 
-def _validate_action_hash_string_token(value: str) -> int:
+def _validate_action_hash_string_token(
+    value: str,
+    *,
+    maximum: int | None = None,
+) -> int:
     # ``JSONEncoder(ensure_ascii=True)`` emits the opening and closing quotes,
     # printable ASCII verbatim, short escapes for five controls plus quote and
     # backslash, six-byte ``\uXXXX`` escapes for other BMP code points, and
     # two such escapes for non-BMP code points. Count that exact ASCII byte
     # length without constructing the escaped token.
+    limit = MAX_ACTION_HASH_STRING_TOKEN_BYTES if maximum is None else maximum
     used = 2
-    if used > MAX_ACTION_HASH_STRING_TOKEN_BYTES:
-        _raise_action_hash_string_token_limit()
+    if used > limit:
+        _raise_action_hash_string_token_limit(limit)
     if (
         value.isascii()
         and value.isprintable()
@@ -1050,8 +1231,8 @@ def _validate_action_hash_string_token(value: str) -> int:
         and "\\" not in value
     ):
         used += len(value)
-        if used > MAX_ACTION_HASH_STRING_TOKEN_BYTES:
-            _raise_action_hash_string_token_limit()
+        if used > limit:
+            _raise_action_hash_string_token_limit(limit)
         return used
 
     for character in value:
@@ -1064,41 +1245,43 @@ def _validate_action_hash_string_token(value: str) -> int:
             width = 6
         else:
             width = 12
-        if width > MAX_ACTION_HASH_STRING_TOKEN_BYTES - used:
-            _raise_action_hash_string_token_limit()
+        if width > limit - used:
+            _raise_action_hash_string_token_limit(limit)
         used += width
     return used
 
 
-def _raise_action_hash_string_token_limit() -> None:
+def _raise_action_hash_string_token_limit(maximum: int | None = None) -> None:
+    limit = MAX_ACTION_HASH_STRING_TOKEN_BYTES if maximum is None else maximum
     raise ActionHashLimitError(
-        "action hash canonical string token exceeds maximum of "
-        f"{MAX_ACTION_HASH_STRING_TOKEN_BYTES} bytes",
+        f"action hash canonical string token exceeds maximum of {limit} bytes",
         limit_enforced="action_hash_string_token_bytes",
     )
 
 
-def _validate_action_hash_integer(value: int) -> int:
+def _validate_action_hash_integer(value: int, *, maximum: int | None = None) -> int:
+    limit = MAX_ACTION_HASH_NUMBER_CHARACTERS if maximum is None else maximum
     sign_characters = 1 if value < 0 else 0
-    allowed_digits = MAX_ACTION_HASH_NUMBER_CHARACTERS - sign_characters
+    allowed_digits = limit - sign_characters
     if allowed_digits <= 0:
-        _raise_action_hash_number_limit()
+        _raise_action_hash_number_limit(limit)
     boundary = _action_hash_integer_boundary(allowed_digits)
     if value >= boundary or value <= -boundary:
-        _raise_action_hash_number_limit()
+        _raise_action_hash_number_limit(limit)
     return len(int.__repr__(value))
 
 
-def _bounded_money_text(value: Decimal) -> str:
+def _bounded_money_text(value: Decimal, *, maximum: int | None = None) -> str:
+    limit = MAX_ACTION_HASH_NUMBER_CHARACTERS if maximum is None else maximum
     result = money(value)
     if result == ZERO:
         return "0"
-    digits, retained_digits, exponent = _canonical_money_components(result)
-    if (
-        _canonical_money_text_length(retained_digits, exponent)
-        > MAX_ACTION_HASH_NUMBER_CHARACTERS
-    ):
-        _raise_action_hash_number_limit()
+    digits, retained_digits, exponent = _canonical_money_components(
+        result,
+        maximum=limit,
+    )
+    if _canonical_money_text_length(retained_digits, exponent) > limit:
+        _raise_action_hash_number_limit(limit)
     coefficient = "".join(str(digit) for digit in digits[:retained_digits])
     if exponent >= 0:
         return coefficient + ("0" * exponent)
@@ -1109,16 +1292,35 @@ def _bounded_money_text(value: Decimal) -> str:
     return coefficient[:split_at] + "." + coefficient[split_at:]
 
 
+def _bounded_signed_decimal_text(value: Decimal) -> str:
+    limit = _AUTHORITY_RECORD_CANONICAL_LIMITS.number_characters
+    normalized = _signed_decimal(value, "signed decimal")
+    if normalized == ZERO:
+        return "0"
+    negative = normalized < ZERO
+    text = _bounded_money_text(normalized.copy_abs(), maximum=limit)
+    if negative:
+        if len(text) >= limit:
+            _raise_action_hash_number_limit(limit)
+        return "-" + text
+    return text
+
+
 @lru_cache(maxsize=16)
 def _action_hash_integer_boundary(digits: int) -> int:
     return 10**digits
 
 
-def _canonical_money_components(value: Decimal) -> tuple[tuple[int, ...], int, int]:
+def _canonical_money_components(
+    value: Decimal,
+    *,
+    maximum: int | None = None,
+) -> tuple[tuple[int, ...], int, int]:
+    limit = MAX_ACTION_HASH_NUMBER_CHARACTERS if maximum is None else maximum
     parts = value.as_tuple()
     digits = parts.digits
-    if len(digits) > MAX_ACTION_HASH_NUMBER_CHARACTERS:
-        _raise_action_hash_number_limit()
+    if len(digits) > limit:
+        _raise_action_hash_number_limit(limit)
     exponent = int(parts.exponent)
     if exponent >= 0:
         return digits, len(digits), exponent
@@ -1142,15 +1344,20 @@ def _canonical_money_text_length(retained_digits: int, exponent: int) -> int:
     return retained_digits + 1
 
 
-def _validate_action_hash_number_text(value: str) -> None:
-    if len(value) > MAX_ACTION_HASH_NUMBER_CHARACTERS:
-        _raise_action_hash_number_limit()
+def _validate_action_hash_number_text(
+    value: str,
+    *,
+    maximum: int | None = None,
+) -> None:
+    limit = MAX_ACTION_HASH_NUMBER_CHARACTERS if maximum is None else maximum
+    if len(value) > limit:
+        _raise_action_hash_number_limit(limit)
 
 
-def _raise_action_hash_number_limit() -> None:
+def _raise_action_hash_number_limit(maximum: int | None = None) -> None:
+    limit = MAX_ACTION_HASH_NUMBER_CHARACTERS if maximum is None else maximum
     raise ActionHashLimitError(
-        "action hash canonical number exceeds maximum of "
-        f"{MAX_ACTION_HASH_NUMBER_CHARACTERS} characters",
+        f"action hash canonical number exceeds maximum of {limit} characters",
         limit_enforced="action_hash_number_characters",
     )
 
@@ -1272,6 +1479,83 @@ def _require_text(value: Any, field_name: str) -> str:
     if not normalized.strip():
         raise ValueError(f"{field_name} must be a non-empty string")
     return normalized
+
+
+def _exact_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    return str.__str__(value)
+
+
+def _authority_contract_snapshot(value: Any, field_name: str) -> Any:
+    """Capture one bounded canonical observation for an authority record."""
+
+    try:
+        return _validate_action_hash_structure(
+            value,
+            limits=_AUTHORITY_RECORD_CANONICAL_LIMITS,
+        )
+    except ActionHashLimitError as exc:
+        raise ValueError(f"{field_name} exceeds canonical contract limits") from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must contain canonical contract data") from exc
+
+
+def _authority_string_list_snapshot(value: Any, field_name: str) -> list[str]:
+    snapshot = _authority_list_snapshot(value, field_name)
+    if not isinstance(snapshot, list) or any(
+        type(item) is not str for item in snapshot
+    ):
+        raise ValueError(f"{field_name} must contain strings")
+    return snapshot
+
+
+def _authority_mapping_snapshot(value: Any, field_name: str) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be a mapping")
+    snapshot = _authority_contract_snapshot(value, field_name)
+    if not isinstance(snapshot, dict):
+        raise ValueError(f"{field_name} must be a mapping")
+    return snapshot
+
+
+def _authority_mapping_list_snapshot(value: Any, field_name: str) -> list[dict]:
+    snapshot = _authority_list_snapshot(value, field_name)
+    if any(not isinstance(item, dict) for item in snapshot):
+        raise ValueError(f"{field_name} must contain mappings")
+    return snapshot
+
+
+def _authority_list_snapshot(value: Any, field_name: str) -> list:
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    initial_count = list.__len__(value)
+    if initial_count > _AUTHORITY_RECORD_CANONICAL_LIMITS.nodes:
+        raise ValueError(f"{field_name} exceeds canonical contract limits")
+    captured = list(list.__iter__(value))
+    if len(captured) != initial_count or list.__len__(value) != initial_count:
+        raise ValueError(f"{field_name} changed during contract snapshot")
+    snapshot = _authority_contract_snapshot(captured, field_name)
+    if not isinstance(snapshot, list):
+        raise ValueError(f"{field_name} must be a list")
+    return snapshot
+
+
+def _signed_decimal(value: Any, field_name: str) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a decimal number, not boolean")
+    try:
+        if isinstance(value, Decimal):
+            return Decimal(value)
+        if isinstance(value, str):
+            return Decimal(str.__str__(value))
+        if isinstance(value, int):
+            return Decimal(int.__int__(value))
+        if isinstance(value, float):
+            return Decimal(str(float.__float__(value)))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a valid decimal number") from exc
+    raise ValueError(f"{field_name} must be a valid decimal number")
 
 
 def _utc_timestamp(value: Any, field_name: str) -> str:

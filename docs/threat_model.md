@@ -722,6 +722,17 @@ work. v0.53 normalizes accepted scalars to exact built-ins before hashing and
 ownership, and refuses keys that collide after normalization. This does not
 sandbox arbitrary Python already executing inside the harness process.
 
+**Caller-owned authority records after action validation.** Through v0.53,
+policy decisions, capability grants, and evidence records remained separate
+construction boundaries that could retain scalar or container subclasses.
+Later HMAC claims, `asdict()` traversal, evidence hashing, and serialization
+could invoke their hooks even though the action contract itself was safe.
+v0.54 repeats bounded normalization at each authority-record use and owns the
+exact built-in decision/evidence snapshots. Invalid post-execution evidence
+still leaves the uncertain authorization on explicit reconciliation; it is not
+converted into a fabricated terminal outcome. This remains an in-process data
+contract, not an operating-system sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

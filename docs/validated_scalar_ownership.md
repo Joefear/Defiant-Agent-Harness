@@ -52,7 +52,7 @@ remains responsible for that uncertain outcome.
 
 ## Read-only projection
 
-Command Core schema `0.47.0` reports `validated_scalar_ownership: true`.
+Command Core schema `0.48.0` reports `validated_scalar_ownership: true`.
 Command Center renders only this static posture. It cannot submit a scalar,
 alter normalization or limits, approve, reconcile, authorize, or execute.
 
@@ -65,3 +65,6 @@ part of the trusted computing base, and deployment controls remain responsible
 for cumulative CPU, memory, wall-clock, filesystem, and network containment.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.54 extends this ownership rule to policy decisions, capability grants, and
+evidence records. See `validated_authority_record_ownership.md`.
