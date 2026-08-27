@@ -16,6 +16,7 @@ from defiant_agent_harness.contracts import (
     SideEffect,
     Trust,
     action_sha256_of,
+    action_snapshot_and_sha256_of,
     canonical_json,
     sha256_of,
 )
@@ -708,6 +709,26 @@ def test_action_hash_snapshots_enum_values_before_encoding(monkeypatch):
     assert action_sha256_of(value) == expected
 
 
+def test_action_snapshot_returns_exact_detached_canonical_hash_input():
+    value = {
+        "amount": Decimal("0.1000"),
+        "effect": SideEffect.LOCAL_WRITE,
+        "nested": ["accepted"],
+    }
+
+    snapshot, digest = action_snapshot_and_sha256_of(value)
+    value["nested"].append("caller mutation")
+
+    assert snapshot == {
+        "amount": "0.1",
+        "effect": "local_write",
+        "nested": ["accepted"],
+    }
+    assert type(snapshot) is dict
+    assert type(snapshot["nested"]) is list
+    assert digest == sha256_of(snapshot)
+
+
 def test_action_hash_sanitizes_mapping_mutation_during_snapshot():
     value = {}
 
@@ -856,14 +877,18 @@ def test_governed_action_seals_one_detached_fingerprint_snapshot(monkeypatch):
         side_effect_level=SideEffect.LOCAL_WRITE,
     )
     calls = 0
-    original_hash = contracts_module.action_sha256_of
+    original_snapshot_hash = contracts_module.action_snapshot_and_sha256_of
 
-    def counted_hash(value):
+    def counted_snapshot_hash(value):
         nonlocal calls
         calls += 1
-        return original_hash(value)
+        return original_snapshot_hash(value)
 
-    monkeypatch.setattr(contracts_module, "action_sha256_of", counted_hash)
+    monkeypatch.setattr(
+        contracts_module,
+        "action_snapshot_and_sha256_of",
+        counted_snapshot_hash,
+    )
     expected = action.seal_fingerprints()
     payload["nested"]["body"] = "caller mutation"
 
@@ -873,6 +898,51 @@ def test_governed_action_seals_one_detached_fingerprint_snapshot(monkeypatch):
     assert action.payload["nested"]["body"] == "original"
     with pytest.raises(ValueError, match="sealed action"):
         action.target = "changed"
+
+
+def test_governed_action_seal_never_invokes_deepcopy_hooks():
+    class HostilePayload(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("validated action ownership must not use deepcopy")
+
+    class HostileSources(list):
+        def __deepcopy__(self, memo):
+            raise AssertionError("validated provenance ownership must not use deepcopy")
+
+    payload = HostilePayload({"nested": ["accepted"]})
+    sources = HostileSources([ContentRef.of("operator", Trust.TRUSTED, "accepted")])
+    action = ProposedAction(
+        tool_name="custom_tool",
+        target="target",
+        payload=payload,
+        side_effect_level=SideEffect.LOCAL_WRITE,
+        payload_sources=sources,
+    )
+    expected = action.seal_fingerprints()
+    payload["nested"].append("caller mutation")
+
+    assert type(action.payload) is dict
+    assert action.payload == {"nested": ["accepted"]}
+    assert type(action.payload_sources) is tuple
+    assert (action.payload_hash, action.authorization_hash) == expected
+
+
+def test_governed_action_owns_canonical_enum_and_decimal_snapshot():
+    action = ProposedAction(
+        tool_name="custom_tool",
+        target="target",
+        payload={
+            "amount": Decimal("0.1000"),
+            "effect": SideEffect.LOCAL_WRITE,
+        },
+        side_effect_level=SideEffect.LOCAL_WRITE,
+    )
+
+    payload_hash, authorization_hash = action.seal_fingerprints()
+
+    assert action.payload == {"amount": "0.1", "effect": "local_write"}
+    assert action.payload_hash == payload_hash
+    assert action.current_authorization_hash() == authorization_hash
 
 
 def test_live_hash_detects_nested_mutation_after_action_seal():

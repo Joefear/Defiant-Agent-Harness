@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.50
+## What is deliberately absent from v0.51
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -726,6 +726,14 @@ hooks, and mutable Enum values are resolved into the snapshot. This closes
 preflight-to-encoder structural drift without changing ordinary successful
 canonical bytes or hashes. See `validated_canonical_snapshot.md`.
 
+v0.51 makes action, pre-adapter tool-call, and post-execution tool-result
+owners retain that validated snapshot directly. Sealing no longer invokes
+`deepcopy()` after validation or traverses caller containers a second time.
+Ordinary JSON values and every accepted canonical hash remain unchanged; Enum
+and Decimal extensions retain their established canonical representations in
+owned state. Command Core and Command Center expose only static posture. See
+`validated_snapshot_ownership.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -762,7 +770,9 @@ canonical bytes or hashes. See `validated_canonical_snapshot.md`.
 - **Validated snapshots are not transaction isolation.** v0.50 ensures the
   encoder consumes only the bounded structure it validated. It does not freeze
   caller memory, serialize other application threads, or make arbitrary Python
-  code untrusted. Final live capability checks still detect later action drift.
+  code untrusted. v0.51 makes contract owners adopt that bounded observation
+  directly instead of running a later deep copy. Final live capability checks
+  still detect later action drift.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for

@@ -376,3 +376,21 @@ def test_tool_result_seal_revalidates_detaches_and_freezes(monkeypatch):
         result.output = {"changed": True}
     with pytest.raises(ValueError, match="sealed tool result"):
         result._contract_sealed = False
+
+
+def test_tool_result_seal_adopts_validated_snapshot_without_deepcopy_hooks():
+    class HostileOutput(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError(
+                "validated tool-result ownership must not use deepcopy"
+            )
+
+    output = HostileOutput({"nested": ["accepted"]})
+    result = ToolResult(status="succeeded", summary="accepted", output=output)
+    result.seal_contract()
+    expected_hash = result.output_hash
+    output["nested"].append("caller mutation")
+
+    assert type(result.output) is dict
+    assert result.output == {"nested": ["accepted"]}
+    assert result.output_hash == expected_hash

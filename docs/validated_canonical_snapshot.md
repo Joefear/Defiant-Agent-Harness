@@ -45,10 +45,15 @@ contract aliases. No rejected content is echoed.
 
 ## Read-only projection
 
-Command Core schema `0.44.0` reports
+Command Core schema `0.45.0` reports
 `validated_canonical_snapshot: true`. Command Center renders only this static
 posture. It cannot supply canonical input, modify limits, approve, reconcile,
 or execute.
+
+v0.51 extends the same invariant to contract ownership. Actions, pre-adapter
+tool calls, and post-execution tool results now retain the validated snapshot
+directly instead of traversing the caller object again with `deepcopy()`. See
+`validated_snapshot_ownership.md`.
 
 ## Limits of the control
 
@@ -56,7 +61,7 @@ The snapshot binds one hash operation to one bounded observation. It does not
 freeze caller-owned memory, serialize application threads, or provide an
 operating-system sandbox. A caller may mutate its original object later; sealed
 ownership and the final live capability check remain responsible for detecting
-post-authorization action changes. Existing owner-level detachment may still
-perform additional bounded copies.
+post-authorization action changes. As of v0.51, action-controlled contract
+owners adopt this snapshot without a separate copy pass.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

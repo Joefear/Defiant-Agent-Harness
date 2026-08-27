@@ -43,13 +43,17 @@ v0.50 feeds the encoder only the detached built-in snapshot returned by this
 bounded traversal. Mutation of the returned live output after validation cannot
 introduce unvalidated structure into that hash.
 
+v0.51 also makes the sealed `ToolResult` retain that validated snapshot
+directly. No post-validation `deepcopy()` or caller-container traversal occurs
+before the result becomes owned evidence input.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
 journaling, the owning harness validates scalar fields again, selects the
-conservative completion cost, revalidates output, detaches it from
-caller-owned containers, computes its bounded hash, and seals the complete
-result contract. Later top-level mutation is refused.
+conservative completion cost, adopts the revalidated output snapshot and its
+bounded hash, and seals the complete result contract. Later top-level mutation
+is refused.
 
 If a local handler raises `ToolResultContractError` while constructing its
 post-execution result, the tool registry does not translate that into an
@@ -66,7 +70,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.44.0` publishes the summary and output ceilings under
+Command Core schema `0.45.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

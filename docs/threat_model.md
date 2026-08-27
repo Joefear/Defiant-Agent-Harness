@@ -695,6 +695,15 @@ Ordinary accepted canonical bytes and hashes remain unchanged. This does not
 provide transaction isolation for caller memory or make in-process Python code
 untrusted; final capability checks continue to detect later action changes.
 
+**Post-validation ownership copy.** Through v0.50, contract sealing still
+performed `deepcopy()` after bounded validation for action payloads,
+pre-adapter tool calls, and post-execution tool results. That second traversal
+could invoke subclass copy hooks or materialize a structure that had not been
+the bounded observation. v0.51 returns the digest with its detached canonical
+snapshot and makes each owner retain that exact tree. Ordinary JSON semantics
+and accepted hashes are unchanged. This prevents an owner-induced second copy;
+it does not sandbox arbitrary Python already running in the harness process.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

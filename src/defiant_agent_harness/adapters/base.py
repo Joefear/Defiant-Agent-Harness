@@ -33,7 +33,6 @@ adapter is a thin translation rather than a rewrite.
 from __future__ import annotations
 
 import abc
-from copy import deepcopy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Iterable
@@ -44,7 +43,7 @@ from ..contracts import (
     ProposedAction,
     SideEffect,
     Trust,
-    action_sha256_of,
+    action_snapshot_and_sha256_of,
 )
 from ..limits import (
     MAX_TOOL_CALL_IDENTIFIER_CHARACTERS,
@@ -97,17 +96,10 @@ class ToolCall:
         if self._contract_sealed:
             self.require_unchanged()
             return self._sealed_contract_hash
-        self._validate_contract()
-        arguments = deepcopy(self.arguments)
-        transport_params = deepcopy(self.transport_params)
-        contract_hash = _tool_call_contract_hash(
-            self._contract_surface(
-                arguments=arguments,
-                transport_params=transport_params,
-            )
-        )
-        object.__setattr__(self, "arguments", arguments)
-        object.__setattr__(self, "transport_params", transport_params)
+        self._validate_fields()
+        snapshot, contract_hash = _tool_call_contract_snapshot(self._contract_surface())
+        object.__setattr__(self, "arguments", snapshot["arguments"])
+        object.__setattr__(self, "transport_params", snapshot["transport_params"])
         object.__setattr__(self, "_sealed_contract_hash", contract_hash)
         object.__setattr__(self, "_contract_sealed", True)
         return contract_hash
@@ -133,6 +125,10 @@ class ToolCall:
         return _tool_call_contract_hash(self._contract_surface())
 
     def _validate_contract(self) -> None:
+        self._validate_fields()
+        _tool_call_contract_hash(self._contract_surface())
+
+    def _validate_fields(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ToolCallContractError(
                 "tool call name must be a non-empty string",
@@ -167,7 +163,6 @@ class ToolCall:
                 "tool call transport_params must be a dictionary",
                 limit_enforced="tool_call_transport_params_contract",
             )
-        _tool_call_contract_hash(self._contract_surface())
 
     def _contract_surface(
         self,
@@ -187,8 +182,13 @@ class ToolCall:
 
 
 def _tool_call_contract_hash(surface: dict[str, Any]) -> str:
+    return _tool_call_contract_snapshot(surface)[1]
+
+
+def _tool_call_contract_snapshot(surface: dict[str, Any]) -> tuple[dict[str, Any], str]:
     try:
-        return action_sha256_of(surface)
+        snapshot, digest = action_snapshot_and_sha256_of(surface)
+        return snapshot, digest
     except ActionHashLimitError as exc:
         suffix = exc.limit_enforced.removeprefix("action_hash_")
         raise ToolCallLimitError(
