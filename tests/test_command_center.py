@@ -153,6 +153,10 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy_match_tool_name_characters" in javascript
     assert b"policy_match_target_characters" in javascript
     assert b"policy_glob_match_work_units" in javascript
+    assert b"policy_context_entries" in javascript
+    assert b"policy_context_key_characters" in javascript
+    assert b"policy_context_value_characters" in javascript
+    assert b"policy_context_characters" in javascript
     assert b"action_hash_canonical_bytes" in javascript
     assert b"action_hash_mapping_entries" in javascript
     assert b"action_hash_mapping_sort_work_units" in javascript
@@ -191,7 +195,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
         b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "
-        b"payload matching, and glob matching bounded "
+        b"payload matching, glob matching, and policy context bounded "
         b"and fail-closed" in javascript
     )
     assert b"trusted_public_key_count" in javascript
@@ -204,6 +208,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy rules, known tools, and authority inputs retained" in javascript
     assert b"sealed_policy_runtime_state" in javascript
     assert b"policy runtime rules and tool patterns immutable" in javascript
+    assert b"validated_policy_context_snapshot" in javascript
+    assert b"policy decision context bounded and retained" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript
     assert b"json_lexical_tokens" in javascript

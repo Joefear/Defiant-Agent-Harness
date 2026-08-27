@@ -34,6 +34,142 @@ def act(tool, target, payload=None, level=SideEffect.NONE, trust=Trust.TRUSTED):
     )
 
 
+def context_engine():
+    return PolicyEngine(
+        [
+            {
+                "version": "context-v1",
+                "rules": [
+                    {
+                        "id": "block_private_context",
+                        "tools": ["inspect"],
+                        "sensitivities": ["private"],
+                        "effect": "block",
+                        "reason": "private context is blocked",
+                    }
+                ],
+            }
+        ],
+        name="context-test",
+    )
+
+
+def test_policy_context_is_snapshotted_once_without_caller_hooks():
+    class HostileText(str):
+        def __str__(self):
+            raise AssertionError("caller string hook invoked")
+
+        def __len__(self):
+            raise AssertionError("caller string length hook invoked")
+
+    class HostileContext(dict):
+        def __bool__(self):
+            raise AssertionError("caller truth hook invoked")
+
+        def __len__(self):
+            raise AssertionError("caller length hook invoked")
+
+        def __iter__(self):
+            raise AssertionError("caller iterator hook invoked")
+
+        def keys(self):
+            raise AssertionError("caller keys hook invoked")
+
+        def items(self):
+            raise AssertionError("caller items hook invoked")
+
+        def get(self, key, default=None):
+            raise AssertionError("caller get hook invoked")
+
+    context = HostileContext({HostileText("sensitivity"): HostileText("private")})
+
+    decision = context_engine().evaluate(act("inspect", "record"), context)
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["block_private_context"]
+    assert decision.decision_inputs["context"] == {"sensitivity": "private"}
+    key, value = next(iter(decision.decision_inputs["context"].items()))
+    assert type(key) is str
+    assert type(value) is str
+
+
+def test_policy_context_evidence_retains_the_observation_used_for_matching():
+    context = {"sensitivity": "private", "workspace_id": "workspace-one"}
+
+    decision = context_engine().evaluate(act("inspect", "record"), context)
+    context["sensitivity"] = "public"
+    context["workspace_id"] = "workspace-two"
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.decision_inputs["context"] == {
+        "sensitivity": "private",
+        "workspace_id": "workspace-one",
+    }
+
+
+def test_policy_context_rejects_non_mapping_without_invoking_caller_hooks():
+    class HostileMapping:
+        def __bool__(self):
+            raise AssertionError("caller truth hook invoked")
+
+        def items(self):
+            raise AssertionError("caller items hook invoked")
+
+    decision = context_engine().evaluate(
+        act("inspect", "record"),
+        HostileMapping(),  # type: ignore[arg-type]
+    )
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_context_contract"]
+    assert decision.reason == "policy context must be a mapping"
+    assert decision.decision_inputs["limit_enforced"] == "policy_context_type"
+    assert "context" not in decision.decision_inputs
+
+
+def test_policy_context_rejects_non_string_value_without_rendering_it():
+    class SecretValue:
+        def __str__(self):
+            raise AssertionError("secret value rendered")
+
+        def __repr__(self):
+            raise AssertionError("secret value represented")
+
+    decision = context_engine().evaluate(
+        act("inspect", "record"),
+        {"sensitivity": SecretValue()},  # type: ignore[dict-item]
+    )
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_context_contract"]
+    assert decision.reason == "policy context keys and values must be strings"
+    assert decision.decision_inputs["limit_enforced"] == "policy_context_type"
+    assert "context" not in decision.decision_inputs
+
+
+@pytest.mark.parametrize(
+    ("context", "limit_enforced"),
+    [
+        ({f"key-{index}": "value" for index in range(65)}, "policy_context_entries"),
+        ({"k" * 257: "value"}, "policy_context_key_characters"),
+        ({"key": "v" * 4097}, "policy_context_value_characters"),
+        (
+            {f"key-{index:02d}": "v" * 4096 for index in range(64)},
+            "policy_context_characters",
+        ),
+    ],
+)
+def test_policy_context_limits_fail_closed_without_retaining_context(
+    context, limit_enforced
+):
+    decision = context_engine().evaluate(act("inspect", "record"), context)
+
+    assert decision.decision is Decision.BLOCK
+    assert decision.policy_ids == ["policy_context_contract"]
+    assert decision.decision_inputs["limit_enforced"] == limit_enforced
+    assert "context" not in decision.decision_inputs
+
+
 # -- allow ------------------------------------------------------------------
 
 
@@ -226,6 +362,12 @@ def test_engine_is_deterministic(engine):
 def test_ruleset_hash_changes_when_rules_change(engine):
     other = PolicyEngine.default(["merchant_services"])
     assert other.ruleset_hash != engine.ruleset_hash
+
+
+def test_policy_context_snapshot_does_not_change_default_ruleset_hash(engine):
+    assert engine.ruleset_hash == (
+        "sha256:a4073d10fe2522fc9213d77361bca8ced0813e0b683ade26e6dca3478ab89bf3"
+    )
 
 
 def test_ruleset_hash_includes_authoritative_tool_contract():

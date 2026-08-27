@@ -753,6 +753,16 @@ tree. Private Python object mutation remains inside the trusted process
 boundary; this is not protection against malicious code already executing in
 the harness process.
 
+**Live policy context observed more than once.** Through v0.56, policy rules
+could read a caller-owned context mapping and decision construction could
+traverse it again. Mapping overrides or mutation could therefore make the
+evidence describe a different observation from the one used for matching, and
+value rendering could invoke caller hooks. v0.57 captures bounded exact string
+metadata once from built-in dictionary storage and uses that owned snapshot for
+both operations. Invalid context blocks with sanitized metadata before
+matching. This remains an in-process data contract, not thread transaction
+isolation or a Python sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the
