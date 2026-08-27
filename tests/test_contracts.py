@@ -10,9 +10,13 @@ import defiant_agent_harness.contracts as contracts_module
 from defiant_agent_harness.contracts import (
     ActionHashLimitError,
     ContentRef,
+    Decision,
+    EvidenceRecord,
+    GuardrailDecision,
     HarnessRequest,
     ProposedAction,
     RequestLimitError,
+    ResultStatus,
     SideEffect,
     Trust,
     action_sha256_of,
@@ -20,6 +24,140 @@ from defiant_agent_harness.contracts import (
     canonical_json,
     sha256_of,
 )
+
+
+def test_authority_records_own_exact_validated_snapshots_without_hooks():
+    class HostileString(str):
+        def __len__(self):
+            raise AssertionError("authority record string hooks must not run")
+
+        def strip(self, *args, **kwargs):
+            raise AssertionError("authority record string hooks must not run")
+
+        def replace(self, *args, **kwargs):
+            raise AssertionError("authority record string hooks must not run")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("authority record deepcopy hooks must not run")
+
+    class HostileDecimal(Decimal):
+        def is_finite(self):
+            raise AssertionError("authority record decimal hooks must not run")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("authority record deepcopy hooks must not run")
+
+    class HostileList(list):
+        def __iter__(self):
+            raise AssertionError("authority record list hooks must not run")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("authority record deepcopy hooks must not run")
+
+    class HostileDict(dict):
+        def keys(self):
+            raise AssertionError("authority record mapping hooks must not run")
+
+        def items(self):
+            raise AssertionError("authority record mapping hooks must not run")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("authority record deepcopy hooks must not run")
+
+    decision_ids = HostileList([HostileString("policy")])
+    redactions = HostileList([HostileString("secret")])
+    decision_inputs = HostileDict(
+        {HostileString("nested"): HostileDict({HostileString("value"): 1})}
+    )
+    decision = GuardrailDecision(
+        decision=Decision.ALLOW,
+        reason=HostileString("allowed"),
+        policy_ids=decision_ids,
+        policy_version=HostileString("1"),
+        ruleset_hash=HostileString("sha256:rules"),
+        redactions=redactions,
+        decision_inputs=decision_inputs,
+    )
+    record_policy_ids = HostileList([HostileString("policy")])
+    record_inputs = HostileDict(
+        {HostileString("nested"): HostileDict({HostileString("value"): 1})}
+    )
+    input_refs = HostileList(
+        [HostileDict({HostileString("ref_id"): HostileString("ref")})]
+    )
+    record = EvidenceRecord(
+        request_id=HostileString("request"),
+        action_id=HostileString("action"),
+        decision=Decision.ALLOW,
+        result_status=ResultStatus.SUCCEEDED,
+        policy_ids=record_policy_ids,
+        decision_inputs=record_inputs,
+        input_refs=input_refs,
+        cost_usd=HostileDecimal("1.25"),
+        budget_remaining_usd=HostileDecimal("-0.25"),
+        result_summary=HostileString("complete"),
+    )
+
+    decision_ids.append("caller mutation")
+    redactions.append("caller mutation")
+    decision_inputs["caller"] = "mutation"
+    record_policy_ids.append("caller mutation")
+    record_inputs["caller"] = "mutation"
+    input_refs.append({"ref_id": "caller mutation"})
+    record.timestamp = HostileString(record.timestamp)
+    record.seal("sha256:" + "0" * 64)
+
+    assert decision.policy_ids == ["policy"]
+    assert decision.redactions == ["secret"]
+    assert decision.decision_inputs == {"nested": {"value": 1}}
+    assert record.policy_ids == ["policy"]
+    assert record.decision_inputs == {"nested": {"value": 1}}
+    assert record.input_refs == [{"ref_id": "ref"}]
+    assert type(record.cost_usd) is Decimal
+    assert type(record.budget_remaining_usd) is Decimal
+    assert type(record.timestamp) is str
+    assert all(
+        type(value) is str
+        for value in (
+            decision.reason,
+            decision.policy_version,
+            decision.ruleset_hash,
+            *decision.policy_ids,
+            *decision.redactions,
+            record.request_id,
+            record.action_id,
+            record.result_summary,
+            *record.policy_ids,
+        )
+    )
+    assert type(next(iter(decision.decision_inputs))) is str
+    assert type(next(iter(record.input_refs[0]))) is str
+    assert record.record_hash == sha256_of(record.body())
+
+
+def test_authority_record_snapshot_limits_are_stable_across_action_limits(monkeypatch):
+    monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
+
+    decision = GuardrailDecision(
+        decision=Decision.ALLOW,
+        reason="ordinary authority reason",
+        policy_ids=["ordinary_policy_id"],
+        decision_inputs={"policy_name": "ordinary_policy_name"},
+    )
+    record = EvidenceRecord(
+        request_id="ordinary_request",
+        action_id="ordinary_action",
+        decision=decision.decision,
+        result_status=ResultStatus.SKIPPED,
+        policy_ids=decision.policy_ids,
+        decision_inputs=decision.decision_inputs,
+    )
+
+    record.seal("sha256:" + "0" * 64)
+
+    assert record.record_hash == sha256_of(record.body())
+    with pytest.raises(ActionHashLimitError):
+        action_sha256_of("12345")
 
 
 def test_request_rejects_negative_budget_limit():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 from defiant_agent_harness.contracts import Decision, EvidenceRecord, ResultStatus
 import pytest
@@ -37,6 +38,17 @@ def test_chain_verifies(tmp_path):
     status = s.verify()
     assert status.ok
     assert status.count == 10
+
+
+def test_negative_remaining_budget_is_canonical_and_chain_verifiable(tmp_path):
+    store = EvidenceStore(tmp_path / "e.jsonl")
+    record = rec(0)
+    record.budget_remaining_usd = Decimal("-0.2500")
+
+    store.append(record)
+
+    assert store.records()[0]["budget_remaining_usd"] == "-0.25"
+    assert store.verify().ok
 
 
 def test_altering_a_record_breaks_the_chain(tmp_path):

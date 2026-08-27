@@ -118,6 +118,14 @@ Each physical JSONL evidence record, including its newline, is limited to
 blocks authority; a larger new record is refused before append. This is a
 per-record ceiling, not a cap on total append-only evidence history.
 
+Before sealing or serialization, v0.54 normalizes evidence scalars and captures
+policy ids, decision inputs, and input references into detached built-in
+snapshots under the canonical contract ceilings. Hashing and JSON publication
+therefore do not retain accepted caller-defined iteration, formatting, or
+deep-copy hooks. Finite negative `budget_remaining_usd` values use bounded
+canonical signed-decimal text so actual overruns remain representable;
+`cost_usd`, reservations, and settlements remain non-negative.
+
 Evidence records carry hashes of payload and output bodies rather than the
 bodies themselves. Operational metadata—including target paths, recipients,
 user ids, workspace ids, rule reasons, and provenance labels—remains visible.

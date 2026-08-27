@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.47.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.48.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -82,6 +82,7 @@ contains:
   validated-canonical-snapshot, validated-snapshot-ownership,
   validated-contract-collection-snapshot,
   validated-scalar-ownership,
+  validated-authority-record-ownership,
   canonical-mapping-size,
   canonical-mapping-sort-work,
   complete-canonical-value, MCP-collection, policy-text,
@@ -149,3 +150,5 @@ The resource-limit projection is descriptive and fixed by the running build;
 it is not a runtime configuration or mutation surface.
 The `authority_configuration` projection is likewise descriptive. Command Core
 does not load, upload, edit, approve, or replace policy or MCP configuration.
+Its authority-record ownership flag is static build posture; it does not expose
+decision, grant, or evidence mutation.

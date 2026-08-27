@@ -95,6 +95,49 @@ def test_grant_is_single_use():
         registry.execute(action, grant)
 
 
+def test_capability_grant_normalizes_scalar_subclasses_before_use():
+    class HostileString(str):
+        def __len__(self):
+            raise AssertionError("grant string hooks must not run")
+
+        def strip(self, *args, **kwargs):
+            raise AssertionError("grant string hooks must not run")
+
+        def replace(self, *args, **kwargs):
+            raise AssertionError("grant string hooks must not run")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("grant deepcopy hooks must not run")
+
+    registry = default_registry()
+    action = _action()
+    grant = _grant_for(registry, action)
+    grant.action_id = HostileString(grant.action_id)
+    grant.tool_name = HostileString(grant.tool_name)
+    grant.authorization_hash = HostileString(grant.authorization_hash)
+    grant.evidence_record_id = HostileString(grant.evidence_record_id)
+    grant.evidence_record_hash = HostileString(grant.evidence_record_hash)
+    grant.issued_at = HostileString(grant.issued_at)
+    grant.grant_id = HostileString(grant.grant_id)
+    grant.signature = HostileString(grant.signature)
+
+    registry.execute(action, grant)
+
+    assert all(
+        type(value) is str
+        for value in (
+            grant.action_id,
+            grant.tool_name,
+            grant.authorization_hash,
+            grant.evidence_record_id,
+            grant.evidence_record_hash,
+            grant.issued_at,
+            grant.grant_id,
+            grant.signature,
+        )
+    )
+
+
 def test_payload_substitution_voids_the_grant():
     registry = default_registry()
     benign = _action({"subject": "Statement summary", "body": "All good."})
