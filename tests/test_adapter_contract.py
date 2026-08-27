@@ -207,6 +207,21 @@ def test_tool_call_seal_revalidates_detaches_freezes_and_detects_nested_mutation
     assert exc.value.limit_enforced == "tool_call_mutation"
 
 
+def test_tool_call_seal_adopts_validated_snapshot_without_deepcopy_hooks():
+    class HostileArguments(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("validated tool-call ownership must not use deepcopy")
+
+    arguments = HostileArguments({"nested": ["accepted"]})
+    call = ToolCall("tool", arguments=arguments)
+    expected_hash = call.seal_contract()
+    arguments["nested"].append("caller mutation")
+
+    assert type(call.arguments) is dict
+    assert call.arguments == {"nested": ["accepted"]}
+    assert call.contract_hash == expected_hash
+
+
 def test_pre_adapter_oversize_fails_before_translation_or_authority(
     tmp_path, monkeypatch
 ):

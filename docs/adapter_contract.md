@@ -73,6 +73,11 @@ An adapter must treat `ToolCall` as read-only; it may derive a new
 Invalid, oversized, cyclic, non-canonical, or changed calls produce no policy
 decision, approval, reservation, evidence, grant, or tool execution.
 
+Since v0.51, the bounded validation operation returns both the detached
+canonical snapshot and its digest. `ToolCall` adopts that snapshot directly;
+it does not run `deepcopy()` or traverse caller containers again before
+translation.
+
 Since v0.40, the owning harness revalidates and seals `HarnessRequest` before
 `propose(task)` or direct call translation. A request with oversized task,
 identity, allowlist, or provenance metadata fails before adapter code runs.
@@ -84,6 +89,9 @@ bounded canonical `ToolResult`. The owning harness revalidates, detaches,
 hashes, and seals accepted output before completion. Invalid post-execution
 output preserves an uncertain authorization for operator reconciliation; an
 adapter must never retry the call merely to obtain a smaller result.
+
+Since v0.51, `ToolResult` likewise retains the exact validated snapshot that
+produced its digest, with no post-validation deep-copy pass.
 
 ## Provenance is the adapter's real job
 

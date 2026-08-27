@@ -42,7 +42,7 @@ previously accepted value remains byte-for-byte unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.44.0` publishes
+Command Core schema `0.45.0` publishes
 `action_hash_number_characters`, `tool_call_number_characters`, and
 `tool_result_output_number_characters` under `resource_limits`, plus
 `canonical_number_preflight: true`. Command Center renders only this static

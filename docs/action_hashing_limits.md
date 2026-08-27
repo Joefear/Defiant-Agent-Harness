@@ -55,7 +55,7 @@ the streaming counter remains a second check.
 
 ## Read-only projection
 
-Command Core schema `0.44.0` publishes the fixed ceilings under
+Command Core schema `0.45.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.
@@ -113,5 +113,10 @@ v0.50 returns a detached built-in snapshot from the bounded traversal and feeds
 that exact snapshot to the streaming encoder. Caller mutation or container
 subclass iteration hooks cannot replace the already validated structure during
 a second encoder pass. See `validated_canonical_snapshot.md`.
+
+v0.51 returns that snapshot together with its digest and makes governed action,
+tool-call, and tool-result owners adopt it directly. Sealing performs no later
+`deepcopy()` or caller-container traversal. See
+`validated_snapshot_ownership.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

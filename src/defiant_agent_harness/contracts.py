@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import uuid
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -97,7 +96,25 @@ def action_sha256_of(obj: Any) -> str:
     chunks directly into SHA-256 under a fixed byte ceiling.
     """
 
+    _, digest = action_snapshot_and_sha256_of(obj)
+    return digest
+
+
+def action_snapshot_and_sha256_of(obj: Any) -> tuple[Any, str]:
+    """Return one detached canonical snapshot and its exact SHA-256 digest.
+
+    Ownership boundaries use this helper so the object they retain is the
+    same bounded observation that was hashed.  Enum and Decimal extensions are
+    normalized to their established canonical JSON values in the snapshot.
+    """
+
     snapshot = _validate_action_hash_structure(obj)
+    return snapshot, _sha256_of_validated_action_snapshot(snapshot)
+
+
+def _sha256_of_validated_action_snapshot(snapshot: Any) -> str:
+    """Hash a snapshot returned by ``_validate_action_hash_structure``."""
+
     encoder = json.JSONEncoder(
         sort_keys=True,
         separators=(",", ":"),
@@ -467,18 +484,14 @@ class ProposedAction:
         if self._fingerprints_sealed:
             return self._sealed_payload_hash, self._sealed_authorization_hash
 
-        # Validate before copying so cycles or attacker-defined objects cannot
-        # amplify deepcopy work. Then detach caller-owned containers before
-        # establishing the authority snapshot.
-        _validate_action_hash_structure(self.payload)
-        _validate_action_hash_structure(self._authorization_surface())
-        payload = deepcopy(self.payload)
-        sources = deepcopy(self.payload_sources)
-        payload_hash = action_sha256_of(payload)
-        authorization_hash = action_sha256_of(
+        # The retained payload is the bounded built-in snapshot that produced
+        # its digest.  Do not traverse caller containers again with deepcopy.
+        payload, payload_hash = action_snapshot_and_sha256_of(self.payload)
+        sources = tuple(list.__iter__(self.payload_sources))
+        authorization_snapshot, authorization_hash = action_snapshot_and_sha256_of(
             self._authorization_surface(payload=payload, payload_sources=sources)
         )
-        object.__setattr__(self, "payload", payload)
+        object.__setattr__(self, "payload", authorization_snapshot["payload"])
         object.__setattr__(self, "payload_sources", sources)
         object.__setattr__(self, "_sealed_payload_hash", payload_hash)
         object.__setattr__(self, "_sealed_authorization_hash", authorization_hash)
@@ -493,7 +506,7 @@ class ProposedAction:
         self,
         *,
         payload: dict | None = None,
-        payload_sources: list[ContentRef] | None = None,
+        payload_sources: Iterable[ContentRef] | None = None,
     ) -> dict[str, Any]:
         return {
             "action_id": self.action_id,

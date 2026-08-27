@@ -48,12 +48,16 @@ v0.50 feeds the encoder only the detached built-in snapshot returned by this
 bounded traversal. Mutation of the caller-owned call surface after validation
 cannot introduce unvalidated structure into the hash.
 
+v0.51 also makes the sealed `ToolCall` retain that validated snapshot directly.
+No post-validation `deepcopy()` or caller-container traversal occurs before
+adapter translation.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
 `Harness.preflight_external_call()` then revalidate the call before adapter
-translation, detach both dictionaries from caller-owned containers, calculate
-one bounded hash of the complete call surface, and freeze all top-level
+translation, adopt both dictionaries from the validated snapshot, calculate
+one bounded hash of that exact complete call surface, and freeze all top-level
 contract fields.
 
 Immediately after `AgentAdapter.to_action()` returns, the harness computes a
@@ -69,7 +73,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.44.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.45.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports

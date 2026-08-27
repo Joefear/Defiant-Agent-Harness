@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from copy import deepcopy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -29,7 +28,7 @@ from ..contracts import (
     ProposedAction,
     ResultStatus,
     SideEffect,
-    action_sha256_of,
+    action_snapshot_and_sha256_of,
     canonical_json,
     sha256_of,
 )
@@ -126,9 +125,8 @@ class ToolResult:
         """Revalidate, detach, hash, and freeze one returned tool result."""
         if self._contract_sealed:
             return
-        self._validate_contract()
-        output = deepcopy(self.output)
-        output_hash = _tool_result_output_hash(output)
+        self._validate_fields()
+        output, output_hash = _tool_result_output_snapshot(self.output)
         object.__setattr__(self, "output", output)
         object.__setattr__(self, "_sealed_output_hash", output_hash)
         object.__setattr__(self, "_contract_sealed", True)
@@ -178,8 +176,12 @@ class ToolResult:
 
 
 def _tool_result_output_hash(output: Any) -> str:
+    return _tool_result_output_snapshot(output)[1]
+
+
+def _tool_result_output_snapshot(output: Any) -> tuple[Any, str]:
     try:
-        return action_sha256_of(output)
+        return action_snapshot_and_sha256_of(output)
     except ActionHashLimitError as exc:
         suffix = exc.limit_enforced.removeprefix("action_hash_")
         raise ToolResultLimitError(
