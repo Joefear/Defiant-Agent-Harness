@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import fnmatch
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Sequence
 
 from ..bounded_io import InputLimitError
 from ..contracts import (
@@ -94,26 +95,37 @@ class LoadedPolicyPacks:
     name: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class Rule:
     id: str
     description: str = ""
     # match conditions (all present conditions must match)
-    tools: list[str] = field(default_factory=list)  # glob patterns
+    tools: tuple[str, ...] = ()  # glob patterns
     side_effect_at_least: str | None = None
-    targets: list[str] = field(default_factory=list)  # glob patterns
-    payload_contains: list[str] = field(default_factory=list)  # case-insensitive
+    targets: tuple[str, ...] = ()  # glob patterns
+    payload_contains: tuple[str, ...] = ()  # case-insensitive
     max_payload_trust: str | None = None  # deny if payload trust is worse
-    sensitivities: list[str] = field(default_factory=list)
+    sensitivities: tuple[str, ...] = ()
     # outcome
     effect: str = "block"  # allow | block | approval_required
     reason: str = ""
     approval_scope: str = ""
-    redactions: list[str] = field(default_factory=list)
+    redactions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.id, str) or not self.id.strip():
+        for field_name in ("id", "description", "effect", "reason", "approval_scope"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                raise ValueError(f"policy rule {field_name} must be a string")
+            object.__setattr__(self, field_name, str.__str__(value))
+        if not self.id.strip():
             raise ValueError("policy rule id must be a non-empty string")
+        for field_name in ("side_effect_at_least", "max_payload_trust"):
+            value = getattr(self, field_name)
+            if value is not None:
+                if not isinstance(value, str):
+                    raise ValueError(f"policy rule {field_name} must be a string")
+                object.__setattr__(self, field_name, str.__str__(value))
         Decision(self.effect)
         if self.side_effect_at_least is not None:
             SideEffect(self.side_effect_at_least)
@@ -127,10 +139,17 @@ class Rule:
             "redactions",
         ):
             values = getattr(self, field_name)
-            if not isinstance(values, list) or any(
-                not isinstance(value, str) or not value for value in values
+            if not isinstance(values, (list, tuple)):
+                raise ValueError(f"policy rule {self.id}: {field_name} must be strings")
+            snapshot = _snapshot_policy_configuration(
+                values,
+                f"policy rule {field_name}",
+            )
+            if not isinstance(snapshot, (list, tuple)) or any(
+                type(value) is not str or not value for value in snapshot
             ):
                 raise ValueError(f"policy rule {self.id}: {field_name} must be strings")
+            object.__setattr__(self, field_name, tuple(snapshot))
 
     def matches(
         self,
@@ -205,7 +224,7 @@ class _PolicyMatchState:
     def matches_any_glob(
         self,
         subject: str,
-        patterns: list[str],
+        patterns: Sequence[str],
         *,
         subject_label: str,
         maximum_characters: int,
@@ -420,6 +439,28 @@ def _snapshot_policy_configuration(value: Any, label: str) -> Any:
         raise ValueError(f"{label} must contain bounded canonical data") from exc
 
 
+def _freeze_policy_authority(value: Any) -> Any:
+    """Recursively freeze an already validated canonical authority tree."""
+
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _freeze_policy_authority(child) for key, child in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_policy_authority(child) for child in value)
+    return value
+
+
+def _thaw_policy_authority(value: Any) -> Any:
+    """Return a detached built-in projection of frozen policy authority."""
+
+    if isinstance(value, MappingProxyType):
+        return {key: _thaw_policy_authority(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_policy_authority(child) for child in value]
+    return value
+
+
 class PolicyEngine:
     def __init__(
         self,
@@ -443,11 +484,9 @@ class PolicyEngine:
             raise ValueError("policy name must be a string")
 
         _validate_policy_complexity(packs_snapshot)
-        self.name = str.__str__(name)
-        self.version = "0"
-        self.rules: list[Rule] = []
-        self.known_tools: list[str] = []
-        self.authority_inputs = authority_snapshot
+        normalized_name = str.__str__(name)
+        sealed_rules: list[Rule] = []
+        known_tool_patterns: list[str] = []
         versions: list[str] = []
         seen_rule_ids: set[str] = set()
         for pack in packs_snapshot:
@@ -461,29 +500,62 @@ class PolicyEngine:
                 not isinstance(name, str) or not name for name in known_tools
             ):
                 raise ValueError("known_tools must be a list of non-empty strings")
-            self.known_tools.extend(known_tools)
-            rules = pack.get("rules", []) or []
-            if not isinstance(rules, list):
+            known_tool_patterns.extend(known_tools)
+            raw_rules = pack.get("rules", []) or []
+            if not isinstance(raw_rules, list):
                 raise ValueError("rules must be a list")
-            for raw in rules:
+            for raw in raw_rules:
                 if not isinstance(raw, dict):
                     raise ValueError("each policy rule must be a mapping")
                 rule = Rule(**raw)
                 if rule.id in seen_rule_ids:
                     raise ValueError(f"duplicate policy rule id: {rule.id}")
                 seen_rule_ids.add(rule.id)
-                self.rules.append(rule)
-        self.version = "+".join(versions)
-        self.ruleset_hash = sha256_of(
+                sealed_rules.append(rule)
+        version = "+".join(versions)
+        ruleset_hash = sha256_of(
             {
-                "known_tools": sorted(self.known_tools),
-                "authority_inputs": self.authority_inputs,
+                "known_tools": sorted(known_tool_patterns),
+                "authority_inputs": authority_snapshot,
                 "rules": [
                     {k: v for k, v in vars(r).items()}
-                    for r in sorted(self.rules, key=lambda r: r.id)
+                    for r in sorted(sealed_rules, key=lambda r: r.id)
                 ],
             }
         )
+        self._name = normalized_name
+        self._version = version
+        self._rules = tuple(sealed_rules)
+        self._known_tools = tuple(known_tool_patterns)
+        self._authority_inputs = _freeze_policy_authority(authority_snapshot)
+        self._ruleset_hash = ruleset_hash
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def version(self) -> str:
+        return self._version
+
+    @property
+    def rules(self) -> tuple[Rule, ...]:
+        return self._rules
+
+    @property
+    def known_tools(self) -> tuple[str, ...]:
+        return self._known_tools
+
+    @property
+    def authority_inputs(self) -> dict[str, Any]:
+        snapshot = _thaw_policy_authority(self._authority_inputs)
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("sealed policy authority root is invalid")
+        return snapshot
+
+    @property
+    def ruleset_hash(self) -> str:
+        return self._ruleset_hash
 
     def is_known_tool(
         self,

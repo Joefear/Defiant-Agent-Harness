@@ -42,7 +42,7 @@ after capture.
 
 ## Read-only projection
 
-Command Core schema `0.49.0` reports
+Command Core schema `0.50.0` reports
 `validated_policy_snapshot_ownership: true` under
 `authority_configuration`. Command Center renders that posture only as text in
 its fixed-limit summary. Neither surface receives policy contents, changes a
@@ -51,11 +51,13 @@ rule, replaces authority inputs, or exposes an execution or approval control.
 ## Limits
 
 This is a deterministic data-ownership guarantee, not an operating-system
-sandbox or general transaction system. Python code already trusted inside the
-harness process can still directly modify engine-owned objects or replace the
-engine. Concurrent mutation at the instant an input snapshot is taken fails
-when detectable, but callers must still synchronize shared memory. Operators
-must protect policy files, review classifications, and use process and host
-isolation appropriate to their deployment.
+sandbox or general transaction system. Concurrent mutation at the instant an
+input snapshot is taken fails when detectable, but callers must still
+synchronize shared memory. v0.56 additionally seals the public runtime state
+derived from this snapshot; see `sealed_policy_runtime_state.md`. Python code
+already trusted inside the harness process can still modify private memory or
+replace the engine. Operators must protect policy files, review
+classifications, and use process and host isolation appropriate to their
+deployment.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

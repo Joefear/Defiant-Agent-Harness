@@ -68,6 +68,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   evidence records;
 - validated bounded snapshot ownership across policy rules, registered known
   tools, and authority inputs;
+- immutable policy runtime rules and known-tool patterns with read-only policy
+  identity and defensive authority projections;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -91,7 +93,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.49.0`. The browser cannot raise, disable, or replace them and never receives
+`0.50.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

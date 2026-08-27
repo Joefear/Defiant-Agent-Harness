@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 import defiant_agent_harness.policy.engine as policy_engine_module
@@ -284,7 +286,7 @@ def test_policy_engine_owns_the_configuration_observation_it_hashes():
     assert decision.decision is Decision.ALLOW
     assert decision.policy_ids == ["allow_inspection"]
     assert decision.ruleset_hash == original_hash
-    assert engine.known_tools == ["inspect"]
+    assert engine.known_tools == ("inspect",)
     assert engine.authority_inputs == {
         "tool_registry": [{"name": "inspect", "contract": ["read-only"]}]
     }
@@ -367,14 +369,75 @@ def test_policy_engine_snapshots_hostile_builtin_subclasses_without_hooks():
     )
 
     assert type(engine.name) is str
-    assert type(engine.known_tools) is list
+    assert type(engine.known_tools) is tuple
     assert type(engine.known_tools[0]) is str
-    assert type(engine.rules[0].tools) is list
+    assert type(engine.rules) is tuple
+    assert type(engine.rules[0].tools) is tuple
     assert type(engine.rules[0].tools[0]) is str
     assert type(engine.authority_inputs) is dict
     assert type(engine.authority_inputs["adapter"]) is dict
     assert type(engine.authority_inputs["adapter"]["mode"]) is str
     assert engine.evaluate(act("inspect", "record")).decision is Decision.ALLOW
+
+
+def test_policy_engine_runtime_state_is_sealed_after_hashing():
+    engine = PolicyEngine(
+        [
+            {
+                "version": "sealed-test",
+                "known_tools": ["inspect"],
+                "rules": [
+                    {
+                        "id": "allow_inspection",
+                        "tools": ["inspect"],
+                        "effect": "allow",
+                    }
+                ],
+            }
+        ],
+        authority_inputs={"adapter": {"mode": "local", "features": ["safe"]}},
+    )
+    action = act("inspect", "record")
+    original_hash = engine.ruleset_hash
+
+    with pytest.raises(FrozenInstanceError):
+        engine.rules[0].effect = "block"
+    with pytest.raises(AttributeError):
+        engine.rules = ()
+    with pytest.raises(AttributeError):
+        engine.known_tools += ("unclassified_*",)
+    with pytest.raises(AttributeError):
+        engine.ruleset_hash = "sha256:replacement"
+
+    projected_authority = engine.authority_inputs
+    projected_authority["adapter"]["mode"] = "remote"
+    projected_authority["adapter"]["features"].append("mutated")
+
+    decision = engine.evaluate(action)
+    assert decision.decision is Decision.ALLOW
+    assert decision.ruleset_hash == original_hash
+    assert engine.authority_inputs == {
+        "adapter": {"mode": "local", "features": ["safe"]}
+    }
+
+
+def test_rule_owns_immutable_pattern_collections():
+    tools = ["inspect"]
+    redactions = ["secret"]
+    rule = policy_engine_module.Rule(
+        id="sealed_rule",
+        tools=tools,
+        effect="allow",
+        redactions=redactions,
+    )
+
+    tools.append("mutated")
+    redactions.clear()
+
+    assert rule.tools == ("inspect",)
+    assert rule.redactions == ("secret",)
+    with pytest.raises(FrozenInstanceError):
+        rule.effect = "block"
 
 
 def test_policy_engine_rejects_noncanonical_authority_inputs_without_leaking_data():
@@ -1046,7 +1109,7 @@ def test_policy_text_exact_boundaries_are_accepted(monkeypatch):
 
     engine = PolicyEngine([pack])
 
-    assert engine.known_tools == ["bb"]
+    assert engine.known_tools == ("bb",)
     assert [rule.id for rule in engine.rules] == ["ccc"]
 
 
