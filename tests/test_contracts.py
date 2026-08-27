@@ -81,6 +81,91 @@ def test_request_validates_builtin_list_storage_not_override_view():
         )
 
 
+def test_governed_contracts_retain_exact_builtin_strings_without_subclass_hooks():
+    armed = False
+
+    class HostileString(str):
+        def __len__(self):
+            if armed:
+                raise AssertionError("owned string length hook must not run")
+            return str.__len__(self)
+
+        def strip(self, *args, **kwargs):
+            if armed:
+                raise AssertionError("owned string strip hook must not run")
+            return str.strip(self, *args, **kwargs)
+
+        def replace(self, *args, **kwargs):
+            if armed:
+                raise AssertionError("owned string replace hook must not run")
+            return str.replace(self, *args, **kwargs)
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("owned string deepcopy hook must not run")
+
+    class HostileDecimal(Decimal):
+        def is_finite(self):
+            raise AssertionError("owned decimal hook must not run")
+
+    ref = ContentRef(
+        HostileString("ref"),
+        HostileString("operator"),
+        Trust.TRUSTED,
+        HostileString("hash"),
+        HostileString("label"),
+    )
+    request = HarnessRequest(
+        task=HostileString("task"),
+        user_id=HostileString("user"),
+        workspace_id=HostileString("workspace"),
+        request_id=HostileString("request"),
+        task_type=HostileString("general"),
+        allowed_tools=[HostileString("read_file")],
+        budget_limit_usd=HostileDecimal("5.25"),
+        inputs=[ref],
+    )
+    request.task = HostileString("replacement task")
+    request.created_at = HostileString(request.created_at)
+    action = ProposedAction(
+        tool_name=HostileString("read_file"),
+        target=HostileString("record"),
+        payload={},
+        side_effect_level=SideEffect.NONE,
+        request_id=HostileString("request"),
+        payload_sources=[ref],
+        estimated_cost_usd=HostileDecimal("1.25"),
+    )
+    action.tool_name = HostileString("read_file")
+    action.created_at = HostileString(action.created_at)
+    armed = True
+
+    request.seal_contract()
+    action.seal_fingerprints()
+
+    assert all(
+        type(value) is str
+        for value in (
+            ref.ref_id,
+            ref.origin,
+            ref.content_hash,
+            ref.label,
+            request.task,
+            request.user_id,
+            request.workspace_id,
+            request.request_id,
+            request.task_type,
+            request.created_at,
+            *request.allowed_tools,
+            action.tool_name,
+            action.target,
+            action.request_id,
+            action.created_at,
+        )
+    )
+    assert type(request.budget_limit_usd) is Decimal
+    assert type(action.estimated_cost_usd) is Decimal
+
+
 def test_request_accepts_exact_text_item_limits_and_rejects_next(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_REQUEST_TEXT_ITEM_CHARACTERS", 4)
     monkeypatch.setattr(contracts_module, "MAX_REQUEST_IDENTIFIER_CHARACTERS", 4)
@@ -298,7 +383,7 @@ def test_request_seal_detaches_collections_and_freezes_contract_fields():
     ]
 
 
-def test_request_seal_adopts_snapshot_when_validation_mutates_caller_list():
+def test_request_seal_does_not_invoke_validation_time_string_subclass_hook():
     allowed_tools = []
     armed = False
 
@@ -319,7 +404,7 @@ def test_request_seal_adopts_snapshot_when_validation_mutates_caller_list():
 
     request.seal_contract()
 
-    assert allowed_tools == ["read_file", "delete_file"]
+    assert allowed_tools == ["read_file"]
     assert request.allowed_tools == ("read_file",)
     with pytest.raises(ValueError, match="sealed request"):
         request.workspace_id = "changed"
@@ -805,7 +890,7 @@ def test_action_snapshot_returns_exact_detached_canonical_hash_input():
     assert digest == sha256_of(snapshot)
 
 
-def test_action_hash_sanitizes_mapping_mutation_during_snapshot():
+def test_action_hash_normalizes_mapping_key_without_invoking_length_hook():
     value = {}
 
     class MutatingKey(str):
@@ -815,10 +900,100 @@ def test_action_hash_sanitizes_mapping_mutation_during_snapshot():
 
     value[MutatingKey("key")] = 1
 
-    with pytest.raises(ValueError, match="changed during canonical snapshot") as exc:
-        action_sha256_of(value)
+    snapshot, digest = action_snapshot_and_sha256_of(value)
 
-    assert "secret" not in str(exc.value)
+    assert value == {"key": 1}
+    assert snapshot == {"key": 1}
+    assert type(next(iter(snapshot))) is str
+    assert digest == action_sha256_of({"key": 1})
+
+
+def test_canonical_snapshot_normalizes_scalar_and_key_subclasses_without_hooks():
+    armed = False
+
+    class HostileString(str):
+        def __hash__(self):
+            if armed:
+                raise AssertionError("canonical string hash hook must not run")
+            return str.__hash__(self)
+
+        def __len__(self):
+            if armed:
+                raise AssertionError("canonical string length hook must not run")
+            return str.__len__(self)
+
+        def isascii(self):
+            if armed:
+                raise AssertionError("canonical string method hook must not run")
+            return str.isascii(self)
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("canonical scalar deepcopy hook must not run")
+
+    class HostileInt(int):
+        def __hash__(self):
+            if armed:
+                raise AssertionError("canonical integer hash hook must not run")
+            return int.__hash__(self)
+
+        def __int__(self):
+            raise AssertionError("canonical integer conversion hook must not run")
+
+        def __repr__(self):
+            raise AssertionError("canonical integer repr hook must not run")
+
+    class HostileFloat(float):
+        def __float__(self):
+            raise AssertionError("canonical float conversion hook must not run")
+
+        def __repr__(self):
+            raise AssertionError("canonical float repr hook must not run")
+
+    class HostileDecimal(Decimal):
+        def as_tuple(self):
+            raise AssertionError("canonical decimal hook must not run")
+
+    string_key = HostileString("key")
+    integer_key = HostileInt(7)
+    value = {
+        "strings": {string_key: HostileString("value")},
+        "numbers": {integer_key: HostileFloat(1.5)},
+        "decimal": HostileDecimal("2.50"),
+    }
+    armed = True
+
+    snapshot, digest = action_snapshot_and_sha256_of(value)
+
+    assert snapshot == {
+        "strings": {"key": "value"},
+        "numbers": {7: 1.5},
+        "decimal": "2.5",
+    }
+    assert all(type(key) is str for key in snapshot["strings"])
+    assert all(type(key) is int for key in snapshot["numbers"])
+    assert type(snapshot["strings"]["key"]) is str
+    assert type(snapshot["numbers"][7]) is float
+    assert digest == action_sha256_of(snapshot)
+
+
+def test_canonical_snapshot_rejects_keys_that_collide_after_normalization():
+    class SplitString(str):
+        def __new__(cls, value, identity):
+            instance = str.__new__(cls, value)
+            instance.identity = identity
+            return instance
+
+        def __hash__(self):
+            return hash((str.__str__(self), self.identity))
+
+        def __eq__(self, other):
+            return self is other
+
+    first = SplitString("same", 1)
+    second = SplitString("same", 2)
+
+    with pytest.raises(ValueError, match="not canonical JSON data"):
+        action_snapshot_and_sha256_of({first: 1, second: 2})
 
 
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):

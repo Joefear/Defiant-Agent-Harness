@@ -40,9 +40,13 @@ Finite floats use their deterministic Python JSON token representation, which
 is checked before the streaming JSON encoder runs. Canonical output for every
 previously accepted value remains byte-for-byte unchanged.
 
+As of v0.53, accepted integer, float, and Decimal subclasses are first converted
+to exact built-in numeric values without invoking caller conversion or
+formatting hooks. See `validated_scalar_ownership.md`.
+
 ## Read-only projection
 
-Command Core schema `0.46.0` publishes
+Command Core schema `0.47.0` publishes
 `action_hash_number_characters`, `tool_call_number_characters`, and
 `tool_result_output_number_characters` under `resource_limits`, plus
 `canonical_number_preflight: true`. Command Center renders only this static

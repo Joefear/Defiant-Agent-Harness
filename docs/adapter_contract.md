@@ -90,6 +90,11 @@ retained. Action provenance uses the same rule immediately before action
 fingerprinting. Adapter-defined list iterator views cannot substitute different
 request scope or provenance at the ownership boundary.
 
+Since v0.53, accepted scalar subclasses in requests, provenance, actions, tool
+calls, and tool results are normalized to exact built-in values before the
+owning seal. Adapter-defined scalar comparison, hashing, conversion, or copy
+hooks cannot remain in sealed authority state.
+
 Since v0.41, a handler or external-completion adapter must also return a
 bounded canonical `ToolResult`. The owning harness revalidates, detaches,
 hashes, and seals accepted output before completion. Invalid post-execution

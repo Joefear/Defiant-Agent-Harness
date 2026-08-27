@@ -52,6 +52,11 @@ v0.51 also makes the sealed `ToolCall` retain that validated snapshot directly.
 No post-validation `deepcopy()` or caller-container traversal occurs before
 adapter translation.
 
+v0.53 normalizes accepted call identity, nested scalar values, and mapping keys
+to exact built-ins before that snapshot is hashed and retained. Exotic keys
+that collide after normalization are refused. See
+`validated_scalar_ownership.md`.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
@@ -73,7 +78,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.46.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.47.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports

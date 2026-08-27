@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.52.
+logs. A full trusted-memory/DKE system is not part of v0.53.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.52 is
+## What v0.53 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -485,6 +485,15 @@ retained. List-subclass iterator views or validation-time caller mutations
 cannot enter a later detach pass. Existing accepted ordinary-list behavior and
 limit aliases remain unchanged; Command Center remains strictly read-only.
 
+v0.53 normalizes accepted scalar subclasses to exact built-in strings,
+integers, floats, decimals, and mapping keys before canonical hashing or
+governed-contract ownership. Caller-defined comparison, hashing, formatting,
+numeric-conversion, and copy hooks cannot remain inside sealed action,
+tool-call, tool-result, request, or provenance state. Canonical key collisions
+created by normalization fail closed instead of overwriting a value. Ordinary
+accepted canonical bytes and hashes remain unchanged; Command Center remains
+strictly read-only.
+
 ## Install
 
 ```bash
@@ -820,7 +829,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.52 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.53 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -868,6 +877,7 @@ fixed pre-render canonical-string token byte ceilings,
 fixed pre-encoding canonical-number token ceilings,
 fixed governed-request and provenance metadata complexity ceilings,
 fixed validated built-in snapshots for request and provenance collections,
+fixed validated built-in scalar ownership across governed contracts,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -903,6 +913,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_canonical_snapshot.md`,
 `docs/validated_snapshot_ownership.md`,
 `docs/validated_contract_collection_snapshots.md`,
+`docs/validated_scalar_ownership.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,

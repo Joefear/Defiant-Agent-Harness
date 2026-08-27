@@ -63,6 +63,7 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - detached validated canonical snapshots before encoder traversal;
 - direct validated-snapshot ownership without post-validation deep copies;
 - validated built-in snapshots for request and action-provenance collections;
+- validated built-in scalar ownership across governed contracts;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -86,7 +87,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.46.0`. The browser cannot raise, disable, or replace them and never receives
+`0.47.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

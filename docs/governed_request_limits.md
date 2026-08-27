@@ -35,6 +35,10 @@ before validation, validates those exact tuples, adopts them without another
 caller-list traversal, and seals every request field. See
 `validated_contract_collection_snapshots.md`.
 
+As of v0.53, request identity, scope, timestamps, allowlist entries, and
+provenance metadata are also normalized to exact built-in strings before the
+sealed contract retains them. See `validated_scalar_ownership.md`.
+
 This second check is essential: Python callers can mutate an otherwise valid
 dataclass between construction and submission. A changed task, identifier,
 allowlist, budget, provenance list, timestamp, or context field is either
@@ -48,7 +52,7 @@ execution for a request it could not safely accept.
 
 ## Read-only projection
 
-Command Core schema `0.46.0` publishes all eight fixed ceilings under
+Command Core schema `0.47.0` publishes all eight fixed ceilings under
 `resource_limits` and reports `request_contract_preflight: true`. Command
 Center renders only this static posture. Neither surface can submit or edit a
 request, change a ceiling, accept an exception, approve, or execute.

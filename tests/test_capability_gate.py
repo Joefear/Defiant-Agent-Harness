@@ -394,3 +394,39 @@ def test_tool_result_seal_adopts_validated_snapshot_without_deepcopy_hooks():
     assert type(result.output) is dict
     assert result.output == {"nested": ["accepted"]}
     assert result.output_hash == expected_hash
+
+
+def test_tool_result_seal_owns_exact_builtin_scalars_without_subclass_hooks():
+    armed = False
+
+    class HostileString(str):
+        def __hash__(self):
+            if armed:
+                raise AssertionError("tool-result scalar hash hook must not run")
+            return str.__hash__(self)
+
+        def __len__(self):
+            if armed:
+                raise AssertionError("tool-result scalar length hook must not run")
+            return str.__len__(self)
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("tool-result scalar deepcopy hook must not run")
+
+    key = HostileString("key")
+    result = ToolResult(
+        status=HostileString("succeeded"),
+        summary=HostileString("accepted"),
+        output={key: HostileString("value")},
+    )
+    result.status = HostileString("succeeded")
+    result.summary = HostileString("accepted")
+    armed = True
+
+    result.seal_contract()
+
+    assert type(result.status) is str
+    assert type(result.summary) is str
+    assert type(next(iter(result.output))) is str
+    assert type(result.output["key"]) is str
+    result.validate_fields()

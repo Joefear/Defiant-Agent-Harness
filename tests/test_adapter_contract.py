@@ -222,6 +222,49 @@ def test_tool_call_seal_adopts_validated_snapshot_without_deepcopy_hooks():
     assert call.contract_hash == expected_hash
 
 
+def test_tool_call_seal_owns_exact_builtin_scalars_without_subclass_hooks():
+    armed = False
+
+    class HostileString(str):
+        def __hash__(self):
+            if armed:
+                raise AssertionError("tool-call scalar hash hook must not run")
+            return str.__hash__(self)
+
+        def __len__(self):
+            if armed:
+                raise AssertionError("tool-call scalar length hook must not run")
+            return str.__len__(self)
+
+        def strip(self, *args, **kwargs):
+            if armed:
+                raise AssertionError("tool-call scalar strip hook must not run")
+            return str.strip(self, *args, **kwargs)
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("tool-call scalar deepcopy hook must not run")
+
+    key = HostileString("key")
+    call = ToolCall(
+        HostileString("tool"),
+        arguments={key: HostileString("value")},
+        call_id=HostileString("call"),
+        server=HostileString("server"),
+    )
+    call.name = HostileString("tool")
+    call.call_id = HostileString("call")
+    call.server = HostileString("server")
+    armed = True
+
+    call.seal_contract()
+
+    assert type(call.name) is str
+    assert type(call.call_id) is str
+    assert type(call.server) is str
+    assert type(next(iter(call.arguments))) is str
+    assert type(call.arguments["key"]) is str
+
+
 def test_pre_adapter_oversize_fails_before_translation_or_authority(
     tmp_path, monkeypatch
 ):

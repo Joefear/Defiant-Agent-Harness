@@ -67,8 +67,15 @@ class ToolSpec:
     target_scope: str = "any"  # any | workspace | workspace_path
 
     def __post_init__(self) -> None:
-        if not isinstance(self.name, str) or not self.name.strip():
+        if not isinstance(self.name, str):
             raise ValueError("tool name must be non-empty")
+        object.__setattr__(self, "name", str.__str__(self.name))
+        if not self.name.strip():
+            raise ValueError("tool name must be non-empty")
+        if isinstance(self.description, str):
+            object.__setattr__(self, "description", str.__str__(self.description))
+        if isinstance(self.target_scope, str):
+            object.__setattr__(self, "target_scope", str.__str__(self.target_scope))
         if not isinstance(self.side_effect_level, SideEffect):
             object.__setattr__(
                 self, "side_effect_level", SideEffect(self.side_effect_level)
@@ -132,7 +139,14 @@ class ToolResult:
         object.__setattr__(self, "_contract_sealed", True)
 
     def _validate_fields(self) -> None:
-        if not isinstance(self.status, str) or self.status not in {
+        if not isinstance(self.status, str):
+            raise ToolResultContractError(
+                "tool result status is invalid",
+                limit_enforced="tool_result_status",
+            )
+        if type(self.status) is not str:
+            self.status = str.__str__(self.status)
+        if self.status not in {
             "succeeded",
             "failed",
         }:
@@ -145,6 +159,8 @@ class ToolResult:
                 "tool result summary must be a string",
                 limit_enforced="tool_result_summary_contract",
             )
+        if type(self.summary) is not str:
+            self.summary = str.__str__(self.summary)
         if len(self.summary) > MAX_TOOL_RESULT_SUMMARY_CHARACTERS:
             raise ToolResultLimitError(
                 "tool result summary exceeds maximum of "
@@ -157,7 +173,12 @@ class ToolResult:
                 limit_enforced="tool_result_dry_run",
             )
         try:
-            self.cost_usd = money(self.cost_usd, field_name="tool result cost_usd")
+            normalized_cost = money(
+                self.cost_usd,
+                field_name="tool result cost_usd",
+            )
+            if type(self.cost_usd) is not Decimal:
+                self.cost_usd = normalized_cost
         except ValueError as exc:
             raise ToolResultContractError(
                 "tool result cost is invalid",

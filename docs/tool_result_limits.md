@@ -47,6 +47,10 @@ v0.51 also makes the sealed `ToolResult` retain that validated snapshot
 directly. No post-validation `deepcopy()` or caller-container traversal occurs
 before the result becomes owned evidence input.
 
+v0.53 normalizes accepted result status, summary, cost, nested scalar values,
+and mapping keys to exact built-ins before ownership. Exotic keys that collide
+after normalization are refused. See `validated_scalar_ownership.md`.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
@@ -70,7 +74,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.46.0` publishes the summary and output ceilings under
+Command Core schema `0.47.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

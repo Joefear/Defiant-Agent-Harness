@@ -19,7 +19,16 @@ def money(value: MoneyLike, *, field_name: str = "amount") -> Decimal:
     if isinstance(value, bool):
         raise ValueError(f"{field_name} must be a monetary number, not boolean")
     try:
-        result = value if isinstance(value, Decimal) else Decimal(str(value))
+        if isinstance(value, Decimal):
+            result = Decimal(value)
+        elif isinstance(value, str):
+            result = Decimal(str.__str__(value))
+        elif isinstance(value, int):
+            result = Decimal(int.__int__(value))
+        elif isinstance(value, float):
+            result = Decimal(str(float.__float__(value)))
+        else:
+            result = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a valid monetary number") from exc
     if not result.is_finite():

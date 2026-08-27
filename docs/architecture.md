@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.52
+## What is deliberately absent from v0.53
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -741,6 +741,13 @@ contract collections. List-subclass iterator views and mutations triggered
 during validation cannot enter a later detach pass. Existing limit aliases and
 accepted ordinary-list behavior are unchanged. See
 `validated_contract_collection_snapshots.md`.
+
+v0.53 converts accepted scalar subclasses and canonical mapping keys to exact
+built-in values before hashing and ownership. Sealed requests, provenance,
+actions, tool calls, and tool results therefore cannot carry caller-defined
+scalar comparison, hashing, formatting, numeric-conversion, or copy behavior
+into later authority work. Normalization collisions between exotic mapping
+keys fail closed. See `validated_scalar_ownership.md`.
 
 ## Known limits
 
