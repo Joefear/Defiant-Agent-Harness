@@ -98,6 +98,9 @@ class ToolCall:
             return self._sealed_contract_hash
         self._validate_fields()
         snapshot, contract_hash = _tool_call_contract_snapshot(self._contract_surface())
+        object.__setattr__(self, "name", snapshot["name"])
+        object.__setattr__(self, "call_id", snapshot["call_id"])
+        object.__setattr__(self, "server", snapshot["server"])
         object.__setattr__(self, "arguments", snapshot["arguments"])
         object.__setattr__(self, "transport_params", snapshot["transport_params"])
         object.__setattr__(self, "_sealed_contract_hash", contract_hash)
@@ -129,7 +132,14 @@ class ToolCall:
         _tool_call_contract_hash(self._contract_surface())
 
     def _validate_fields(self) -> None:
-        if not isinstance(self.name, str) or not self.name.strip():
+        if not isinstance(self.name, str):
+            raise ToolCallContractError(
+                "tool call name must be a non-empty string",
+                limit_enforced="tool_call_name_contract",
+            )
+        if type(self.name) is not str:
+            self.name = str.__str__(self.name)
+        if not self.name.strip():
             raise ToolCallContractError(
                 "tool call name must be a non-empty string",
                 limit_enforced="tool_call_name_contract",
@@ -147,6 +157,9 @@ class ToolCall:
                     f"tool call {field_name} must be a string",
                     limit_enforced="tool_call_identifier_contract",
                 )
+            value = str.__str__(value)
+            if type(getattr(self, field_name)) is not str:
+                setattr(self, field_name, value)
             if len(value) > MAX_TOOL_CALL_IDENTIFIER_CHARACTERS:
                 raise ToolCallLimitError(
                     "tool call identifier exceeds maximum of "

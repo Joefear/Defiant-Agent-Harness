@@ -713,6 +713,15 @@ the owned collection differ from the validated view. v0.52 captures built-in
 list storage first, validates that exact bounded tuple, and adopts it directly.
 This is deterministic contract ownership, not general thread isolation.
 
+**Scalar-subclass behavior after validation.** Through v0.52, validated
+snapshots detached built-in containers but could retain subclasses of accepted
+strings, integers, floats, decimals, and mapping keys. Caller-defined hashing,
+comparison, formatting, numeric conversion, or copy hooks could therefore run
+after validation during registry lookup, durable snapshotting, or evidence
+work. v0.53 normalizes accepted scalars to exact built-ins before hashing and
+ownership, and refuses keys that collide after normalization. This does not
+sandbox arbitrary Python already executing inside the harness process.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

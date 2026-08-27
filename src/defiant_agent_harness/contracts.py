@@ -233,11 +233,19 @@ class ContentRef:
     label: str = ""
 
     def __post_init__(self) -> None:
-        _require_text(self.ref_id, "ref_id")
-        _require_text(self.origin, "origin")
-        _require_text(self.content_hash, "content_hash")
+        object.__setattr__(self, "ref_id", _require_text(self.ref_id, "ref_id"))
+        object.__setattr__(self, "origin", _require_text(self.origin, "origin"))
+        object.__setattr__(
+            self,
+            "content_hash",
+            _require_text(self.content_hash, "content_hash"),
+        )
         for field_name in ("ref_id", "origin", "content_hash", "label"):
-            _require_provenance_text(getattr(self, field_name), field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                _require_provenance_text(getattr(self, field_name), field_name),
+            )
         if not isinstance(self.trust, Trust):
             object.__setattr__(self, "trust", Trust(self.trust))
 
@@ -318,11 +326,18 @@ class HarnessRequest:
                 self.budget_limit_usd, field_name="budget_limit_usd"
             )
         self.created_at = _utc_timestamp(self.created_at, "created_at")
-        _require_text(self.task, "task")
-        _require_text(self.user_id, "user_id")
-        _require_text(self.workspace_id, "workspace_id")
-        _require_text(self.request_id, "request_id")
-        _require_text(self.task_type, "task_type")
+        for field_name in (
+            "task",
+            "user_id",
+            "workspace_id",
+            "request_id",
+            "task_type",
+        ):
+            setattr(
+                self,
+                field_name,
+                _require_text(getattr(self, field_name), field_name),
+            )
         _require_request_text(self.task, "task", MAX_REQUEST_TEXT_ITEM_CHARACTERS)
         for field_name in ("user_id", "workspace_id", "request_id", "task_type"):
             _require_request_text(
@@ -342,14 +357,20 @@ class HarnessRequest:
             ),
             limit_enforced="request_allowed_tools",
         )
-        if any(not isinstance(name, str) or not name.strip() for name in allowed_tools):
-            raise ValueError("allowed_tools must contain non-empty strings")
+        normalized_allowed_tools: list[str] = []
         for name in allowed_tools:
+            if not isinstance(name, str):
+                raise ValueError("allowed_tools must contain non-empty strings")
+            normalized = str.__str__(name)
+            if not normalized.strip():
+                raise ValueError("allowed_tools must contain non-empty strings")
             _require_request_text(
-                name,
+                normalized,
                 "allowed tool",
                 MAX_REQUEST_ALLOWED_TOOL_CHARACTERS,
             )
+            normalized_allowed_tools.append(normalized)
+        allowed_tools = tuple(normalized_allowed_tools)
         if not isinstance(self.inputs, list):
             raise ValueError("inputs must be a list")
         inputs = _snapshot_bounded_contract_list(
@@ -446,9 +467,13 @@ class ProposedAction:
         self._validate_contract()
 
     def _validate_contract(self) -> tuple[ContentRef, ...]:
-        _require_text(self.tool_name, "tool_name")
-        _require_text(self.target, "target")
-        _require_text(self.action_id, "action_id")
+        self.tool_name = _require_text(self.tool_name, "tool_name")
+        self.target = _require_text(self.target, "target")
+        self.action_id = _require_text(self.action_id, "action_id")
+        if isinstance(self.request_id, str):
+            self.request_id = str.__str__(self.request_id)
+        if isinstance(self.agent_reason, str):
+            self.agent_reason = str.__str__(self.agent_reason)
         if not isinstance(self.payload, dict):
             raise ValueError("payload must be a dictionary")
         if not isinstance(self.side_effect_level, SideEffect):
@@ -850,37 +875,42 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             elif current != family:
                 raise ValueError("action hash input is not canonical JSON data")
 
-    def visit_key(value: Any, depth: int) -> int:
+    def visit_key(value: Any, depth: int) -> tuple[Any, int]:
         claim_node(depth)
         if isinstance(value, enum.Enum):
             return visit_key(value.value, depth)
         if isinstance(value, Decimal):
-            width = _validate_action_hash_string_token(_bounded_money_text(value))
+            normalized = Decimal(value)
+            text = _bounded_money_text(normalized)
+            width = _validate_action_hash_string_token(text)
             consume(width)
-            return width
+            return text, width
         if isinstance(value, str):
-            width = _validate_action_hash_scalar(value)
+            normalized = str.__str__(value)
+            width = _validate_action_hash_scalar(normalized)
             consume(width)
-            return width
+            return normalized, width
         if isinstance(value, bool):
             width = 6 if value else 7
             consume(width)
-            return width
+            return value, width
         if value is None:
             consume(6)
-            return 6
+            return None, 6
         if isinstance(value, int):
-            width = _validate_action_hash_integer(value) + 2
+            normalized = int.__int__(value)
+            width = _validate_action_hash_integer(normalized) + 2
             consume(width)
-            return width
+            return normalized, width
         if isinstance(value, float):
-            if not math.isfinite(value):
+            normalized = float.__float__(value)
+            if not math.isfinite(normalized):
                 raise ValueError("action hash input contains a non-finite number")
-            text = float.__repr__(value)
+            text = float.__repr__(normalized)
             _validate_action_hash_number_text(text)
             width = len(text) + 2
             consume(width)
-            return width
+            return normalized, width
         _action_hash_default(value)
 
     def visit(value: Any, depth: int) -> Any:
@@ -888,12 +918,13 @@ def _validate_action_hash_structure(obj: Any) -> Any:
         if isinstance(value, enum.Enum):
             return visit(value.value, depth)
         if isinstance(value, Decimal):
-            text = _bounded_money_text(value)
+            text = _bounded_money_text(Decimal(value))
             consume(_validate_action_hash_string_token(text))
             return text
         if isinstance(value, str):
-            consume(_validate_action_hash_scalar(value))
-            return value
+            normalized = str.__str__(value)
+            consume(_validate_action_hash_scalar(normalized))
+            return normalized
         if isinstance(value, bool):
             consume(4 if value else 5)
             return value
@@ -901,15 +932,17 @@ def _validate_action_hash_structure(obj: Any) -> Any:
             consume(4)
             return None
         if isinstance(value, int):
-            consume(_validate_action_hash_integer(value))
-            return value
+            normalized = int.__int__(value)
+            consume(_validate_action_hash_integer(normalized))
+            return normalized
         if isinstance(value, float):
-            if not math.isfinite(value):
+            normalized = float.__float__(value)
+            if not math.isfinite(normalized):
                 raise ValueError("action hash input contains a non-finite number")
-            text = float.__repr__(value)
+            text = float.__repr__(normalized)
             _validate_action_hash_number_text(text)
             consume(len(text))
-            return value
+            return normalized
         if isinstance(value, dict):
             entry_count = dict.__len__(value)
             if entry_count > MAX_ACTION_HASH_MAPPING_ENTRIES:
@@ -934,20 +967,28 @@ def _validate_action_hash_structure(obj: Any) -> Any:
                 # touching any value. A late oversized or non-finite key must
                 # not permit an earlier value to trigger attacker-controlled
                 # traversal first.
+                normalized_keys: list[Any] = []
+                normalized_key_set: set[Any] = set()
                 for key in keys:
-                    key_width = visit_key(key, depth + 1)
+                    normalized_key, key_width = visit_key(key, depth + 1)
                     consume_mapping_sort_work(key_width, sort_rounds)
-                for index, key in enumerate(keys):
+                    if normalized_key in normalized_key_set:
+                        raise ValueError("action hash input is not canonical JSON data")
+                    normalized_keys.append(normalized_key)
+                    normalized_key_set.add(normalized_key)
+                items = list(dict.items(value))
+                if len(items) != entry_count or any(
+                    item_key is not key
+                    for key, (item_key, _) in zip(keys, items, strict=True)
+                ):
+                    raise RuntimeError("mapping changed during canonical snapshot")
+                for index, ((_, child), normalized_key) in enumerate(
+                    zip(items, normalized_keys, strict=True)
+                ):
                     if index:
                         consume(1)
                     consume(1)
-                    try:
-                        child = dict.__getitem__(value, key)
-                    except KeyError as exc:
-                        raise RuntimeError(
-                            "mapping changed during canonical snapshot"
-                        ) from exc
-                    snapshot[key] = visit(child, depth + 1)
+                    snapshot[normalized_key] = visit(child, depth + 1)
                 if dict.__len__(value) != entry_count:
                     raise RuntimeError("mapping changed during canonical snapshot")
             finally:
@@ -1130,15 +1171,17 @@ def _require_request_text(value: str, field_name: str, maximum: int) -> None:
         )
 
 
-def _require_provenance_text(value: Any, field_name: str) -> None:
+def _require_provenance_text(value: Any, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field_name} must be a string")
-    if len(value) > MAX_PROVENANCE_TEXT_ITEM_CHARACTERS:
+    normalized = str.__str__(value)
+    if len(normalized) > MAX_PROVENANCE_TEXT_ITEM_CHARACTERS:
         raise RequestLimitError(
             "provenance metadata item exceeds maximum of "
             f"{MAX_PROVENANCE_TEXT_ITEM_CHARACTERS} characters",
             limit_enforced="provenance_text_item",
         )
+    return normalized
 
 
 def _snapshot_bounded_contract_list(
@@ -1222,13 +1265,20 @@ def _require_aggregate_text(
         used += len(value)
 
 
-def _require_text(value: Any, field_name: str) -> None:
-    if not isinstance(value, str) or not value.strip():
+def _require_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str):
         raise ValueError(f"{field_name} must be a non-empty string")
+    normalized = str.__str__(value)
+    if not normalized.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return normalized
 
 
 def _utc_timestamp(value: Any, field_name: str) -> str:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be an RFC3339 timestamp")
+    value = str.__str__(value)
+    if not value:
         raise ValueError(f"{field_name} must be an RFC3339 timestamp")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))

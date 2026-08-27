@@ -40,9 +40,14 @@ hashed successfully before v0.48 retains identical canonical bytes and hashes.
 Mappings rejected by the older encoder are rejected earlier with the same
 sanitized public failure type and owning contract classification.
 
+As of v0.53, accepted string and numeric key subclasses are normalized to exact
+built-in keys before the validated snapshot is encoded or retained. Distinct
+caller keys that collapse to one canonical built-in key are refused rather than
+silently overwriting a value. See `validated_scalar_ownership.md`.
+
 ## Read-only projection
 
-Command Core schema `0.46.0` reports
+Command Core schema `0.47.0` reports
 `canonical_mapping_key_preflight: true` and
 `complete_mapping_key_preflight: true`. Command Center renders only that static
 posture. It cannot submit a mapping, alter the contract, approve, reconcile, or
@@ -50,8 +55,8 @@ execute.
 
 ## Limits of the control
 
-The preflight handles built-in canonical key families and trusted subclasses;
-it is not an operating-system sandbox against malicious Python already running
+The preflight handles built-in canonical key families and normalizes accepted
+subclasses; it is not an operating-system sandbox against Python already running
 inside the harness process. It does not call comparison operators, prove
 business meaning, impose a process-wide traffic quota, or replace the existing
 sort-work budget and deployment isolation.

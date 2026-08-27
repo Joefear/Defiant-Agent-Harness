@@ -25,6 +25,10 @@ text volume, and provenance counts against the captured tuple. The owning
 request or action then retains that exact tuple. It does not iterate the caller
 list again after validation.
 
+v0.53 additionally normalizes accepted entries and provenance metadata to exact
+built-in strings before retaining the tuple. See
+`validated_scalar_ownership.md`.
+
 ## Authority behavior
 
 Request sealing repeats scalar normalization and collection capture immediately
@@ -52,7 +56,7 @@ snapshot.
 
 ## Read-only projection
 
-Command Core schema `0.46.0` reports
+Command Core schema `0.47.0` reports
 `validated_contract_collection_snapshots: true`. Command Center renders only
 this static posture. It cannot submit or alter a request, provenance, limit,
 approval, reconciliation, policy, or execution.

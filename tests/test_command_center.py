@@ -184,6 +184,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
         b"snapshot adopted directly by action, tool-call, and tool-result owners; "
         b"request allowlist, request input, and action provenance collections "
         b"snapshotted from built-in storage before validation; "
+        b"accepted scalar subclasses normalized to exact built-in values before "
+        b"ownership; "
         b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "

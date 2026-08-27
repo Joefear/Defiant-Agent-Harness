@@ -21,6 +21,9 @@ recursively during the bounded traversal, so a mutable Enum value cannot change
 between validation and encoding. Decimal values are converted to their already
 defined bounded canonical string during the same pass.
 
+As of v0.53, accepted scalar subclasses and mapping keys are also converted to
+exact built-in values during this pass. See `validated_scalar_ownership.md`.
+
 The existing defenses still apply to the snapshot:
 
 - nesting depth and total visited nodes;
@@ -45,7 +48,7 @@ contract aliases. No rejected content is echoed.
 
 ## Read-only projection
 
-Command Core schema `0.46.0` reports
+Command Core schema `0.47.0` reports
 `validated_canonical_snapshot: true`. Command Center renders only this static
 posture. It cannot supply canonical input, modify limits, approve, reconcile,
 or execute.

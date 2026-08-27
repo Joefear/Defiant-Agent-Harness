@@ -36,9 +36,14 @@ A token that cannot fit is therefore refused before `JSONEncoder.iterencode()`
 can allocate its expanded representation. Accepted canonical bytes and hashes
 remain unchanged.
 
+As of v0.53, accepted string subclasses are converted to exact built-in strings
+before these checks and before snapshot ownership. Caller-defined string,
+hashing, or copy hooks do not enter later authority work. See
+`validated_scalar_ownership.md`.
+
 ## Read-only projection
 
-Command Core schema `0.46.0` publishes
+Command Core schema `0.47.0` publishes
 `action_hash_string_token_bytes`, `tool_call_string_token_bytes`, and
 `tool_result_output_string_token_bytes` under `resource_limits`, plus
 `canonical_string_preflight: true`. Command Center renders only this static
