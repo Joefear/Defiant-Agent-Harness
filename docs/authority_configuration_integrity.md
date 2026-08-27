@@ -32,12 +32,16 @@ diagnostics include only the configuration filename and a sanitized reason,
 never the source snippet or absolute path.
 
 The normalized policy rules, known tools, and other authority inputs continue
-to determine the existing `ruleset_hash`. The parser profile does not create a
-second policy language or weaken strictest-wins and default-deny behavior.
+to determine the existing `ruleset_hash`. Since v0.55, `PolicyEngine` first
+captures those values as bounded canonical built-ins and retains only that
+detached observation. Evaluation and the published hash therefore do not
+diverge when a programmatic caller later mutates its original containers. The
+parser profile does not create a second policy language or weaken
+strictest-wins and default-deny behavior.
 
 ## Read-only projection
 
-Command Core schema `0.48.0` reports the static parser profile, both refusal
+Command Core schema `0.49.0` reports the static parser profile, both refusal
 flags, and the policy-pack byte ceiling. Command Center renders this metadata
 read-only. Neither surface receives configuration source, uploads a pack,
 changes a limit, accepts a parser exception, rotates a profile, or launches an
@@ -49,7 +53,9 @@ This control removes YAML interpretation ambiguity; it does not establish that
 a clear policy is correct or complete. Operators still must review tool
 classifications, write adversarial policy tests, protect configuration paths,
 and use immutable deployment controls where required. The ceiling is per file;
-in-process callers remain trusted under the existing Python boundary.
+Python code already running in-process remains trusted under the existing
+boundary, but caller-owned configuration containers no longer remain live
+inside `PolicyEngine` after construction.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
 
@@ -69,3 +75,7 @@ construction and before configuration transformation. See
 v0.36 adds complete-ruleset per-item and aggregate policy text ceilings after
 YAML construction and before rule construction or hashing. See
 `policy_text_limits.md`.
+
+v0.55 adds validated policy snapshot ownership without changing the parser
+profile or ordinary policy hashes. See
+`validated_policy_snapshot_ownership.md`.

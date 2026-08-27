@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.54
+## What is deliberately absent from v0.55
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -757,6 +757,14 @@ grant claims, evidence hashing, or serialization. A finite negative remaining
 balance uses bounded signed-decimal rendering so an actual overrun remains
 representable without permitting negative costs or reservations. See
 `validated_authority_record_ownership.md`.
+
+v0.55 captures policy packs, registry-supplied known tools, and authority
+inputs into one bounded canonical built-in tree before `PolicyEngine` creates
+rules or publishes `ruleset_hash`. Evaluation retains only data descended from
+that observation, so later mutations to caller-owned nested containers cannot
+change policy behavior under a stale hash. The stable authority snapshot
+profile is independent of live action-limit constant changes. See
+`validated_policy_snapshot_ownership.md`.
 
 ## Known limits
 

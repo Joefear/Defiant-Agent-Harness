@@ -136,6 +136,25 @@ def action_snapshot_and_sha256_of(obj: Any) -> tuple[Any, str]:
     return snapshot, _sha256_of_validated_action_snapshot(snapshot)
 
 
+def authority_snapshot_of(obj: Any) -> Any:
+    """Return a detached, bounded canonical snapshot of authority material.
+
+    Unlike the action-hash profile, these ceilings are captured when this
+    module is loaded. Authority records and configuration therefore cannot be
+    made more permissive by changing the live action-limit constants.
+    """
+
+    try:
+        return _validate_action_hash_structure(
+            obj,
+            limits=_AUTHORITY_RECORD_CANONICAL_LIMITS,
+        )
+    except ActionHashLimitError as exc:
+        raise ValueError("authority snapshot exceeds canonical limits") from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError("authority snapshot must contain canonical data") from exc
+
+
 def _sha256_of_validated_action_snapshot(snapshot: Any) -> str:
     """Hash a snapshot returned by ``_validate_action_hash_structure``."""
 

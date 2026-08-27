@@ -29,6 +29,7 @@ from ..contracts import (
     ProposedAction,
     SideEffect,
     Trust,
+    authority_snapshot_of,
     sha256_of,
     side_effect_rank,
 )
@@ -410,6 +411,15 @@ def _validate_policy_pack_input_count(count: int) -> None:
         raise PolicyError(f"policy pack count exceeds maximum of {MAX_POLICY_PACKS}")
 
 
+def _snapshot_policy_configuration(value: Any, label: str) -> Any:
+    """Capture policy authority without retaining caller-owned containers."""
+
+    try:
+        return authority_snapshot_of(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must contain bounded canonical data") from exc
+
+
 class PolicyEngine:
     def __init__(
         self,
@@ -417,15 +427,30 @@ class PolicyEngine:
         name: str = "custom",
         authority_inputs: dict[str, Any] | None = None,
     ):
-        _validate_policy_complexity(packs)
-        self.name = name
+        if not isinstance(packs, (list, tuple)):
+            raise ValueError("policy packs must be a sequence")
+        observed_packs = _snapshot_policy_configuration(packs, "policy packs")
+        if not isinstance(observed_packs, (list, tuple)):
+            raise ValueError("policy packs must be a sequence")
+        packs_snapshot = list(observed_packs)
+        authority_snapshot = _snapshot_policy_configuration(
+            {} if authority_inputs is None else authority_inputs,
+            "policy authority inputs",
+        )
+        if not isinstance(authority_snapshot, dict):
+            raise ValueError("policy authority inputs must be a mapping")
+        if not isinstance(name, str):
+            raise ValueError("policy name must be a string")
+
+        _validate_policy_complexity(packs_snapshot)
+        self.name = str.__str__(name)
         self.version = "0"
         self.rules: list[Rule] = []
         self.known_tools: list[str] = []
-        self.authority_inputs = authority_inputs or {}
+        self.authority_inputs = authority_snapshot
         versions: list[str] = []
         seen_rule_ids: set[str] = set()
-        for pack in packs:
+        for pack in packs_snapshot:
             if not isinstance(pack, dict):
                 raise ValueError("each policy pack must be a mapping")
             if set(pack) - _PACK_FIELDS:
@@ -532,12 +557,31 @@ class PolicyEngine:
         additional_known_tools: list[str] | None = None,
         authority_inputs: dict[str, Any] | None = None,
     ) -> "PolicyEngine":
-        packs = list(loaded.packs)
-        if additional_known_tools:
+        try:
+            loaded_packs = _snapshot_policy_configuration(
+                loaded.packs,
+                "loaded policy packs",
+            )
+            additional_tools = _snapshot_policy_configuration(
+                [] if additional_known_tools is None else additional_known_tools,
+                "additional known tools",
+            )
+        except ValueError as exc:
+            raise PolicyError(f"invalid policy configuration: {exc}") from exc
+        if not isinstance(loaded_packs, (list, tuple)):
+            raise PolicyError(
+                "invalid policy configuration: loaded packs must be a sequence"
+            )
+        if not isinstance(additional_tools, list):
+            raise PolicyError(
+                "invalid policy configuration: additional known tools must be a list"
+            )
+        packs = list(loaded_packs)
+        if additional_tools:
             packs.append(
                 {
                     "version": "registry-v1",
-                    "known_tools": sorted(additional_known_tools),
+                    "known_tools": sorted(additional_tools),
                     "rules": [],
                 }
             )

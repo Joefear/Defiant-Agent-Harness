@@ -52,7 +52,7 @@ remains responsible for that uncertain outcome.
 
 ## Read-only projection
 
-Command Core schema `0.48.0` reports `validated_scalar_ownership: true`.
+Command Core schema `0.49.0` reports `validated_scalar_ownership: true`.
 Command Center renders only this static posture. It cannot submit a scalar,
 alter normalization or limits, approve, reconcile, authorize, or execute.
 
