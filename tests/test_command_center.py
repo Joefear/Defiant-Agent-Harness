@@ -215,6 +215,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy decision context bounded and retained" in javascript
     assert b"validated_operation_journal_snapshot" in javascript
     assert b"operation journal payload bounded" in javascript
+    assert b"validated_native_hook_event_snapshot" in javascript
+    assert b"native hook retry identity" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript
     assert b"json_lexical_tokens" in javascript

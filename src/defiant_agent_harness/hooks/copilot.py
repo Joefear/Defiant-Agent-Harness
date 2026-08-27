@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import sys
@@ -22,6 +21,7 @@ from ..contracts import (
     SideEffect,
     Trust,
     action_sha256_of,
+    authority_snapshot_of,
     sha256_of,
 )
 from ..limits import MAX_HOOK_EVENT_BYTES, MAX_TRUSTED_PUBLIC_KEYS
@@ -219,6 +219,9 @@ class CopilotHookAdapter(AgentAdapter):
         return ()
 
     def call_from_event(self, event: dict[str, Any]) -> ToolCall:
+        return self._call_from_snapshot(_hook_event_snapshot(event))
+
+    def _call_from_snapshot(self, event: dict[str, Any]) -> ToolCall:
         native_name, tool_input, tool_use_id = _tool_fields(event)
         canonical_name, _, target_scope = classify_native_tool(native_name)
         target = _target_for(
@@ -232,7 +235,7 @@ class CopilotHookAdapter(AgentAdapter):
             arguments={
                 "_native_tool_name": native_name,
                 "_defiant_target": target,
-                "tool_input": copy.deepcopy(tool_input),
+                "tool_input": tool_input,
             },
             call_id=tool_use_id,
             server=self.server_name,
@@ -244,7 +247,7 @@ class CopilotHookAdapter(AgentAdapter):
     def payload_for(self, call: ToolCall) -> dict[str, Any]:
         return {
             "native_tool_name": call.arguments.get("_native_tool_name", ""),
-            "tool_input": copy.deepcopy(call.arguments.get("tool_input", {})),
+            "tool_input": call.arguments.get("tool_input", {}),
         }
 
     def provenance_for(self, call: ToolCall) -> list[ContentRef]:
@@ -332,6 +335,7 @@ class CopilotHookGate:
         self.executions = HookExecutionStore(self.state_root / "hook_executions.json")
 
     def pre_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
+        event = _hook_event_snapshot(event)
         native_name, tool_input, tool_use_id = _tool_fields(event)
         self.adapter.model_id = _string_field(event, "model")
         execution_key = self._execution_key(event, native_name, tool_input)
@@ -351,7 +355,7 @@ class CopilotHookGate:
             allowed_tools=self.registry.names(),
         )
         outcome = self.harness.preflight_external_call(
-            self.adapter.call_from_event(event),
+            self.adapter._call_from_snapshot(event),
             request,
             execution_owner=self.execution_owner,
             execution_key=execution_key,
@@ -370,6 +374,7 @@ class CopilotHookGate:
         return _pre_output(outcome)
 
     def post_tool_use(self, event: dict[str, Any]) -> dict[str, Any]:
+        event = _hook_event_snapshot(event)
         native_name, tool_input, tool_use_id = _tool_fields(event)
         self.adapter.model_id = _string_field(event, "model")
         canonical_name, _, _ = classify_native_tool(native_name)
@@ -558,7 +563,18 @@ def _tool_fields(event: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
         raise ValueError("hook input tool_input must be an object")
     if not use_id:
         use_id = _synthetic_tool_use_id(event, name, tool_input)
-    return name, copy.deepcopy(tool_input), use_id
+    return name, tool_input, use_id
+
+
+def _hook_event_snapshot(event: Any) -> dict[str, Any]:
+    """Own one bounded canonical observation before hook translation."""
+    try:
+        snapshot = authority_snapshot_of(event)
+    except ValueError as exc:
+        raise ValueError("hook input must contain bounded canonical data") from exc
+    if not isinstance(snapshot, dict):
+        raise ValueError("hook input must be a JSON object")
+    return snapshot
 
 
 def _first_field(event: dict[str, Any], *names: str) -> Any:
@@ -593,14 +609,12 @@ def _synthetic_tool_use_id(
 
 
 def _tool_response(event: dict[str, Any]) -> Any:
-    return copy.deepcopy(
-        _first_field(
-            event,
-            "tool_response",
-            "toolResponse",
-            "tool_result",
-            "toolResult",
-        )
+    return _first_field(
+        event,
+        "tool_response",
+        "toolResponse",
+        "tool_result",
+        "toolResult",
     )
 
 

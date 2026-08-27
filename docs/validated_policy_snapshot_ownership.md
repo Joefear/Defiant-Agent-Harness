@@ -42,7 +42,7 @@ after capture.
 
 ## Read-only projection
 
-Command Core schema `0.52.0` reports
+Command Core schema `0.53.0` reports
 `validated_policy_snapshot_ownership: true` under
 `authority_configuration`. Command Center renders that posture only as text in
 its fixed-limit summary. Neither surface receives policy contents, changes a

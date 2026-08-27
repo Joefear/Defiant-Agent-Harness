@@ -773,6 +773,19 @@ and hashes one bounded canonical snapshot, seals the private retained tree, and
 enforces the 4 MiB ceiling on both publication and recovery reads. It does not
 infer an unknown external outcome or make trusted in-process Python untrusted.
 
+**Native-hook event observation drift.** Through v0.58, the native hook gate
+read one caller-owned event repeatedly while deriving its execution key,
+target, governed payload, and completion input, and deep-copied tool arguments
+before the `ToolCall` ownership boundary. In-process mapping or copy hooks, or
+mutation between observations, could therefore make retry correlation describe
+a different call than the one submitted for authorization. v0.59 captures one
+bounded canonical built-in event snapshot at every public gate and adapter
+entry and derives every downstream value from it. The CLI still bounds and
+strictly parses raw JSON first. This closes an in-process ownership and
+translation gap; it does not contain direct activity that emits no hook event,
+change documented runner timeout behavior, or make trusted process code
+untrusted.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

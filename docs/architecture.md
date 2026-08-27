@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.58
+## What is deliberately absent from v0.59
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -784,6 +784,15 @@ canonical observation. Its hash and schema validation consume that snapshot,
 then the retained payload is recursively frozen and exposed only through fresh
 built-in projections. The store-specific 4 MiB limit applies to both reads and
 writes. See `validated_operation_journal_snapshot.md`.
+
+v0.59 captures each native hook event once at the public adapter or gate
+boundary. Pre-tool retry correlation, model attribution, tool classification,
+target derivation, and the governed `ToolCall` consume the same exact built-in
+tree; post-tool correlation and result completion do the same. The adapter no
+longer deep-copies caller-controlled hook values. The CLI's existing bounded
+strict JSON ingestion remains the outer transport limit, while in-process
+callers receive the fixed canonical authority profile. See
+`validated_native_hook_event_snapshot.md`.
 
 ## Known limits
 

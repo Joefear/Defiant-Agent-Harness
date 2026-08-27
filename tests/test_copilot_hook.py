@@ -10,6 +10,7 @@ from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.evidence.store import EvidenceStore
 from defiant_agent_harness.hooks.copilot import (
+    CopilotHookAdapter,
     CopilotHookGate,
     _evidence_witness_from_env,
     _max_unwitnessed_records_from_env,
@@ -315,6 +316,175 @@ def test_changed_write_does_not_inherit_approval(tmp_path):
     assert len(actionable) == 2
     assert len({item.payload_hash for item in actionable}) == 2
     assert {item.status for item in actionable} == {"approved", "pending"}
+
+
+def test_hook_entry_owns_one_exact_event_snapshot(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state = tmp_path / "state"
+    gate = CopilotHookGate(workspace, state)
+    captures = 0
+    original_snapshot = copilot_hook_module.authority_snapshot_of
+
+    def capture_then_mutate(value):
+        nonlocal captures
+        captures += 1
+        snapshot = original_snapshot(value)
+        value["tool_input"]["file_path"] = "../mutated-after-capture.txt"
+        return snapshot
+
+    monkeypatch.setattr(
+        copilot_hook_module,
+        "authority_snapshot_of",
+        capture_then_mutate,
+    )
+    event = hook_event("Read", {"file_path": "briefing.txt"}, "snapshot-1")
+
+    assert permission(gate.pre_tool_use(event)) == "allow"
+    assert captures == 1
+    authorization = gate.executions.get("snapshot-1")
+    assert authorization is not None
+    assert authorization.action_snapshot["target"] == "workspace/briefing.txt"
+    assert authorization.action_snapshot["payload"]["tool_input"] == {
+        "file_path": "briefing.txt"
+    }
+
+    post = hook_event("Read", {"file_path": "briefing.txt"}, "snapshot-1")
+    post["hook_event_name"] = "PostToolUse"
+    post["tool_response"] = {"content": ["owned result"]}
+    completed = gate.post_tool_use(post)
+
+    assert captures == 2
+    assert "Defiant sealed" in completed["additionalContext"]
+
+
+def test_hook_snapshot_bypasses_caller_container_and_copy_hooks(tmp_path):
+    class HostileDict(dict):
+        def __contains__(self, key):
+            raise AssertionError("hook snapshot invoked mapping membership hook")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("hook snapshot invoked deepcopy hook")
+
+        def __getitem__(self, key):
+            raise AssertionError("hook snapshot invoked mapping lookup hook")
+
+        def __iter__(self):
+            raise AssertionError("hook snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("hook snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("hook snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("hook snapshot invoked mapping keys hook")
+
+    class HostileList(list):
+        def __deepcopy__(self, memo):
+            raise AssertionError("hook snapshot invoked list deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("hook snapshot invoked list iterator hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("hook snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("hook snapshot invoked scalar rendering hook")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    gate = CopilotHookGate(workspace, tmp_path / "state")
+    event = HostileDict(
+        {
+            "session_id": HostileString("session-hostile"),
+            "tool_name": HostileString("Read"),
+            "tool_input": HostileDict(
+                {
+                    "files": HostileList([HostileString("briefing.txt")]),
+                    "file_path": HostileString("briefing.txt"),
+                }
+            ),
+            "tool_use_id": HostileString("hostile-1"),
+        }
+    )
+
+    assert permission(gate.pre_tool_use(event)) == "allow"
+    authorization = gate.executions.get("hostile-1")
+    assert authorization is not None
+    assert authorization.action_snapshot["payload"]["tool_input"] == {
+        "files": ["briefing.txt"],
+        "file_path": "briefing.txt",
+    }
+
+    post = HostileDict(
+        {
+            "session_id": HostileString("session-hostile"),
+            "tool_name": HostileString("Read"),
+            "tool_input": HostileDict(
+                {
+                    "files": HostileList([HostileString("briefing.txt")]),
+                    "file_path": HostileString("briefing.txt"),
+                }
+            ),
+            "tool_use_id": HostileString("hostile-1"),
+            "tool_response": HostileDict(
+                {"content": HostileList([HostileString("owned result")])}
+            ),
+        }
+    )
+
+    completed = gate.post_tool_use(post)
+    assert "Defiant sealed" in completed["additionalContext"]
+
+
+def test_public_hook_adapter_snapshots_before_translation(tmp_path):
+    class CopyTrap(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("adapter translation invoked deepcopy hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("adapter translation read live caller mapping")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    event = CopyTrap(
+        {
+            "tool_name": "Read",
+            "tool_input": CopyTrap({"file_path": "briefing.txt"}),
+            "tool_use_id": "adapter-1",
+        }
+    )
+
+    call = CopilotHookAdapter(workspace).call_from_event(event)
+
+    assert type(call.arguments["tool_input"]) is dict
+    assert call.arguments["tool_input"] == {"file_path": "briefing.txt"}
+    assert call.arguments["_defiant_target"] == "workspace/briefing.txt"
+
+
+def test_hook_snapshot_rejects_noncanonical_input_without_secret_echo(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    gate = CopilotHookGate(workspace, tmp_path / "state")
+
+    with pytest.raises(ValueError, match="bounded canonical data") as exc:
+        gate.pre_tool_use(
+            hook_event(
+                "Read",
+                {"file_path": "briefing.txt", "secret-value": object()},
+                "invalid-1",
+            )
+        )
+
+    assert "secret-value" not in str(exc.value)
+    state = tmp_path / "state"
+    assert (state / "approvals.json").read_text(encoding="utf-8") == "{}"
+    assert (state / "hook_executions.json").read_text(encoding="utf-8") == "{}"
+    assert (state / "evidence.jsonl").read_text(encoding="utf-8") == ""
 
 
 @pytest.mark.parametrize(
