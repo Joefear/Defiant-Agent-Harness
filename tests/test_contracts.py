@@ -47,6 +47,40 @@ def test_request_collections_must_be_lists(field):
         HarnessRequest(**values)
 
 
+def test_request_collection_snapshots_bypass_list_subclass_iteration_hooks():
+    class HostileList(list):
+        def __iter__(self):
+            raise AssertionError("request collection hooks must not run")
+
+    ref = ContentRef("ref", "operator", Trust.TRUSTED, "hash")
+    request = HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        allowed_tools=HostileList(["read_file"]),
+        inputs=HostileList([ref]),
+    )
+
+    request.seal_contract()
+
+    assert request.allowed_tools == ("read_file",)
+    assert request.inputs == (ref,)
+
+
+def test_request_validates_builtin_list_storage_not_override_view():
+    class DeceptiveList(list):
+        def __iter__(self):
+            return iter(["apparently-safe"])
+
+    with pytest.raises(ValueError, match="non-empty strings"):
+        HarnessRequest(
+            task="task",
+            user_id="user",
+            workspace_id="workspace",
+            allowed_tools=DeceptiveList([""]),
+        )
+
+
 def test_request_accepts_exact_text_item_limits_and_rejects_next(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_REQUEST_TEXT_ITEM_CHARACTERS", 4)
     monkeypatch.setattr(contracts_module, "MAX_REQUEST_IDENTIFIER_CHARACTERS", 4)
@@ -201,6 +235,23 @@ def test_request_seal_revalidates_mutation_and_sanitizes_failure(monkeypatch):
     assert "secret-over-limit" not in str(exc.value)
 
 
+def test_request_seal_revalidates_mutated_allowlist_count(monkeypatch):
+    allowed_tools = ["read_file"]
+    request = HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        allowed_tools=allowed_tools,
+    )
+    allowed_tools.append("write_file")
+    monkeypatch.setattr(contracts_module, "MAX_REQUEST_ALLOWED_TOOLS", 1)
+
+    with pytest.raises(RequestLimitError) as exc:
+        request.seal_contract()
+
+    assert exc.value.limit_enforced == "request_allowed_tools"
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
@@ -245,6 +296,31 @@ def test_request_seal_detaches_collections_and_freezes_contract_fields():
             "label": "",
         }
     ]
+
+
+def test_request_seal_adopts_snapshot_when_validation_mutates_caller_list():
+    allowed_tools = []
+    armed = False
+
+    class MutatingTool(str):
+        def strip(self, *args, **kwargs):
+            if armed:
+                allowed_tools.append("delete_file")
+            return str.strip(self, *args, **kwargs)
+
+    allowed_tools.append(MutatingTool("read_file"))
+    request = HarnessRequest(
+        task="task",
+        user_id="user",
+        workspace_id="workspace",
+        allowed_tools=allowed_tools,
+    )
+    armed = True
+
+    request.seal_contract()
+
+    assert allowed_tools == ["read_file", "delete_file"]
+    assert request.allowed_tools == ("read_file",)
     with pytest.raises(ValueError, match="sealed request"):
         request.workspace_id = "changed"
     with pytest.raises(ValueError, match="sealed request"):
@@ -925,6 +1001,45 @@ def test_governed_action_seal_never_invokes_deepcopy_hooks():
     assert action.payload == {"nested": ["accepted"]}
     assert type(action.payload_sources) is tuple
     assert (action.payload_hash, action.authorization_hash) == expected
+
+
+def test_action_provenance_snapshot_bypasses_list_subclass_iteration_hook():
+    class HostileSources(list):
+        def __iter__(self):
+            raise AssertionError("action provenance hooks must not run")
+
+    ref = ContentRef.of("operator", Trust.TRUSTED, "accepted")
+    action = ProposedAction(
+        tool_name="custom_tool",
+        target="target",
+        payload={},
+        side_effect_level=SideEffect.NONE,
+        payload_sources=HostileSources([ref]),
+    )
+
+    action.seal_fingerprints()
+
+    assert action.payload_sources == (ref,)
+    assert action.payload_trust is Trust.TRUSTED
+
+
+def test_action_seal_revalidates_mutated_provenance_count(monkeypatch):
+    ref = ContentRef.of("operator", Trust.TRUSTED, "accepted")
+    sources = [ref]
+    action = ProposedAction(
+        tool_name="custom_tool",
+        target="target",
+        payload={},
+        side_effect_level=SideEffect.NONE,
+        payload_sources=sources,
+    )
+    sources.append(ref)
+    monkeypatch.setattr(contracts_module, "MAX_PROVENANCE_REFS", 1)
+
+    with pytest.raises(RequestLimitError) as exc:
+        action.seal_fingerprints()
+
+    assert exc.value.limit_enforced == "action_provenance_refs"
 
 
 def test_governed_action_owns_canonical_enum_and_decimal_snapshot():

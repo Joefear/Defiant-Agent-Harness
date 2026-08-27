@@ -45,7 +45,7 @@ contract aliases. No rejected content is echoed.
 
 ## Read-only projection
 
-Command Core schema `0.45.0` reports
+Command Core schema `0.46.0` reports
 `validated_canonical_snapshot: true`. Command Center renders only this static
 posture. It cannot supply canonical input, modify limits, approve, reconcile,
 or execute.

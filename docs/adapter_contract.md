@@ -84,6 +84,12 @@ identity, allowlist, or provenance metadata fails before adapter code runs.
 Adapters receive an accepted immutable request snapshot, not authority to raise
 or bypass those fixed ceilings.
 
+Since v0.52, request allowlists and input references are captured from built-in
+list storage before their owning validation, and the exact validated tuples are
+retained. Action provenance uses the same rule immediately before action
+fingerprinting. Adapter-defined list iterator views cannot substitute different
+request scope or provenance at the ownership boundary.
+
 Since v0.41, a handler or external-completion adapter must also return a
 bounded canonical `ToolResult`. The owning harness revalidates, detaches,
 hashes, and seals accepted output before completion. Invalid post-execution

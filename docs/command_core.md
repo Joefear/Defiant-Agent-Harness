@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.45.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.46.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -80,6 +80,7 @@ contains:
   alias, nesting, lexical-token, scalar-token, canonical-number,
   canonical-string, canonical-mapping-key-family, complete-mapping-key,
   validated-canonical-snapshot, validated-snapshot-ownership,
+  validated-contract-collection-snapshot,
   canonical-mapping-size,
   canonical-mapping-sort-work,
   complete-canonical-value, MCP-collection, policy-text,

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.51.
+logs. A full trusted-memory/DKE system is not part of v0.52.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.51 is
+## What v0.52 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -478,6 +478,13 @@ bounded observation that produced each digest becomes the owned contract state;
 ordinary JSON values and accepted hashes remain unchanged. Command Core reports
 only static posture, and Command Center remains strictly read-only.
 
+v0.52 applies the same exact-observation rule to request allowlists, request
+input references, and action provenance. Built-in list storage is captured
+under the existing count ceilings, then the exact tuple is validated and
+retained. List-subclass iterator views or validation-time caller mutations
+cannot enter a later detach pass. Existing accepted ordinary-list behavior and
+limit aliases remain unchanged; Command Center remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -813,7 +820,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.51 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.52 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -860,6 +867,7 @@ fixed complete canonical-value byte preflight before sorting or encoding,
 fixed pre-render canonical-string token byte ceilings,
 fixed pre-encoding canonical-number token ceilings,
 fixed governed-request and provenance metadata complexity ceilings,
+fixed validated built-in snapshots for request and provenance collections,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -894,6 +902,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/complete_mapping_key_preflight.md`,
 `docs/validated_canonical_snapshot.md`,
 `docs/validated_snapshot_ownership.md`,
+`docs/validated_contract_collection_snapshots.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,
