@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.51
+## What is deliberately absent from v0.52
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -733,6 +733,14 @@ Ordinary JSON values and every accepted canonical hash remain unchanged; Enum
 and Decimal extensions retain their established canonical representations in
 owned state. Command Core and Command Center expose only static posture. See
 `validated_snapshot_ownership.md`.
+
+v0.52 snapshots request allowlists, request input references, and action
+provenance from built-in list storage before validating them. The exact bounded
+tuples that pass count, type, item, and aggregate-text checks become the owned
+contract collections. List-subclass iterator views and mutations triggered
+during validation cannot enter a later detach pass. Existing limit aliases and
+accepted ordinary-list behavior are unchanged. See
+`validated_contract_collection_snapshots.md`.
 
 ## Known limits
 

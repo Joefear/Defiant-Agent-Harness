@@ -306,13 +306,11 @@ class HarnessRequest:
         object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.allowed_tools, list):
-            raise ValueError("allowed_tools must be a list")
-        if not isinstance(self.inputs, list):
-            raise ValueError("inputs must be a list")
         self._validate_contract()
 
-    def _validate_contract(self) -> None:
+    def _validate_contract(
+        self,
+    ) -> tuple[tuple[str, ...], tuple[ContentRef, ...]]:
         if not isinstance(self.sensitivity, Sensitivity):
             self.sensitivity = Sensitivity(self.sensitivity)
         if self.budget_limit_usd is not None:
@@ -332,43 +330,54 @@ class HarnessRequest:
                 field_name,
                 MAX_REQUEST_IDENTIFIER_CHARACTERS,
             )
-        if not isinstance(self.allowed_tools, (list, tuple)):
+        if not isinstance(self.allowed_tools, list):
             raise ValueError("allowed_tools must be a list")
-        if len(self.allowed_tools) > MAX_REQUEST_ALLOWED_TOOLS:
-            raise RequestLimitError(
+        allowed_tools = _snapshot_bounded_contract_list(
+            self.allowed_tools,
+            field_name="request allowed_tools",
+            maximum=MAX_REQUEST_ALLOWED_TOOLS,
+            limit_message=(
                 "request allowed tool count exceeds maximum of "
-                f"{MAX_REQUEST_ALLOWED_TOOLS}",
-                limit_enforced="request_allowed_tools",
-            )
-        if any(
-            not isinstance(name, str) or not name.strip() for name in self.allowed_tools
-        ):
+                f"{MAX_REQUEST_ALLOWED_TOOLS}"
+            ),
+            limit_enforced="request_allowed_tools",
+        )
+        if any(not isinstance(name, str) or not name.strip() for name in allowed_tools):
             raise ValueError("allowed_tools must contain non-empty strings")
-        for name in self.allowed_tools:
+        for name in allowed_tools:
             _require_request_text(
                 name,
                 "allowed tool",
                 MAX_REQUEST_ALLOWED_TOOL_CHARACTERS,
             )
-        if not isinstance(self.inputs, (list, tuple)):
+        if not isinstance(self.inputs, list):
             raise ValueError("inputs must be a list")
-        if len(self.inputs) > MAX_PROVENANCE_REFS:
-            raise RequestLimitError(
+        inputs = _snapshot_bounded_contract_list(
+            self.inputs,
+            field_name="request inputs",
+            maximum=MAX_PROVENANCE_REFS,
+            limit_message=(
                 "request input provenance count exceeds maximum of "
-                f"{MAX_PROVENANCE_REFS}",
-                limit_enforced="request_provenance_refs",
-            )
-        if any(not isinstance(ref, ContentRef) for ref in self.inputs):
+                f"{MAX_PROVENANCE_REFS}"
+            ),
+            limit_enforced="request_provenance_refs",
+        )
+        if any(not isinstance(ref, ContentRef) for ref in inputs):
             raise ValueError("inputs must contain ContentRef objects")
-        _validate_request_text_volume(self)
+        _validate_request_text_volume(
+            self,
+            allowed_tools=allowed_tools,
+            inputs=inputs,
+        )
+        return allowed_tools, inputs
 
     def seal_contract(self) -> None:
         """Validate, detach, and freeze the request used by the control path."""
         if self._contract_sealed:
             return
-        self._validate_contract()
-        object.__setattr__(self, "allowed_tools", tuple(self.allowed_tools))
-        object.__setattr__(self, "inputs", tuple(self.inputs))
+        allowed_tools, inputs = self._validate_contract()
+        object.__setattr__(self, "allowed_tools", allowed_tools)
+        object.__setattr__(self, "inputs", inputs)
         object.__setattr__(self, "_contract_sealed", True)
 
     def to_dict(self) -> dict:
@@ -434,6 +443,9 @@ class ProposedAction:
         object.__setattr__(self, name, value)
 
     def __post_init__(self) -> None:
+        self._validate_contract()
+
+    def _validate_contract(self) -> tuple[ContentRef, ...]:
         _require_text(self.tool_name, "tool_name")
         _require_text(self.target, "target")
         _require_text(self.action_id, "action_id")
@@ -443,19 +455,24 @@ class ProposedAction:
             self.side_effect_level = SideEffect(self.side_effect_level)
         if not isinstance(self.payload_sources, list):
             raise ValueError("payload_sources must be a list")
-        if len(self.payload_sources) > MAX_PROVENANCE_REFS:
-            raise RequestLimitError(
+        sources = _snapshot_bounded_contract_list(
+            self.payload_sources,
+            field_name="action payload_sources",
+            maximum=MAX_PROVENANCE_REFS,
+            limit_message=(
                 "action payload provenance count exceeds maximum of "
-                f"{MAX_PROVENANCE_REFS}",
-                limit_enforced="action_provenance_refs",
-            )
-        if any(not isinstance(ref, ContentRef) for ref in self.payload_sources):
+                f"{MAX_PROVENANCE_REFS}"
+            ),
+            limit_enforced="action_provenance_refs",
+        )
+        if any(not isinstance(ref, ContentRef) for ref in sources):
             raise ValueError("payload_sources must contain ContentRef objects")
-        _validate_provenance_text_volume(self.payload_sources)
+        _validate_provenance_text_volume(sources)
         self.estimated_cost_usd = money(
             self.estimated_cost_usd, field_name="estimated_cost_usd"
         )
         self.created_at = _utc_timestamp(self.created_at, "created_at")
+        return sources
 
     @property
     def payload_hash(self) -> str:
@@ -486,8 +503,8 @@ class ProposedAction:
 
         # The retained payload is the bounded built-in snapshot that produced
         # its digest.  Do not traverse caller containers again with deepcopy.
+        sources = self._validate_contract()
         payload, payload_hash = action_snapshot_and_sha256_of(self.payload)
-        sources = tuple(list.__iter__(self.payload_sources))
         authorization_snapshot, authorization_hash = action_snapshot_and_sha256_of(
             self._authorization_surface(payload=payload, payload_sources=sources)
         )
@@ -1124,15 +1141,43 @@ def _require_provenance_text(value: Any, field_name: str) -> None:
         )
 
 
-def _validate_request_text_volume(request: HarnessRequest) -> None:
+def _snapshot_bounded_contract_list(
+    value: list[Any],
+    *,
+    field_name: str,
+    maximum: int,
+    limit_message: str,
+    limit_enforced: str,
+) -> tuple[Any, ...]:
+    """Capture bounded built-in list storage without invoking subclass hooks."""
+
+    initial_count = list.__len__(value)
+    if initial_count > maximum:
+        raise RequestLimitError(limit_message, limit_enforced=limit_enforced)
+    snapshot: list[Any] = []
+    for item in list.__iter__(value):
+        if len(snapshot) >= maximum:
+            raise RequestLimitError(limit_message, limit_enforced=limit_enforced)
+        snapshot.append(item)
+    if len(snapshot) != initial_count or list.__len__(value) != initial_count:
+        raise ValueError(f"{field_name} changed during contract snapshot")
+    return tuple(snapshot)
+
+
+def _validate_request_text_volume(
+    request: HarnessRequest,
+    *,
+    allowed_tools: Iterable[str],
+    inputs: Iterable[ContentRef],
+) -> None:
     def values() -> Iterable[str]:
         yield request.task
         yield request.user_id
         yield request.workspace_id
         yield request.request_id
         yield request.task_type
-        yield from request.allowed_tools
-        for ref in request.inputs:
+        yield from allowed_tools
+        for ref in inputs:
             yield ref.ref_id
             yield ref.origin
             yield ref.content_hash
@@ -1146,7 +1191,7 @@ def _validate_request_text_volume(request: HarnessRequest) -> None:
     )
 
 
-def _validate_provenance_text_volume(refs: list[ContentRef]) -> None:
+def _validate_provenance_text_volume(refs: Iterable[ContentRef]) -> None:
     values = (
         value
         for ref in refs

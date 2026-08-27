@@ -44,7 +44,7 @@ capability check. Tool-call translation continues to call
 
 ## Read-only projection
 
-Command Core schema `0.45.0` reports
+Command Core schema `0.46.0` reports
 `validated_snapshot_ownership: true` alongside
 `validated_canonical_snapshot: true`. Command Center renders only this fixed
 posture. It has no endpoint or control for supplying snapshots, changing the
@@ -57,5 +57,9 @@ or a Python sandbox. The snapshot represents one bounded observation. Python
 already executing inside the harness process remains trusted, and deployment
 controls are still required for cumulative CPU, memory, wall-clock, filesystem,
 and network containment.
+
+v0.52 applies the same one-observation ownership principle to governed request
+allowlists and inputs plus action provenance lists. See
+`validated_contract_collection_snapshots.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.

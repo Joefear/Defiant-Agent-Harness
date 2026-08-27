@@ -704,6 +704,15 @@ snapshot and makes each owner retain that exact tree. Ordinary JSON semantics
 and accepted hashes are unchanged. This prevents an owner-induced second copy;
 it does not sandbox arbitrary Python already running in the harness process.
 
+**Validate-to-detach collection drift.** Through v0.51, governed request
+allowlists and inputs were validated through their live iterable view and then
+converted to tuples in a later traversal. Action provenance was initially
+validated the same way and later copied from built-in storage without repeating
+its dedicated limits. A list subclass or validation-time mutation could make
+the owned collection differ from the validated view. v0.52 captures built-in
+list storage first, validates that exact bounded tuple, and adopts it directly.
+This is deterministic contract ownership, not general thread isolation.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

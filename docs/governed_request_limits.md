@@ -30,8 +30,10 @@ content hash remain required.
 
 Construction performs the first validation. The owning harness repeats it
 before calling `AgentAdapter.propose`, translating a direct tool call, or
-reusing a durable request. It then detaches the two caller-owned collections,
-stores them as immutable tuples, and seals every request field.
+reusing a durable request. As of v0.52, it snapshots built-in list storage
+before validation, validates those exact tuples, adopts them without another
+caller-list traversal, and seals every request field. See
+`validated_contract_collection_snapshots.md`.
 
 This second check is essential: Python callers can mutate an otherwise valid
 dataclass between construction and submission. A changed task, identifier,
@@ -46,7 +48,7 @@ execution for a request it could not safely accept.
 
 ## Read-only projection
 
-Command Core schema `0.45.0` publishes all eight fixed ceilings under
+Command Core schema `0.46.0` publishes all eight fixed ceilings under
 `resource_limits` and reports `request_contract_preflight: true`. Command
 Center renders only this static posture. Neither surface can submit or edit a
 request, change a ceiling, accept an exception, approve, or execute.
