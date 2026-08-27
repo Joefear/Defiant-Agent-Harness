@@ -733,6 +733,15 @@ still leaves the uncertain authorization on explicit reconciliation; it is not
 converted into a fabricated terminal outcome. This remains an in-process data
 contract, not an operating-system sandbox.
 
+**Caller-owned policy configuration after ruleset hashing.** Through v0.54,
+`PolicyEngine` hashed policy rules and authority inputs once but retained
+caller-owned nested mappings and lists. A later caller mutation could change
+rule matching or decision inputs while the published `ruleset_hash` remained
+unchanged. v0.55 captures a bounded canonical built-in snapshot first and
+constructs both engine state and the hash from that observation. Directly
+modifying engine-owned memory still requires already-trusted in-process Python;
+this control is an ownership boundary, not thread isolation or an OS sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

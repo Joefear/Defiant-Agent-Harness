@@ -176,8 +176,11 @@ function renderResourceLimits(limits, configuration) {
     `YAML nodes ${integer.format(limits.yaml_nodes)}`,
   ];
   if (configuration) {
+    const policyOwnership = configuration.validated_policy_snapshot_ownership
+      ? "policy rules, known tools, and authority inputs retained from one detached bounded snapshot"
+      : "policy snapshot ownership unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, and evidence records retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, and glob matching bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, and evidence records retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, and glob matching bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

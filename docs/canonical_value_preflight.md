@@ -32,7 +32,7 @@ hashes are unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.48.0` reports `canonical_value_preflight: true` with the
+Command Core schema `0.49.0` reports `canonical_value_preflight: true` with the
 existing fixed resource ceilings. Command Center renders only this posture. It
 cannot submit a value, change a limit, approve, reconcile, or execute.
 

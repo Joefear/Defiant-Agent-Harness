@@ -254,6 +254,146 @@ def test_ruleset_hash_includes_authoritative_tool_contract():
     assert first.ruleset_hash != changed.ruleset_hash
 
 
+def test_policy_engine_owns_the_configuration_observation_it_hashes():
+    rule = {
+        "id": "allow_inspection",
+        "tools": ["inspect"],
+        "side_effect_at_least": "local_write",
+        "effect": "allow",
+    }
+    pack = {
+        "version": "ownership-test",
+        "known_tools": ["inspect"],
+        "rules": [rule],
+    }
+    authority_inputs = {
+        "tool_registry": [{"name": "inspect", "contract": ["read-only"]}]
+    }
+    engine = PolicyEngine([pack], authority_inputs=authority_inputs)
+    action = act("inspect", "workspace/item", {}, SideEffect.LOCAL_WRITE)
+    original_hash = engine.ruleset_hash
+
+    rule["effect"] = "block"
+    rule["tools"].clear()
+    pack["known_tools"][0] = "different_tool"
+    pack["rules"].clear()
+    authority_inputs["tool_registry"][0]["name"] = "different_tool"
+    authority_inputs["tool_registry"][0]["contract"].append("mutated")
+
+    decision = engine.evaluate(action)
+    assert decision.decision is Decision.ALLOW
+    assert decision.policy_ids == ["allow_inspection"]
+    assert decision.ruleset_hash == original_hash
+    assert engine.known_tools == ["inspect"]
+    assert engine.authority_inputs == {
+        "tool_registry": [{"name": "inspect", "contract": ["read-only"]}]
+    }
+
+
+def test_policy_engine_snapshots_hostile_builtin_subclasses_without_hooks():
+    class HostileString(str):
+        def __str__(self):
+            raise AssertionError("policy snapshot invoked string hook")
+
+        def strip(self, *args, **kwargs):
+            raise AssertionError("policy snapshot invoked strip hook")
+
+    class HostileList(list):
+        def __iter__(self):
+            raise AssertionError("policy snapshot invoked list iterator hook")
+
+        def __len__(self):
+            raise AssertionError("policy snapshot invoked list length hook")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("policy snapshot invoked deepcopy hook")
+
+    class HostileDict(dict):
+        def __iter__(self):
+            raise AssertionError("policy snapshot invoked mapping iterator hook")
+
+        def __len__(self):
+            raise AssertionError("policy snapshot invoked mapping length hook")
+
+        def keys(self):
+            raise AssertionError("policy snapshot invoked mapping keys hook")
+
+        def items(self):
+            raise AssertionError("policy snapshot invoked mapping items hook")
+
+        def get(self, *args, **kwargs):
+            raise AssertionError("policy snapshot invoked mapping get hook")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("policy snapshot invoked deepcopy hook")
+
+    packs = HostileList(
+        [
+            HostileDict(
+                {
+                    HostileString("version"): HostileString("hostile-test"),
+                    HostileString("known_tools"): HostileList(
+                        [HostileString("inspect")]
+                    ),
+                    HostileString("rules"): HostileList(
+                        [
+                            HostileDict(
+                                {
+                                    HostileString("id"): HostileString("allow"),
+                                    HostileString("tools"): HostileList(
+                                        [HostileString("inspect")]
+                                    ),
+                                    HostileString("effect"): HostileString("allow"),
+                                }
+                            )
+                        ]
+                    ),
+                }
+            )
+        ]
+    )
+    authority_inputs = HostileDict(
+        {
+            HostileString("adapter"): HostileDict(
+                {HostileString("mode"): HostileString("local")}
+            )
+        }
+    )
+
+    engine = PolicyEngine(
+        packs,
+        name=HostileString("hostile"),
+        authority_inputs=authority_inputs,
+    )
+
+    assert type(engine.name) is str
+    assert type(engine.known_tools) is list
+    assert type(engine.known_tools[0]) is str
+    assert type(engine.rules[0].tools) is list
+    assert type(engine.rules[0].tools[0]) is str
+    assert type(engine.authority_inputs) is dict
+    assert type(engine.authority_inputs["adapter"]) is dict
+    assert type(engine.authority_inputs["adapter"]["mode"]) is str
+    assert engine.evaluate(act("inspect", "record")).decision is Decision.ALLOW
+
+
+def test_policy_engine_rejects_noncanonical_authority_inputs_without_leaking_data():
+    class SecretValue:
+        def __repr__(self):
+            return "private-policy-value"
+
+    with pytest.raises(
+        ValueError,
+        match="policy authority inputs must contain bounded canonical data",
+    ) as failure:
+        PolicyEngine(
+            [{"version": "test", "rules": []}],
+            authority_inputs={"adapter": SecretValue()},
+        )
+
+    assert "private-policy-value" not in str(failure.value)
+
+
 # -- policy glob matching limits -------------------------------------------
 
 

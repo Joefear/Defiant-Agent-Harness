@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.48.0"
+    assert output["schema_version"] == "0.49.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
@@ -253,6 +253,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "validated_contract_collection_snapshots": True,
         "validated_scalar_ownership": True,
         "validated_authority_record_ownership": True,
+        "validated_policy_snapshot_ownership": True,
         "request_contract_preflight": True,
         "tool_call_contract_preflight": True,
         "tool_result_contract_preflight": True,
