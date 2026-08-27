@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.55
+## What is deliberately absent from v0.56
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -765,6 +765,13 @@ that observation, so later mutations to caller-owned nested containers cannot
 change policy behavior under a stale hash. The stable authority snapshot
 profile is independent of live action-limit constant changes. See
 `validated_policy_snapshot_ownership.md`.
+
+v0.56 converts the retained result into sealed runtime state. `Rule` objects
+and pattern collections are immutable, the engine exposes rules, known tools,
+name, version, and hash through read-only properties, and nested authority
+inputs remain recursively frozen behind a defensive built-in projection. The
+same pre-seal canonical surface still determines `ruleset_hash`, so ordinary
+policy identity is unchanged. See `sealed_policy_runtime_state.md`.
 
 ## Known limits
 

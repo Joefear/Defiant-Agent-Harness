@@ -742,6 +742,17 @@ constructs both engine state and the hash from that observation. Directly
 modifying engine-owned memory still requires already-trusted in-process Python;
 this control is an ownership boundary, not thread isolation or an OS sandbox.
 
+**Mutable engine-owned policy state after ruleset hashing.** v0.55 detached
+caller-owned configuration, but the public engine still exposed mutable rule
+objects, pattern lists, known-tool lists, and its retained authority mapping. A
+trusted integration bug could alter future enforcement through those public
+references without changing `ruleset_hash`. v0.56 freezes rules and pattern
+collections, publishes policy identity through read-only properties, and
+returns a fresh built-in authority projection instead of the frozen internal
+tree. Private Python object mutation remains inside the trusted process
+boundary; this is not protection against malicious code already executing in
+the harness process.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

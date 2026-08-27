@@ -202,6 +202,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"authority_configuration" in javascript
     assert b"validated_policy_snapshot_ownership" in javascript
     assert b"policy rules, known tools, and authority inputs retained" in javascript
+    assert b"sealed_policy_runtime_state" in javascript
+    assert b"policy runtime rules and tool patterns immutable" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript
     assert b"json_lexical_tokens" in javascript
