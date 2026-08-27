@@ -87,6 +87,17 @@ def test_durable_json_write_refuses_unreadable_output_and_cleans_temp(
     assert not list(root.path.glob(".*.tmp"))
 
 
+def test_durable_json_write_honors_a_store_specific_ceiling(tmp_path):
+    root = prepare_storage_root(tmp_path / "state")
+    path = root.path / "store-bounded.json"
+
+    with pytest.raises(PersistenceError, match="exceeds 32 bytes"):
+        atomic_write_json(path, {"value": "x" * 64}, max_bytes=32)
+
+    assert not path.exists()
+    assert not list(root.path.glob(".*.tmp"))
+
+
 def test_evidence_rejects_oversized_existing_and_new_records(tmp_path, monkeypatch):
     path = tmp_path / "evidence.jsonl"
     store = EvidenceStore(path)

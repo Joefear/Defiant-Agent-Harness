@@ -56,7 +56,7 @@ snapshot.
 
 ## Read-only projection
 
-Command Core schema `0.51.0` reports
+Command Core schema `0.52.0` reports
 `validated_contract_collection_snapshots: true`. Command Center renders only
 this static posture. It cannot submit or alter a request, provenance, limit,
 approval, reconciliation, policy, or execution.

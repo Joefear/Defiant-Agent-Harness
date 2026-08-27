@@ -48,6 +48,7 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - an optional request-id focus applied through a read-only snapshot query; and
 - the fixed pre-parse byte ceilings enforced by the running harness;
 - the fixed evidence-export parse and publication ceiling; and
+- the fixed symmetric operation-journal read/write and snapshot ceiling;
 - the fixed trusted-public-key count, per-key, and aggregate byte ceilings; and
 - the fixed complete-policy pack, rule, known-tool, per-field, and
   aggregate-list ceilings; and
@@ -72,6 +73,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - immutable policy runtime rules and known-tool patterns with read-only policy
   identity and defensive authority projections;
 - bounded exact policy decision context shared by rule matching and evidence;
+- bounded exact operation-journal snapshots sealed behind defensive payload
+  projections;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -95,7 +98,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.51.0`. The browser cannot raise, disable, or replace them and never receives
+`0.52.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

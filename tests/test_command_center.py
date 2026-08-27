@@ -133,6 +133,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"tool_call_canonical_bytes" in javascript
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
+    assert b"operation_journal_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
     assert b"mcp_dependency_file_pins" in javascript
     assert b"mcp_launch_environment_entries" in javascript
@@ -190,12 +191,14 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
         b"snapshotted from built-in storage before validation; "
         b"accepted scalar subclasses normalized to exact built-in values before "
         b"ownership; "
-        b"policy decisions, capability grants, and evidence records retain "
+        b"policy decisions, capability grants, evidence records, and operation "
+        b"journals retain "
         b"bounded exact built-in snapshots; "
         b"governed request construction, tool-call translation, "
         b"action hashing, "
         b"tool-result capture, "
-        b"payload matching, glob matching, and policy context bounded "
+        b"payload matching, glob matching, policy context, and journal "
+        b"publication bounded "
         b"and fail-closed" in javascript
     )
     assert b"trusted_public_key_count" in javascript
@@ -210,6 +213,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"policy runtime rules and tool patterns immutable" in javascript
     assert b"validated_policy_context_snapshot" in javascript
     assert b"policy decision context bounded and retained" in javascript
+    assert b"validated_operation_journal_snapshot" in javascript
+    assert b"operation journal payload bounded" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript
     assert b"json_lexical_tokens" in javascript

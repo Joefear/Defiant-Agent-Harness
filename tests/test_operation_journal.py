@@ -4,14 +4,16 @@ import json
 
 import pytest
 
+import defiant_agent_harness.operation_journal as operation_journal_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter, SCRIPTS
 from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.budgets.ledger import BudgetLedger
 from defiant_agent_harness.command.core import CommandCore
-from defiant_agent_harness.contracts import HarnessRequest, sha256_of
+from defiant_agent_harness.contracts import HarnessRequest, canonical_json, sha256_of
 from defiant_agent_harness.evidence.store import EvidenceStore
 from defiant_agent_harness.evidence.signing import generate_key_pair
 from defiant_agent_harness.operation_journal import (
+    JournalOperation,
     OperationJournal,
     OperationJournalError,
 )
@@ -20,6 +22,7 @@ from defiant_agent_harness.operator_identity import (
     sign_operator_action,
 )
 from defiant_agent_harness.orchestrator.harness import build_harness
+from defiant_agent_harness.persistence import PersistenceError
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
 
 
@@ -45,6 +48,173 @@ def _request():
 def _entries(state, kind):
     raw = json.loads((state / "budget.json").read_text(encoding="utf-8"))
     return [entry for entry in raw["entries"] if entry["kind"] == kind]
+
+
+def _approval_create_payload(state, monkeypatch):
+    harness = _harness(state)
+    captured = {}
+    original = harness.operation_journal.prepare
+
+    def capture(kind, payload):
+        captured["kind"] = kind
+        captured["payload"] = payload
+        return original(kind, payload)
+
+    monkeypatch.setattr(harness.operation_journal, "prepare", capture)
+    harness.run(_request())
+    return captured["kind"], captured["payload"]
+
+
+def test_journal_prepare_snapshots_without_caller_hooks(tmp_path, monkeypatch):
+    kind, payload = _approval_create_payload(tmp_path / "capture", monkeypatch)
+
+    class HostileText(str):
+        def __str__(self):
+            raise AssertionError("caller string hook invoked")
+
+        def __len__(self):
+            raise AssertionError("caller string length hook invoked")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("caller string copy hook invoked")
+
+    class HostilePayload(dict):
+        def __bool__(self):
+            raise AssertionError("caller truth hook invoked")
+
+        def __len__(self):
+            raise AssertionError("caller length hook invoked")
+
+        def __iter__(self):
+            raise AssertionError("caller iterator hook invoked")
+
+        def keys(self):
+            raise AssertionError("caller keys hook invoked")
+
+        def items(self):
+            raise AssertionError("caller items hook invoked")
+
+        def get(self, key, default=None):
+            raise AssertionError("caller get hook invoked")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("caller copy hook invoked")
+
+    hostile = HostilePayload(payload)
+    hostile["reserved_usd"] = HostileText(hostile["reserved_usd"])
+
+    operation = JournalOperation.prepare(kind, hostile)
+
+    assert operation.payload_hash == sha256_of(operation.payload)
+    assert type(operation.payload["reserved_usd"]) is str
+    assert operation.payload["approval"] == payload["approval"]
+
+
+def test_journal_retains_a_sealed_payload_behind_defensive_projections(
+    tmp_path, monkeypatch
+):
+    kind, payload = _approval_create_payload(tmp_path / "capture", monkeypatch)
+    operation = JournalOperation.prepare(kind, payload)
+    expected = operation.payload
+
+    payload["reserved_usd"] = "999"
+    payload["evidence"]["result_summary"] = "caller mutation"
+    projection = operation.payload
+    projection["reserved_usd"] = "888"
+    projection["evidence"]["result_summary"] = "projection mutation"
+
+    assert operation.payload == expected
+    assert operation.to_dict()["payload"] == expected
+    assert operation.payload_hash == sha256_of(expected)
+
+
+def test_journal_from_dict_snapshots_hostile_operation_mapping(tmp_path, monkeypatch):
+    kind, payload = _approval_create_payload(tmp_path / "capture", monkeypatch)
+    prepared = JournalOperation.prepare(kind, payload)
+
+    class HostileOperation(dict):
+        def __iter__(self):
+            raise AssertionError("caller iterator hook invoked")
+
+        def items(self):
+            raise AssertionError("caller items hook invoked")
+
+        def get(self, key, default=None):
+            raise AssertionError("caller get hook invoked")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("caller copy hook invoked")
+
+    raw = HostileOperation(prepared.to_dict())
+    restored = JournalOperation.from_dict(raw)
+    raw["payload"]["reserved_usd"] = "999"
+
+    assert restored == prepared
+    assert restored.payload == prepared.payload
+
+
+def test_journal_rejects_noncanonical_value_without_rendering_it(tmp_path, monkeypatch):
+    kind, payload = _approval_create_payload(tmp_path / "capture", monkeypatch)
+
+    class SecretValue:
+        def __str__(self):
+            raise AssertionError("secret rendered")
+
+        def __repr__(self):
+            raise AssertionError("secret represented")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("secret copied")
+
+    payload["reserved_usd"] = SecretValue()
+
+    with pytest.raises(
+        OperationJournalError,
+        match="journal payload exceeds bounded canonical contract",
+    ) as failure:
+        JournalOperation.prepare(kind, payload)
+
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_journal_rejects_payload_over_canonical_byte_ceiling():
+    with pytest.raises(
+        OperationJournalError,
+        match="journal payload exceeds bounded canonical contract",
+    ):
+        JournalOperation.prepare(
+            "approval_create",
+            {"oversized": "x" * (4 * 1024 * 1024)},
+        )
+
+
+def test_journal_writer_cannot_publish_a_file_its_reader_would_refuse(
+    tmp_path, monkeypatch
+):
+    kind, payload = _approval_create_payload(tmp_path / "capture", monkeypatch)
+    operation = JournalOperation.prepare(kind, payload)
+    document = {
+        "schema_name": operation_journal_module.JOURNAL_SCHEMA,
+        "schema_version": operation_journal_module.JOURNAL_VERSION,
+        "active": operation.to_dict(),
+    }
+    encoded_bytes = len(
+        json.dumps(document, indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
+    )
+    maximum = encoded_bytes - 1
+    assert len(canonical_json(payload).encode("utf-8")) < maximum
+    monkeypatch.setattr(
+        operation_journal_module,
+        "MAX_OPERATION_JOURNAL_BYTES",
+        maximum,
+    )
+    path = tmp_path / "bounded" / "operation_journal.json"
+
+    with pytest.raises(PersistenceError, match=f"exceeds {maximum} bytes"):
+        OperationJournal(path).prepare(kind, payload)
+
+    assert not path.exists()
+    assert not list(path.parent.glob(".*.tmp"))
 
 
 def test_restart_recovers_crash_after_prepared_approval_was_stored(

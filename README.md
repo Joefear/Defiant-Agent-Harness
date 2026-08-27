@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.57.
+logs. A full trusted-memory/DKE system is not part of v0.58.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.57 is
+## What v0.58 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -529,6 +529,13 @@ or oversized context blocks under a sanitized contract outcome before matching.
 Command Core exposes only fixed posture and ceilings; Command Center remains
 strictly read-only.
 
+v0.58 hardens the crash-recovery journal with one bounded canonical operation
+snapshot, an exact hash of that observation, and a recursively sealed private
+payload exposed only through defensive projections. The former `deepcopy()`
+passes and their caller hooks are gone. The existing 4 MiB recovery-read limit
+now also governs writes, so the harness cannot publish a journal that restart
+would reject solely for size. Command Center remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -864,7 +871,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.57 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.58 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -920,6 +927,7 @@ authority inputs,
 fixed sealed policy runtime rules, known-tool patterns, identity metadata, and
 defensive authority projections,
 fixed bounded exact policy evaluation context shared by matching and evidence,
+fixed bounded and sealed operation-journal snapshots with symmetric I/O limits,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -960,6 +968,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_policy_snapshot_ownership.md`,
 `docs/sealed_policy_runtime_state.md`,
 `docs/validated_policy_context_snapshot.md`,
+`docs/validated_operation_journal_snapshot.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,
