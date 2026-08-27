@@ -39,6 +39,10 @@ finite/canonical-number, node, canonical-byte, and sort-work checks before any
 mapping value is visited. A key ceiling breach retains the corresponding
 sanitized `tool_result_output_*` limit classification.
 
+v0.50 feeds the encoder only the detached built-in snapshot returned by this
+bounded traversal. Mutation of the returned live output after validation cannot
+introduce unvalidated structure into that hash.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. Immediately before known-result
@@ -62,7 +66,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` publishes the summary and output ceilings under
+Command Core schema `0.44.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

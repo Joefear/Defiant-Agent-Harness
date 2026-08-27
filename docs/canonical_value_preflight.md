@@ -32,7 +32,7 @@ hashes are unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` reports `canonical_value_preflight: true` with the
+Command Core schema `0.44.0` reports `canonical_value_preflight: true` with the
 existing fixed resource ceilings. Command Center renders only this posture. It
 cannot submit a value, change a limit, approve, reconcile, or execute.
 
@@ -42,6 +42,10 @@ Preflight still performs one bounded traversal and accepted mappings are still
 sorted by the canonical encoder. This is a deterministic per-value ceiling,
 not a wall-clock timeout, cumulative traffic quota, operating-system sandbox,
 or defense against trusted Python already executing inside the process.
+
+As of v0.50, that traversal also produces the detached built-in snapshot used
+by the encoder. The encoder therefore cannot observe a structurally different
+live caller container after preflight. See `validated_canonical_snapshot.md`.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
 

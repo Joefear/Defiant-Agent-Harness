@@ -684,6 +684,17 @@ visited. Accepted canonical bytes and hashes do not change. This remains a
 per-fingerprint deterministic control, not a Python sandbox, wall-clock limit,
 or cumulative quota.
 
+**Preflight-to-encoder structural drift.** Before v0.50, bounded canonical
+preflight validated one traversal of a live caller container and the streaming
+encoder traversed that object again. Concurrent mutation or container-subclass
+iteration behavior could make the encoded structure differ from the one whose
+depth, nodes, mapping entries, keys, bytes, and sort work had passed preflight.
+v0.50 builds a detached tree from built-in container storage during the bounded
+traversal, resolves mutable Enum values there, and encodes only that snapshot.
+Ordinary accepted canonical bytes and hashes remain unchanged. This does not
+provide transaction isolation for caller memory or make in-process Python code
+untrusted; final capability checks continue to detect later action changes.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

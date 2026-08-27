@@ -97,7 +97,7 @@ def action_sha256_of(obj: Any) -> str:
     chunks directly into SHA-256 under a fixed byte ceiling.
     """
 
-    _validate_action_hash_structure(obj)
+    snapshot = _validate_action_hash_structure(obj)
     encoder = json.JSONEncoder(
         sort_keys=True,
         separators=(",", ":"),
@@ -108,7 +108,7 @@ def action_sha256_of(obj: Any) -> str:
     digest = hashlib.sha256()
     encoded_bytes = 0
     try:
-        for chunk in encoder.iterencode(obj):
+        for chunk in encoder.iterencode(snapshot):
             raw = chunk.encode("utf-8")
             if len(raw) > MAX_ACTION_HASH_CANONICAL_BYTES - encoded_bytes:
                 _raise_action_hash_canonical_limit()
@@ -761,8 +761,8 @@ def _action_hash_default(obj: Any) -> Any:
     raise TypeError(f"unsupported action hash value type: {type(obj).__name__}")
 
 
-def _validate_action_hash_structure(obj: Any) -> None:
-    """Preflight action data and its exact canonical size without encoding."""
+def _validate_action_hash_structure(obj: Any) -> Any:
+    """Preflight action data and return its detached built-in snapshot."""
 
     nodes = 0
     canonical_bytes = 0
@@ -804,9 +804,9 @@ def _validate_action_hash_structure(obj: Any) -> None:
             )
         mapping_sort_work += width * rounds
 
-    def validate_mapping_key_families(value: dict[Any, Any]) -> None:
+    def validate_mapping_key_families(keys: list[Any]) -> None:
         family: str | None = None
-        for key in dict.keys(value):
+        for key in keys:
             if isinstance(key, str):
                 current = "string"
             elif isinstance(key, (int, float)):
@@ -853,33 +853,33 @@ def _validate_action_hash_structure(obj: Any) -> None:
             return width
         _action_hash_default(value)
 
-    def visit(value: Any, depth: int) -> None:
+    def visit(value: Any, depth: int) -> Any:
         claim_node(depth)
         if isinstance(value, enum.Enum):
-            visit(value.value, depth)
-            return
+            return visit(value.value, depth)
         if isinstance(value, Decimal):
-            consume(_validate_action_hash_string_token(_bounded_money_text(value)))
-            return
+            text = _bounded_money_text(value)
+            consume(_validate_action_hash_string_token(text))
+            return text
         if isinstance(value, str):
             consume(_validate_action_hash_scalar(value))
-            return
+            return value
         if isinstance(value, bool):
             consume(4 if value else 5)
-            return
+            return value
         if value is None:
             consume(4)
-            return
+            return None
         if isinstance(value, int):
             consume(_validate_action_hash_integer(value))
-            return
+            return value
         if isinstance(value, float):
             if not math.isfinite(value):
                 raise ValueError("action hash input contains a non-finite number")
             text = float.__repr__(value)
             _validate_action_hash_number_text(text)
             consume(len(text))
-            return
+            return value
         if isinstance(value, dict):
             entry_count = dict.__len__(value)
             if entry_count > MAX_ACTION_HASH_MAPPING_ENTRIES:
@@ -888,48 +888,69 @@ def _validate_action_hash_structure(obj: Any) -> None:
                     f"{MAX_ACTION_HASH_MAPPING_ENTRIES}",
                     limit_enforced="action_hash_mapping_entries",
                 )
-            validate_mapping_key_families(value)
+            keys = list(dict.keys(value))
+            if len(keys) != entry_count:
+                raise RuntimeError("mapping changed during canonical snapshot")
+            validate_mapping_key_families(keys)
             sort_rounds = (entry_count - 1).bit_length()
             marker = id(value)
             if marker in active_containers:
                 raise ValueError("action hash input contains a cyclic container")
             active_containers.add(marker)
             try:
+                snapshot: dict[Any, Any] = {}
                 consume(2)
                 # Complete the key-controlled portion of this mapping before
                 # touching any value. A late oversized or non-finite key must
                 # not permit an earlier value to trigger attacker-controlled
                 # traversal first.
-                for key in dict.keys(value):
+                for key in keys:
                     key_width = visit_key(key, depth + 1)
                     consume_mapping_sort_work(key_width, sort_rounds)
-                for index, (_, child) in enumerate(value.items()):
+                for index, key in enumerate(keys):
                     if index:
                         consume(1)
                     consume(1)
-                    visit(child, depth + 1)
+                    try:
+                        child = dict.__getitem__(value, key)
+                    except KeyError as exc:
+                        raise RuntimeError(
+                            "mapping changed during canonical snapshot"
+                        ) from exc
+                    snapshot[key] = visit(child, depth + 1)
+                if dict.__len__(value) != entry_count:
+                    raise RuntimeError("mapping changed during canonical snapshot")
             finally:
                 active_containers.remove(marker)
-            return
+            return snapshot
         if isinstance(value, (list, tuple)):
             marker = id(value)
             if marker in active_containers:
                 raise ValueError("action hash input contains a cyclic container")
             active_containers.add(marker)
             try:
+                snapshot_items: list[Any] = []
                 consume(2)
-                for index, child in enumerate(value):
+                iterator = (
+                    list.__iter__(value)
+                    if isinstance(value, list)
+                    else tuple.__iter__(value)
+                )
+                for index, child in enumerate(iterator):
                     if index:
                         consume(1)
-                    visit(child, depth + 1)
+                    snapshot_items.append(visit(child, depth + 1))
             finally:
                 active_containers.remove(marker)
-            return
+            return snapshot_items if isinstance(value, list) else tuple(snapshot_items)
         # Preserve the old canonical encoder's rejection behavior, but do so
         # before it can recurse through an attacker-defined object.
         _action_hash_default(value)
 
-    visit(obj, 0)
+    try:
+        return visit(obj, 0)
+    except RuntimeError as exc:
+        raise ValueError("action hash input changed during canonical snapshot") from exc
 
 
 def _validate_action_hash_scalar(value: str) -> int:

@@ -635,6 +635,95 @@ def test_action_hash_accounts_all_key_sort_work_before_mapping_values(monkeypatc
     assert exc.value.limit_enforced == "action_hash_mapping_sort_work_units"
 
 
+def test_action_hash_encodes_the_validated_snapshot_when_caller_mutates(monkeypatch):
+    value = {"safe": ["before"]}
+    expected = sha256_of(value)
+    original_iterencode = contracts_module.json.JSONEncoder.iterencode
+
+    def mutate_caller_before_encoding(encoder, snapshot, *args, **kwargs):
+        assert snapshot is not value
+        assert type(snapshot) is dict
+        assert type(snapshot["safe"]) is list
+        value["late"] = {"unvalidated": "mutation"}
+        value["safe"].append("mutation")
+        return original_iterencode(encoder, snapshot, *args, **kwargs)
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder,
+        "iterencode",
+        mutate_caller_before_encoding,
+    )
+
+    assert action_sha256_of(value) == expected
+
+
+def test_action_hash_snapshots_builtin_container_storage_without_subclass_hooks():
+    class HostileMapping(dict):
+        def items(self):
+            raise AssertionError("mapping subclass iteration must not run")
+
+        def __iter__(self):
+            raise AssertionError("mapping subclass iteration must not run")
+
+    class HostileList(list):
+        def __iter__(self):
+            raise AssertionError("list subclass iteration must not run")
+
+    class HostileTuple(tuple):
+        def __iter__(self):
+            raise AssertionError("tuple subclass iteration must not run")
+
+    value = HostileMapping(
+        {
+            "list": HostileList([1, {"nested": "value"}]),
+            "tuple": HostileTuple((True, None)),
+        }
+    )
+    expected = {
+        "list": [1, {"nested": "value"}],
+        "tuple": (True, None),
+    }
+
+    assert action_sha256_of(value) == sha256_of(expected)
+
+
+def test_action_hash_snapshots_enum_values_before_encoding(monkeypatch):
+    class MutableValue(Enum):
+        PAYLOAD = ["before"]
+
+    value = {"enum": MutableValue.PAYLOAD}
+    expected = sha256_of(value)
+    original_iterencode = contracts_module.json.JSONEncoder.iterencode
+
+    def mutate_enum_before_encoding(encoder, snapshot, *args, **kwargs):
+        MutableValue.PAYLOAD.value.append("mutation")
+        return original_iterencode(encoder, snapshot, *args, **kwargs)
+
+    monkeypatch.setattr(
+        contracts_module.json.JSONEncoder,
+        "iterencode",
+        mutate_enum_before_encoding,
+    )
+
+    assert action_sha256_of(value) == expected
+
+
+def test_action_hash_sanitizes_mapping_mutation_during_snapshot():
+    value = {}
+
+    class MutatingKey(str):
+        def __len__(self):
+            value["secret-added-during-snapshot"] = 2
+            return str.__len__(self)
+
+    value[MutatingKey("key")] = 1
+
+    with pytest.raises(ValueError, match="changed during canonical snapshot") as exc:
+        action_sha256_of(value)
+
+    assert "secret" not in str(exc.value)
+
+
 def test_action_hash_rejects_oversized_scalar_before_encoding(monkeypatch):
     monkeypatch.setattr(contracts_module, "MAX_ACTION_HASH_SCALAR_CHARACTERS", 4)
 

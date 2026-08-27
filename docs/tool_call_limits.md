@@ -44,6 +44,10 @@ finite/canonical-number, node, canonical-byte, and sort-work checks before any
 mapping value is visited. A key ceiling breach retains the corresponding
 sanitized `tool_call_*` limit classification.
 
+v0.50 feeds the encoder only the detached built-in snapshot returned by this
+bounded traversal. Mutation of the caller-owned call surface after validation
+cannot introduce unvalidated structure into the hash.
+
 ## Owning-boundary behavior
 
 Construction performs an initial validation. `Harness.handle_call()` and
@@ -65,7 +69,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.43.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.44.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports

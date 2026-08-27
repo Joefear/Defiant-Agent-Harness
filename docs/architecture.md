@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.49
+## What is deliberately absent from v0.50
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -719,6 +719,13 @@ Only after all keys pass does Defiant traverse mapping values. This changes no
 successful canonical encoding or hash. Command Core and Command Center expose
 only static posture. See `complete_mapping_key_preflight.md`.
 
+v0.50 makes that bounded traversal produce the exact built-in container
+snapshot consumed by the encoder. Live caller containers are not traversed a
+second time, built-in container storage is read without subclass iteration
+hooks, and mutable Enum values are resolved into the snapshot. This closes
+preflight-to-encoder structural drift without changing ordinary successful
+canonical bytes or hashes. See `validated_canonical_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -752,6 +759,10 @@ only static posture. See `complete_mapping_key_preflight.md`.
   sortable families and complete key tokens without invoking comparisons, but
   trusted subclasses can still define process-local behavior. Python already
   running inside the harness remains trusted and requires deployment isolation.
+- **Validated snapshots are not transaction isolation.** v0.50 ensures the
+  encoder consumes only the bounded structure it validated. It does not freeze
+  caller memory, serialize other application threads, or make arbitrary Python
+  code untrusted. Final live capability checks still detect later action drift.
 - **Tool-result limits do not contain the tool.** v0.41 bounds post-execution
   result capture, but a handler may have performed its side effect before it
   returns invalid output. Defiant preserves the uncertain authorization for
