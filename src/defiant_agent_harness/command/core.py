@@ -17,6 +17,10 @@ from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
+    MAX_POLICY_CONTEXT_CHARACTERS,
+    MAX_POLICY_CONTEXT_ENTRIES,
+    MAX_POLICY_CONTEXT_KEY_CHARACTERS,
+    MAX_POLICY_CONTEXT_VALUE_CHARACTERS,
     MAX_ACTION_HASH_CANONICAL_BYTES,
     MAX_ACTION_HASH_MAPPING_ENTRIES,
     MAX_ACTION_HASH_MAPPING_SORT_WORK_UNITS,
@@ -90,7 +94,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.50.0"
+SNAPSHOT_VERSION = "0.51.0"
 
 
 class CommandError(RuntimeError):
@@ -274,6 +278,14 @@ class CommandCore:
                         MAX_POLICY_MATCH_TARGET_CHARACTERS
                     ),
                     "policy_glob_match_work_units": (MAX_POLICY_GLOB_MATCH_WORK_UNITS),
+                    "policy_context_entries": MAX_POLICY_CONTEXT_ENTRIES,
+                    "policy_context_key_characters": (
+                        MAX_POLICY_CONTEXT_KEY_CHARACTERS
+                    ),
+                    "policy_context_value_characters": (
+                        MAX_POLICY_CONTEXT_VALUE_CHARACTERS
+                    ),
+                    "policy_context_characters": MAX_POLICY_CONTEXT_CHARACTERS,
                     "request_task_characters": MAX_REQUEST_TEXT_ITEM_CHARACTERS,
                     "request_identifier_characters": (
                         MAX_REQUEST_IDENTIFIER_CHARACTERS
@@ -318,6 +330,7 @@ class CommandCore:
                     "validated_authority_record_ownership": True,
                     "validated_policy_snapshot_ownership": True,
                     "sealed_policy_runtime_state": True,
+                    "validated_policy_context_snapshot": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

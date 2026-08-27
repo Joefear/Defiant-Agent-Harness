@@ -35,6 +35,10 @@ from ..contracts import (
     side_effect_rank,
 )
 from ..limits import (
+    MAX_POLICY_CONTEXT_CHARACTERS,
+    MAX_POLICY_CONTEXT_ENTRIES,
+    MAX_POLICY_CONTEXT_KEY_CHARACTERS,
+    MAX_POLICY_CONTEXT_VALUE_CHARACTERS,
     MAX_POLICY_KNOWN_TOOLS,
     MAX_POLICY_GLOB_MATCH_WORK_UNITS,
     MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
@@ -81,6 +85,14 @@ class PolicyError(ValueError):
 
 class PolicyMatchLimitError(RuntimeError):
     """A governed action exceeded deterministic policy-matching ceilings."""
+
+    def __init__(self, message: str, *, limit_enforced: str):
+        super().__init__(message)
+        self.limit_enforced = limit_enforced
+
+
+class PolicyContextError(ValueError):
+    """Caller-supplied policy context violated its bounded metadata contract."""
 
     def __init__(self, message: str, *, limit_enforced: str):
         super().__init__(message)
@@ -154,7 +166,7 @@ class Rule:
     def matches(
         self,
         action: ProposedAction,
-        context: dict,
+        context: dict[str, str],
         *,
         match_state: _PolicyMatchState | None = None,
     ) -> bool:
@@ -193,7 +205,7 @@ class Rule:
             if not _trust_satisfies(action.payload_trust, allowed):
                 return False
         if self.sensitivities:
-            if str(context.get("sensitivity", "")) not in self.sensitivities:
+            if context.get("sensitivity", "") not in self.sensitivities:
                 return False
         return True
 
@@ -339,6 +351,125 @@ def _policy_match_limit_decision(
         policy_version=engine.version,
         ruleset_hash=engine.ruleset_hash,
         decision_inputs=decision_inputs,
+    )
+
+
+def _policy_context_snapshot(context: dict | None) -> dict[str, str]:
+    """Capture one bounded exact observation without invoking mapping hooks."""
+
+    if context is None:
+        return {}
+    if not isinstance(context, dict):
+        raise PolicyContextError(
+            "policy context must be a mapping",
+            limit_enforced="policy_context_type",
+        )
+
+    entry_count = dict.__len__(context)
+    if entry_count > MAX_POLICY_CONTEXT_ENTRIES:
+        raise PolicyContextError(
+            "policy context exceeds maximum entry count of "
+            f"{MAX_POLICY_CONTEXT_ENTRIES}",
+            limit_enforced="policy_context_entries",
+        )
+
+    keys = list(dict.keys(context))
+    if len(keys) != entry_count:
+        raise PolicyContextError(
+            "policy context changed during snapshot",
+            limit_enforced="policy_context_snapshot",
+        )
+
+    normalized_keys: list[str] = []
+    normalized_key_set: set[str] = set()
+    characters = 0
+    for key in keys:
+        if not isinstance(key, str):
+            raise PolicyContextError(
+                "policy context keys and values must be strings",
+                limit_enforced="policy_context_type",
+            )
+        normalized_key = str.__str__(key)
+        key_characters = str.__len__(normalized_key)
+        if key_characters > MAX_POLICY_CONTEXT_KEY_CHARACTERS:
+            raise PolicyContextError(
+                "policy context key exceeds maximum of "
+                f"{MAX_POLICY_CONTEXT_KEY_CHARACTERS} characters",
+                limit_enforced="policy_context_key_characters",
+            )
+        if key_characters > MAX_POLICY_CONTEXT_CHARACTERS - characters:
+            raise PolicyContextError(
+                "policy context text exceeds maximum of "
+                f"{MAX_POLICY_CONTEXT_CHARACTERS} characters",
+                limit_enforced="policy_context_characters",
+            )
+        if normalized_key in normalized_key_set:
+            raise PolicyContextError(
+                "policy context keys are ambiguous after normalization",
+                limit_enforced="policy_context_type",
+            )
+        characters += key_characters
+        normalized_keys.append(normalized_key)
+        normalized_key_set.add(normalized_key)
+
+    items = list(dict.items(context))
+    if len(items) != entry_count or any(
+        item_key is not key for key, (item_key, _) in zip(keys, items, strict=True)
+    ):
+        raise PolicyContextError(
+            "policy context changed during snapshot",
+            limit_enforced="policy_context_snapshot",
+        )
+
+    snapshot: dict[str, str] = {}
+    for (_, value), normalized_key in zip(items, normalized_keys, strict=True):
+        if not isinstance(value, str):
+            raise PolicyContextError(
+                "policy context keys and values must be strings",
+                limit_enforced="policy_context_type",
+            )
+        normalized_value = str.__str__(value)
+        value_characters = str.__len__(normalized_value)
+        if value_characters > MAX_POLICY_CONTEXT_VALUE_CHARACTERS:
+            raise PolicyContextError(
+                "policy context value exceeds maximum of "
+                f"{MAX_POLICY_CONTEXT_VALUE_CHARACTERS} characters",
+                limit_enforced="policy_context_value_characters",
+            )
+        if value_characters > MAX_POLICY_CONTEXT_CHARACTERS - characters:
+            raise PolicyContextError(
+                "policy context text exceeds maximum of "
+                f"{MAX_POLICY_CONTEXT_CHARACTERS} characters",
+                limit_enforced="policy_context_characters",
+            )
+        characters += value_characters
+        snapshot[normalized_key] = normalized_value
+
+    if dict.__len__(context) != entry_count:
+        raise PolicyContextError(
+            "policy context changed during snapshot",
+            limit_enforced="policy_context_snapshot",
+        )
+    return snapshot
+
+
+def _policy_context_error_decision(
+    error: PolicyContextError,
+    engine: PolicyEngine,
+    action: ProposedAction,
+) -> GuardrailDecision:
+    return GuardrailDecision(
+        decision=Decision.BLOCK,
+        reason=str(error),
+        policy_ids=["policy_context_contract"],
+        policy_version=engine.version,
+        ruleset_hash=engine.ruleset_hash,
+        decision_inputs={
+            "tool_name": action.tool_name,
+            "side_effect_level": action.side_effect_level.value,
+            "policy_name": engine.name,
+            "limit_enforced": error.limit_enforced,
+        },
     )
 
 
@@ -700,7 +831,10 @@ class PolicyEngine:
     def evaluate(
         self, action: ProposedAction, context: dict | None = None
     ) -> GuardrailDecision:
-        context = context or {}
+        try:
+            context_snapshot = _policy_context_snapshot(context)
+        except PolicyContextError as exc:
+            return _policy_context_error_decision(exc, self, action)
 
         match_state = _PolicyMatchState()
         try:
@@ -727,7 +861,7 @@ class PolicyEngine:
                 for rule in self.rules
                 if rule.matches(
                     action,
-                    context,
+                    context_snapshot,
                     match_state=match_state,
                 )
             ]
@@ -779,7 +913,7 @@ class PolicyEngine:
                 "payload_hash": action.payload_hash,
                 "authorization_hash": action.authorization_hash,
                 "payload_trust": action.payload_trust.value,
-                "context": {k: str(v) for k, v in context.items()},
+                "context": context_snapshot,
                 "matched_rules": [r.id for r in matched],
                 "policy_name": self.name,
                 "authority_inputs": self.authority_inputs,

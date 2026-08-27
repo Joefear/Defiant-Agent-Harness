@@ -77,6 +77,14 @@ MAX_POLICY_MATCH_TOOL_NAME_CHARACTERS = 4_096
 MAX_POLICY_MATCH_TARGET_CHARACTERS = 1 * MIB
 MAX_POLICY_GLOB_MATCH_WORK_UNITS = 64 * MIB
 
+# Evaluation context is authority-bearing request metadata, not a bulk payload.
+# Bound and own one exact string-to-string observation before any rule reads it
+# and before the same observation is retained in decision evidence.
+MAX_POLICY_CONTEXT_ENTRIES = 64
+MAX_POLICY_CONTEXT_KEY_CHARACTERS = 256
+MAX_POLICY_CONTEXT_VALUE_CHARACTERS = 4_096
+MAX_POLICY_CONTEXT_CHARACTERS = 256 * 1024
+
 # Every policy decision, approval, capability grant, and evidence record binds
 # the governed action through canonical SHA-256 fingerprints.  Bound action-
 # controlled structure before JSON encoding and bound the encoded byte stream

@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.56
+## What is deliberately absent from v0.57
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -772,6 +772,12 @@ name, version, and hash through read-only properties, and nested authority
 inputs remain recursively frozen behind a defensive built-in projection. The
 same pre-seal canonical surface still determines `ruleset_hash`, so ordinary
 policy identity is unchanged. See `sealed_policy_runtime_state.md`.
+
+v0.57 captures policy evaluation context once from built-in dictionary storage,
+normalizes its bounded string keys and values to exact built-ins, and gives the
+same owned snapshot to rule matching and decision attribution. Invalid,
+oversized, ambiguous, or capture-unstable context blocks before matching and is
+not retained in the refusal. See `validated_policy_context_snapshot.md`.
 
 ## Known limits
 

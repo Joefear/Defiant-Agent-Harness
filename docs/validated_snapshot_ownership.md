@@ -44,7 +44,7 @@ capability check. Tool-call translation continues to call
 
 ## Read-only projection
 
-Command Core schema `0.50.0` reports
+Command Core schema `0.51.0` reports
 `validated_snapshot_ownership: true` alongside
 `validated_canonical_snapshot: true`. Command Center renders only this fixed
 posture. It has no endpoint or control for supplying snapshots, changing the
