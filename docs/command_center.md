@@ -79,6 +79,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   authorization translation, target selection, payload, and completion;
 - sealed authority-profile and operator-trust state with defensive projections
   and symmetric bounded capture, publication, and recovery reads;
+- detached bounded evidence-head checkpoint state with symmetric capture,
+  recovery-read, and publication limits;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -102,7 +104,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.57.0`. The browser cannot raise, disable, or replace them and never receives
+`0.58.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -121,6 +123,12 @@ snapshot posture. The existing budget cards remain sanitized aggregate
 projections. The browser receives no reservation map, reconciliation record,
 operator note, attestation, or ledger mutation, settlement, release, grant,
 repair, or acceptance endpoint.
+
+v0.64 adds only the static evidence-head-state byte ceiling and validated
+checkpoint-snapshot posture. The browser continues to receive the existing
+sanitized checkpoint position and verification projection. It gains no
+checkpoint write, advance, repair, acceptance, profile-rebind, evidence append,
+or other authority endpoint.
 
 ## Read-only boundary
 

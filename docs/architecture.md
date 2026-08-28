@@ -837,6 +837,16 @@ the state auditor reuses ledger validation rather than rereading raw JSON. The
 conservative disposition of uncertain execution is unchanged. See
 `validated_budget_ledger_snapshot.md`.
 
+v0.64 makes `evidence_head.json` one bounded durable-state observation.
+Loading captures exact built-in values before schema, profile, count, head,
+and timestamp validation; public hash inputs are normalized before comparison
+or retention. The established 64 KiB checkpoint allowance now applies to the
+canonical capture, descriptor-backed recovery read, and atomic publication.
+The append-only evidence history remains independently bounded per record, and
+the prior checkpoint remains intact if a proposed publication is refused. The
+forward-recovery, rollback, divergence, and profile-rebind rules do not change.
+See `validated_evidence_head_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

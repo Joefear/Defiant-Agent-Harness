@@ -137,6 +137,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"hook_execution_state_bytes" in javascript
     assert b"approval_state_bytes" in javascript
     assert b"budget_state_bytes" in javascript
+    assert b"evidence_head_state_bytes" in javascript
     assert b"authority_profile_state_bytes" in javascript
     assert b"operator_trust_state_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
@@ -227,6 +228,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"sealed_approval_record_state" in javascript
     assert b"approval records and held authority snapshots retained" in javascript
     assert b"validated_budget_ledger_snapshot" in javascript
+    assert b"validated_evidence_head_snapshot" in javascript
+    assert b"evidence-head checkpoint validation and publication" in javascript
     assert b"budget validation and publication use detached" in javascript
     assert b"authority profile and operator trust state retained" in javascript
     assert b"json_parser_profile" in javascript

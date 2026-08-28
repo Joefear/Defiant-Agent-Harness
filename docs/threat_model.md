@@ -837,6 +837,19 @@ explicit ceiling to capture, recovery reads, and atomic writes. This does not
 prove an external outcome, optimistically release uncertain exposure, prevent
 a privileged host from altering files, or make Python an OS sandbox.
 
+**Evidence-head validation and publication observed caller-owned state.**
+Through v0.63, the checkpoint store performed a separate size stat before an
+implicitly broader JSON read, validated the resulting live mapping directly,
+retained accepted string subclasses, and published without the checkpoint's
+64 KiB recovery ceiling. A hostile in-process container or scalar could change
+what schema, profile, position, timestamp, comparison, or serialization saw,
+and publication did not express the same recoverability contract as reading.
+v0.64 captures one bounded canonical built-in state, normalizes public hash
+inputs, and applies the explicit 64 KiB ceiling to capture, descriptor-backed
+read, and atomic write. This does not bound the complete evidence history,
+weaken rollback or divergence refusal, protect against privileged consistent
+replacement of both files, or turn Python into an OS sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the
