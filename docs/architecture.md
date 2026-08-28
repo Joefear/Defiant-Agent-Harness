@@ -825,6 +825,18 @@ unknown fields or inconsistent authority snapshots fail closed. Command Core
 projects only static posture and sanitized queue state, and Command Center
 remains a read-only observer. See `sealed_approval_record_state.md`.
 
+v0.63 makes the budget ledger's mutable working dictionary a deliberate local
+transition copy instead of an unbounded authority input. Every recovery read
+and proposed publication is first captured as one detached canonical built-in
+snapshot under an explicit 64 MiB ceiling. Validation and accounting consume
+that exact observation, and the JSON writer sees only the finalized validated
+snapshot. Public accounting identifiers and operator reconciliation context
+are normalized before comparisons; nested attestations are detached before
+retention. Command Core computes summary and drift from one observation, and
+the state auditor reuses ledger validation rather than rereading raw JSON. The
+conservative disposition of uncertain execution is unchanged. See
+`validated_budget_ledger_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

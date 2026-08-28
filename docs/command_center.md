@@ -102,7 +102,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.56.0`. The browser cannot raise, disable, or replace them and never receives
+`0.57.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -115,6 +115,12 @@ posture. Actionable approval cards remain sanitized operational metadata. The
 browser never receives held action/request/decision snapshots, payload
 previews, targets, operator notes, attestations, or a decision, execution,
 reconciliation, repair, or record-update endpoint.
+
+v0.63 adds only the static budget-state byte ceiling and validated-ledger
+snapshot posture. The existing budget cards remain sanitized aggregate
+projections. The browser receives no reservation map, reconciliation record,
+operator note, attestation, or ledger mutation, settlement, release, grant,
+repair, or acceptance endpoint.
 
 ## Read-only boundary
 

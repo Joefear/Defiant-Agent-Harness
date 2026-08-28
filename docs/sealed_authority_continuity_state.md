@@ -40,7 +40,7 @@ existing state remains readable.
 
 ## Read-only projection
 
-Command Core schema `0.56.0` publishes `authority_profile_state_bytes` and
+Command Core schema `0.57.0` publishes `authority_profile_state_bytes` and
 `operator_trust_state_bytes` under `resource_limits` and reports
 `sealed_authority_continuity_state: true` under `authority_configuration`.
 Command Center renders only this static posture. It receives no binding map,

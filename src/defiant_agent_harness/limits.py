@@ -35,6 +35,11 @@ MAX_HOOK_EXECUTION_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 # preserving the established aggregate durable-state allowance.
 MAX_APPROVAL_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 
+# Budget state is an authority-bearing accounting boundary. Keep validation,
+# recovery reads, and atomic publication under the same explicit aggregate
+# ceiling while preserving the established durable JSON allowance.
+MAX_BUDGET_STATE_BYTES = MAX_DURABLE_JSON_BYTES
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

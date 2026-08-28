@@ -824,6 +824,19 @@ write. This does not decide whether an uncertain external action ran, release a
 stranded reservation optimistically, make trusted in-process Python untrusted,
 or turn Command Center into an authority surface.
 
+**Budget validation and publication observed different objects.** Through
+v0.62, `BudgetLedger` validated a live dictionary and later passed that same
+mutable object directly to the JSON encoder. Public identifier, note, and
+attestation inputs could also remain caller-owned until comparison or
+publication. A container subclass or concurrent caller mutation could make the
+durable accounting story differ from validation, while the store's 64 MiB
+allowance remained implicit. v0.63 captures detached bounded built-in
+snapshots before validation and again after the local transition, normalizes
+public text inputs, detaches reconciliation attestations, and applies one
+explicit ceiling to capture, recovery reads, and atomic writes. This does not
+prove an external outcome, optimistically release uncertain exposure, prevent
+a privileged host from altering files, or make Python an OS sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the
