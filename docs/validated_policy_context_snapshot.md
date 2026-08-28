@@ -41,7 +41,7 @@ or rendered. Rule matching does not begin after a context failure.
 
 ## Read-only projection
 
-Command Core schema `0.53.0` publishes the four fixed ceilings under
+Command Core schema `0.54.0` publishes the four fixed ceilings under
 `resource_limits` and reports `validated_policy_context_snapshot: true` under
 `authority_configuration`. Command Center renders only those constants and the
 static posture. It cannot submit context, change a limit, reevaluate a decision,

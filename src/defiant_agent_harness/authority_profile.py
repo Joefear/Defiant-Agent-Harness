@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hmac
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .contracts import utc_now
+from .contracts import authority_snapshot_and_sha256_of, utc_now
+from .frozen_snapshot import freeze_snapshot, thaw_snapshot
+from .limits import MAX_AUTHORITY_PROFILE_STATE_BYTES
 from .operator_identity import OperatorIdentityError, OperatorTrustPolicy
 from .persistence import (
     atomic_write_json,
@@ -41,7 +43,7 @@ _TRANSITION_FIELDS = {
     "requested_at",
     "attestation",
 }
-_MAX_STATE_BYTES = 1024 * 1024
+_MAX_STATE_BYTES = MAX_AUTHORITY_PROFILE_STATE_BYTES
 _MAX_TRANSITIONS = 1024
 _MAX_OPERATOR_CHARS = 256
 _MAX_NOTE_CHARS = 4096
@@ -51,15 +53,77 @@ class AuthorityProfileError(OperatorIdentityError):
     """Durable authority-profile continuity could not be established safely."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class AuthorityProfileState:
     generation: int
     enrolled_at: str
     updated_at: str
     initial_profile_hash: str
     profile_hash: str
-    transitions: list[dict[str, Any]]
-    pending_rotation: dict[str, Any] | None = None
+    _transitions: Any = field(repr=False)
+    _pending_rotation: Any = field(repr=False)
+
+    def __init__(
+        self,
+        generation: int,
+        enrolled_at: str,
+        updated_at: str,
+        initial_profile_hash: str,
+        profile_hash: str,
+        transitions: list[dict[str, Any]],
+        pending_rotation: dict[str, Any] | None = None,
+    ):
+        snapshot = _authority_state_snapshot(
+            {
+                "generation": generation,
+                "enrolled_at": enrolled_at,
+                "updated_at": updated_at,
+                "initial_profile_hash": initial_profile_hash,
+                "profile_hash": profile_hash,
+                "transitions": transitions,
+                "pending_rotation": pending_rotation,
+            }
+        )
+        self._install(
+            generation=snapshot["generation"],
+            enrolled_at=snapshot["enrolled_at"],
+            updated_at=snapshot["updated_at"],
+            initial_profile_hash=snapshot["initial_profile_hash"],
+            profile_hash=snapshot["profile_hash"],
+            transitions=snapshot["transitions"],
+            pending_rotation=snapshot["pending_rotation"],
+        )
+
+    def _install(
+        self,
+        *,
+        generation: int,
+        enrolled_at: str,
+        updated_at: str,
+        initial_profile_hash: str,
+        profile_hash: str,
+        transitions: list[dict[str, Any]],
+        pending_rotation: dict[str, Any] | None,
+    ) -> None:
+        object.__setattr__(self, "generation", generation)
+        object.__setattr__(self, "enrolled_at", enrolled_at)
+        object.__setattr__(self, "updated_at", updated_at)
+        object.__setattr__(self, "initial_profile_hash", initial_profile_hash)
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "_transitions", freeze_snapshot(transitions))
+        object.__setattr__(
+            self,
+            "_pending_rotation",
+            freeze_snapshot(pending_rotation),
+        )
+
+    @property
+    def transitions(self) -> list[dict[str, Any]]:
+        return thaw_snapshot(self._transitions)
+
+    @property
+    def pending_rotation(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._pending_rotation)
 
     @classmethod
     def enrolled(cls, profile_hash: str) -> "AuthorityProfileState":
@@ -76,6 +140,7 @@ class AuthorityProfileState:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "AuthorityProfileState":
+        raw = _authority_state_snapshot(raw)
         if set(raw) != _STATE_FIELDS:
             raise AuthorityProfileError(
                 "authority profile state fields do not match the schema"
@@ -163,7 +228,8 @@ class AuthorityProfileState:
                     "pending authority profile rotation predates current generation"
                 )
 
-        return cls(
+        state = object.__new__(cls)
+        state._install(
             generation=generation,
             enrolled_at=raw["enrolled_at"],
             updated_at=raw["updated_at"],
@@ -172,6 +238,7 @@ class AuthorityProfileState:
             transitions=normalized,
             pending_rotation=pending,
         )
+        return state
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -182,8 +249,8 @@ class AuthorityProfileState:
             "updated_at": self.updated_at,
             "initial_profile_hash": self.initial_profile_hash,
             "profile_hash": self.profile_hash,
-            "transitions": self.transitions,
-            "pending_rotation": self.pending_rotation,
+            "transitions": thaw_snapshot(self._transitions),
+            "pending_rotation": thaw_snapshot(self._pending_rotation),
         }
 
     def verify(self, operator_trust: OperatorTrustPolicy | None) -> None:
@@ -277,7 +344,7 @@ class AuthorityProfileStore:
             state = self.get()
             if state is None:
                 state = AuthorityProfileState.enrolled(profile_hash)
-                atomic_write_json(self.path, state.to_dict())
+                _write_state(self.path, state)
                 return state
             state.verify(operator_trust)
             if hmac.compare_digest(state.profile_hash, profile_hash):
@@ -302,7 +369,7 @@ class AuthorityProfileStore:
                     }
                 )
                 updated.verify(operator_trust)
-                atomic_write_json(self.path, updated.to_dict())
+                _write_state(self.path, updated)
                 return updated
             pending_detail = (
                 f"; approved pending profile is {pending['to_profile_hash']}"
@@ -401,7 +468,7 @@ class AuthorityProfileStore:
                 {**state.to_dict(), "pending_rotation": transition}
             )
             updated.verify(operator_trust)
-            atomic_write_json(self.path, updated.to_dict())
+            _write_state(self.path, updated)
             return updated
 
     def _require_enrolled_trust(
@@ -471,6 +538,28 @@ def _transition(value: Any, field: str) -> dict[str, Any]:
         "requested_at": requested_at,
         "attestation": dict(attestation) if attestation is not None else None,
     }
+
+
+def _authority_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise AuthorityProfileError(
+            "authority profile exceeds bounded canonical state contract"
+        ) from exc
+    if not isinstance(snapshot, dict):
+        raise AuthorityProfileError("authority profile state must be an object")
+    return snapshot
+
+
+def _write_state(path: Path, state: AuthorityProfileState) -> None:
+    try:
+        atomic_write_json(path, state.to_dict(), max_bytes=_MAX_STATE_BYTES)
+    except RuntimeError as exc:
+        raise AuthorityProfileError(str(exc)) from exc
 
 
 def _hash(value: Any, field: str) -> str:

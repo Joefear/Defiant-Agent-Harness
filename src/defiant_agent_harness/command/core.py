@@ -17,6 +17,7 @@ from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
+    MAX_AUTHORITY_PROFILE_STATE_BYTES,
     MAX_POLICY_CONTEXT_CHARACTERS,
     MAX_POLICY_CONTEXT_ENTRIES,
     MAX_POLICY_CONTEXT_KEY_CHARACTERS,
@@ -43,6 +44,7 @@ from ..limits import (
     MAX_MCP_LAUNCH_ENVIRONMENT_ENTRIES,
     MAX_MCP_MESSAGE_BYTES,
     MAX_OPERATION_JOURNAL_BYTES,
+    MAX_OPERATOR_TRUST_STATE_BYTES,
     MAX_POLICY_GLOB_MATCH_WORK_UNITS,
     MAX_POLICY_KNOWN_TOOLS,
     MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
@@ -95,7 +97,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.53.0"
+SNAPSHOT_VERSION = "0.54.0"
 
 
 class CommandError(RuntimeError):
@@ -245,6 +247,10 @@ class CommandCore:
                     "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
                     "operation_journal_bytes": MAX_OPERATION_JOURNAL_BYTES,
+                    "authority_profile_state_bytes": (
+                        MAX_AUTHORITY_PROFILE_STATE_BYTES
+                    ),
+                    "operator_trust_state_bytes": MAX_OPERATOR_TRUST_STATE_BYTES,
                     "json_lexical_tokens": MAX_JSON_LEXICAL_TOKENS,
                     "json_nesting_depth": MAX_JSON_NESTING_DEPTH,
                     "json_number_token_characters": MAX_JSON_NUMBER_TOKEN_CHARACTERS,
@@ -335,6 +341,7 @@ class CommandCore:
                     "validated_policy_context_snapshot": True,
                     "validated_operation_journal_snapshot": True,
                     "validated_native_hook_event_snapshot": True,
+                    "sealed_authority_continuity_state": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,

@@ -77,6 +77,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   projections;
 - one bounded exact native-hook event observation shared by retry identity,
   authorization translation, target selection, payload, and completion;
+- sealed authority-profile and operator-trust state with defensive projections
+  and symmetric bounded capture, publication, and recovery reads;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -100,7 +102,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.53.0`. The browser cannot raise, disable, or replace them and never receives
+`0.54.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 ## Read-only boundary

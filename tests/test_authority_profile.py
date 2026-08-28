@@ -6,9 +6,11 @@ import re
 
 import pytest
 
+import defiant_agent_harness.authority_profile as authority_profile_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
+    AuthorityProfileState,
     AuthorityProfileStore,
 )
 from defiant_agent_harness.cli.main import main
@@ -73,6 +75,114 @@ def test_first_startup_enrolls_complete_profile_and_exact_restart_matches(tmp_pa
     assert enrolled.profile_hash == first.policy.ruleset_hash
     assert second.policy.ruleset_hash == first.policy.ruleset_hash
     assert enrolled.pending_rotation is None
+
+
+def test_profile_state_owns_hostile_snapshot_and_defensive_projections(tmp_path):
+    class HostileDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("profile snapshot invoked deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("profile snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("profile snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("profile snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("profile snapshot invoked mapping keys hook")
+
+    class HostileList(list):
+        def __deepcopy__(self, memo):
+            raise AssertionError("profile snapshot invoked list deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("profile snapshot invoked list iterator hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("profile snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("profile snapshot invoked scalar rendering hook")
+
+    store = AuthorityProfileStore(tmp_path / "state" / "authority_profile.json")
+    store.resolve_for_authority(_hash("one"), None)
+    store.request_rotation(
+        _hash("two"),
+        operator="release-operator",
+        note="tested rollout",
+        operator_trust=None,
+    )
+    raw = json.loads(store.path.read_text(encoding="utf-8"))
+
+    def hostile(value):
+        if type(value) is dict:
+            return HostileDict({key: hostile(child) for key, child in value.items()})
+        if type(value) is list:
+            return HostileList([hostile(child) for child in value])
+        if type(value) is str:
+            return HostileString(value)
+        return value
+
+    supplied = hostile(raw)
+    state = AuthorityProfileState.from_dict(supplied)
+    expected = state.to_dict()
+    supplied_pending = dict.__getitem__(supplied, "pending_rotation")
+    dict.__setitem__(supplied_pending, "note", "caller mutation")
+    projection = state.to_dict()
+    projection["pending_rotation"]["note"] = "projection mutation"
+    state.pending_rotation["note"] = "property mutation"
+
+    assert state.to_dict() == expected
+    assert state.pending_rotation["note"] == "tested rollout"
+    assert type(state.to_dict()["pending_rotation"]) is dict
+    assert type(state.to_dict()["transitions"]) is list
+
+
+def test_profile_rotation_refuses_unrecoverable_state_size(tmp_path, monkeypatch):
+    path = tmp_path / "state" / "authority_profile.json"
+    store = AuthorityProfileStore(path)
+    store.resolve_for_authority(_hash("one"), None)
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        authority_profile_module,
+        "_MAX_STATE_BYTES",
+        len(before) + 32,
+    )
+
+    with pytest.raises(AuthorityProfileError, match="bounded canonical state"):
+        store.request_rotation(
+            _hash("two"),
+            operator="release-operator",
+            note="x" * 4096,
+            operator_trust=None,
+        )
+
+    assert path.read_bytes() == before
+    assert store.get().generation == 1
+
+
+def test_profile_publication_uses_recovery_read_ceiling(tmp_path, monkeypatch):
+    observed = []
+    original_write = authority_profile_module.atomic_write_json
+
+    def recording_write(path, data, *, max_bytes=None):
+        observed.append(max_bytes)
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(
+        authority_profile_module,
+        "atomic_write_json",
+        recording_write,
+    )
+    AuthorityProfileStore(
+        tmp_path / "state" / "authority_profile.json"
+    ).resolve_for_authority(_hash("one"), None)
+
+    assert observed == [authority_profile_module._MAX_STATE_BYTES]
 
 
 def test_unapproved_profile_drift_fails_before_other_state_changes(tmp_path):

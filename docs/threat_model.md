@@ -786,6 +786,19 @@ translation gap; it does not contain direct activity that emits no hook event,
 change documented runner timeout behavior, or make trusted process code
 untrusted.
 
+**Mutable or unrecoverable authority-continuity state.** Through v0.59, frozen
+authority-profile and operator-trust dataclasses retained mutable nested
+bindings, transitions, and attestations, and returned those live objects from
+their public projections. A caller could change later verification or
+publication beneath an already validated state instance. Their writers also
+used the broad durable JSON ceiling despite 1 MiB recovery-read limits, so a
+long valid rotation history could be published successfully and then rejected
+on restart. v0.60 validates one fixed-profile snapshot, recursively freezes the
+retained tree, returns only detached projections, and applies each 1 MiB limit
+to capture, publication, and recovery reads. This protects state-object
+ownership and recoverability; it does not make already-trusted process code or
+a privileged host untrusted.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

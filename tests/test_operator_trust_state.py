@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+import defiant_agent_harness.operator_trust_state as operator_trust_state_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.approvals.store import ApprovalStore
 from defiant_agent_harness.command.core import CommandCore
@@ -19,6 +20,7 @@ from defiant_agent_harness.operator_identity import (
     sign_trust_transition,
 )
 from defiant_agent_harness.operator_trust_state import (
+    OperatorTrustState,
     OperatorTrustStateError,
     OperatorTrustStateStore,
 )
@@ -68,6 +70,112 @@ def test_first_trusted_authority_startup_enrolls_and_restart_requires_pins(tmp_p
 
     after = {path.name: path.read_bytes() for path in state.iterdir() if path.is_file()}
     assert after == before
+
+
+def test_trust_state_owns_hostile_snapshot_and_defensive_projections(tmp_path):
+    class HostileDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("trust snapshot invoked deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("trust snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("trust snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("trust snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("trust snapshot invoked mapping keys hook")
+
+    class HostileList(list):
+        def __deepcopy__(self, memo):
+            raise AssertionError("trust snapshot invoked list deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("trust snapshot invoked list iterator hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("trust snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("trust snapshot invoked scalar rendering hook")
+
+    _, spec = _key(tmp_path, "old")
+    path = tmp_path / "state" / "operator_trust.json"
+    store = OperatorTrustStateStore(path)
+    store.resolve_for_authority([spec])
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    def hostile(value):
+        if type(value) is dict:
+            return HostileDict({key: hostile(child) for key, child in value.items()})
+        if type(value) is list:
+            return HostileList([hostile(child) for child in value])
+        if type(value) is str:
+            return HostileString(value)
+        return value
+
+    supplied = hostile(raw)
+    state = OperatorTrustState.from_dict(supplied)
+    expected = state.to_dict()
+    first_operator = next(iter(raw["bindings"]))
+    supplied_bindings = dict.__getitem__(supplied, "bindings")
+    dict.__getitem__(supplied_bindings, first_operator).append("sha256:" + "0" * 64)
+    projection = state.to_dict()
+    projection["bindings"][first_operator].append("sha256:" + "1" * 64)
+    state.bindings[first_operator].append("sha256:" + "2" * 64)
+
+    assert state.to_dict() == expected
+    assert state.bindings == raw["bindings"]
+    assert type(state.to_dict()["bindings"]) is dict
+    assert type(state.to_dict()["bindings"][first_operator]) is list
+
+
+def test_trust_rotation_refuses_unrecoverable_state_size(tmp_path, monkeypatch):
+    old_private, old_spec = _key(tmp_path, "old")
+    _, new_spec = _key(tmp_path, "new")
+    path = tmp_path / "state" / "operator_trust.json"
+    store = OperatorTrustStateStore(path)
+    current = store.resolve_for_authority([old_spec])
+    candidate = OperatorTrustPolicy.from_specs([old_spec, new_spec])
+    enrolled = store.get()
+    attestation = _transition(enrolled, candidate, old_private)
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        operator_trust_state_module,
+        "_MAX_STATE_BYTES",
+        len(before) + 32,
+    )
+
+    with pytest.raises(OperatorTrustStateError, match="bounded canonical state"):
+        store.rotate(current, candidate, attestation)
+
+    assert path.read_bytes() == before
+    assert store.get().generation == 1
+
+
+def test_trust_publication_uses_recovery_read_ceiling(tmp_path, monkeypatch):
+    _, spec = _key(tmp_path, "old")
+    observed = []
+    original_write = operator_trust_state_module.atomic_write_json
+
+    def recording_write(path, data, *, max_bytes=None):
+        observed.append(max_bytes)
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(
+        operator_trust_state_module,
+        "atomic_write_json",
+        recording_write,
+    )
+    OperatorTrustStateStore(
+        tmp_path / "state" / "operator_trust.json"
+    ).resolve_for_authority([spec])
+
+    assert observed == [operator_trust_state_module._MAX_STATE_BYTES]
 
 
 def test_changed_mapping_requires_explicit_rotation(tmp_path):

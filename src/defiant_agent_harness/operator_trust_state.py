@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import hmac
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .contracts import sha256_of, utc_now
+from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
+from .frozen_snapshot import freeze_snapshot, thaw_snapshot
 from .operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
 )
-from .limits import MAX_TRUSTED_PUBLIC_KEYS
+from .limits import MAX_OPERATOR_TRUST_STATE_BYTES, MAX_TRUSTED_PUBLIC_KEYS
 from .persistence import (
     atomic_write_json,
     exclusive_file_lock,
@@ -39,7 +40,7 @@ _STATE_FIELDS = {
     "transitions",
 }
 _TRANSITION_FIELDS = {"attestation", "bindings"}
-_MAX_STATE_BYTES = 1024 * 1024
+_MAX_STATE_BYTES = MAX_OPERATOR_TRUST_STATE_BYTES
 _MAX_OPERATORS = 256
 _MAX_TRANSITIONS = 1024
 
@@ -48,16 +49,87 @@ class OperatorTrustStateError(OperatorIdentityError):
     """Durable operator trust could not be established safely."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class OperatorTrustState:
     generation: int
     enrolled_at: str
     updated_at: str
-    initial_bindings: dict[str, list[str]]
+    _initial_bindings: Any = field(repr=False)
     initial_bindings_hash: str
-    bindings: dict[str, list[str]]
+    _bindings: Any = field(repr=False)
     bindings_hash: str
-    transitions: list[dict[str, Any]]
+    _transitions: Any = field(repr=False)
+
+    def __init__(
+        self,
+        generation: int,
+        enrolled_at: str,
+        updated_at: str,
+        initial_bindings: dict[str, list[str]],
+        initial_bindings_hash: str,
+        bindings: dict[str, list[str]],
+        bindings_hash: str,
+        transitions: list[dict[str, Any]],
+    ):
+        snapshot = _trust_state_snapshot(
+            {
+                "generation": generation,
+                "enrolled_at": enrolled_at,
+                "updated_at": updated_at,
+                "initial_bindings": initial_bindings,
+                "initial_bindings_hash": initial_bindings_hash,
+                "bindings": bindings,
+                "bindings_hash": bindings_hash,
+                "transitions": transitions,
+            }
+        )
+        self._install(
+            generation=snapshot["generation"],
+            enrolled_at=snapshot["enrolled_at"],
+            updated_at=snapshot["updated_at"],
+            initial_bindings=snapshot["initial_bindings"],
+            initial_bindings_hash=snapshot["initial_bindings_hash"],
+            bindings=snapshot["bindings"],
+            bindings_hash=snapshot["bindings_hash"],
+            transitions=snapshot["transitions"],
+        )
+
+    def _install(
+        self,
+        *,
+        generation: int,
+        enrolled_at: str,
+        updated_at: str,
+        initial_bindings: dict[str, list[str]],
+        initial_bindings_hash: str,
+        bindings: dict[str, list[str]],
+        bindings_hash: str,
+        transitions: list[dict[str, Any]],
+    ) -> None:
+        object.__setattr__(self, "generation", generation)
+        object.__setattr__(self, "enrolled_at", enrolled_at)
+        object.__setattr__(self, "updated_at", updated_at)
+        object.__setattr__(
+            self,
+            "_initial_bindings",
+            freeze_snapshot(initial_bindings),
+        )
+        object.__setattr__(self, "initial_bindings_hash", initial_bindings_hash)
+        object.__setattr__(self, "_bindings", freeze_snapshot(bindings))
+        object.__setattr__(self, "bindings_hash", bindings_hash)
+        object.__setattr__(self, "_transitions", freeze_snapshot(transitions))
+
+    @property
+    def initial_bindings(self) -> dict[str, list[str]]:
+        return thaw_snapshot(self._initial_bindings)
+
+    @property
+    def bindings(self) -> dict[str, list[str]]:
+        return thaw_snapshot(self._bindings)
+
+    @property
+    def transitions(self) -> list[dict[str, Any]]:
+        return thaw_snapshot(self._transitions)
 
     @classmethod
     def enrolled(cls, policy: OperatorTrustPolicy) -> "OperatorTrustState":
@@ -75,6 +147,7 @@ class OperatorTrustState:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "OperatorTrustState":
+        raw = _trust_state_snapshot(raw)
         if set(raw) != _STATE_FIELDS:
             raise OperatorTrustStateError(
                 "operator trust state fields do not match the schema"
@@ -184,7 +257,8 @@ class OperatorTrustState:
                 "initial operator trust timestamps do not match"
             )
 
-        return cls(
+        state = object.__new__(cls)
+        state._install(
             generation=generation,
             enrolled_at=raw["enrolled_at"],
             updated_at=raw["updated_at"],
@@ -194,6 +268,7 @@ class OperatorTrustState:
             bindings_hash=current_hash,
             transitions=normalized_transitions,
         )
+        return state
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -203,11 +278,11 @@ class OperatorTrustState:
             "generation": self.generation,
             "enrolled_at": self.enrolled_at,
             "updated_at": self.updated_at,
-            "initial_bindings": self.initial_bindings,
+            "initial_bindings": thaw_snapshot(self._initial_bindings),
             "initial_bindings_hash": self.initial_bindings_hash,
-            "bindings": self.bindings,
+            "bindings": thaw_snapshot(self._bindings),
             "bindings_hash": self.bindings_hash,
-            "transitions": self.transitions,
+            "transitions": thaw_snapshot(self._transitions),
         }
 
     def verify(self, policy: OperatorTrustPolicy) -> None:
@@ -294,7 +369,7 @@ class OperatorTrustStateStore:
                 state = self.get()
                 if state is None:
                     state = OperatorTrustState.enrolled(candidate)
-                    atomic_write_json(self.path, state.to_dict())
+                    _write_state(self.path, state)
             state.verify(candidate)
             return candidate
         if candidate is None:
@@ -409,7 +484,7 @@ class OperatorTrustStateStore:
                 }
             )
             updated.verify(candidate)
-            atomic_write_json(self.path, updated.to_dict())
+            _write_state(self.path, updated)
             return updated
 
 
@@ -442,6 +517,28 @@ def _bindings(value: Any, field: str) -> dict[str, list[str]]:
     if list(normalized) != sorted(normalized):
         raise OperatorTrustStateError(f"{field} operators must be sorted")
     return normalized
+
+
+def _trust_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise OperatorTrustStateError(
+            "operator trust exceeds bounded canonical state contract"
+        ) from exc
+    if not isinstance(snapshot, dict):
+        raise OperatorTrustStateError("operator trust state must be an object")
+    return snapshot
+
+
+def _write_state(path: Path, state: OperatorTrustState) -> None:
+    try:
+        atomic_write_json(path, state.to_dict(), max_bytes=_MAX_STATE_BYTES)
+    except RuntimeError as exc:
+        raise OperatorTrustStateError(str(exc)) from exc
 
 
 def _is_additive(
