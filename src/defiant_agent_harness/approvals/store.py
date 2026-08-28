@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -12,9 +12,12 @@ from ..contracts import (
     GuardrailDecision,
     HarnessRequest,
     ProposedAction,
+    authority_snapshot_and_sha256_of,
     new_id,
     utc_now,
 )
+from ..frozen_snapshot import freeze_snapshot, thaw_snapshot
+from ..limits import MAX_APPROVAL_STATE_BYTES
 from ..money import ZERO, MoneyLike, money, money_text
 from ..operator_identity import (
     DECISION_PURPOSE,
@@ -25,11 +28,87 @@ from ..operator_identity import (
     unsigned_status,
 )
 from ..persistence import (
+    PersistenceError,
     atomic_write_json,
     exclusive_file_lock,
     prepare_storage_root,
     read_json,
 )
+
+_MAX_STATE_BYTES = MAX_APPROVAL_STATE_BYTES
+
+_APPROVAL_FIELDS = {
+    "action_id",
+    "request_id",
+    "tool_name",
+    "target",
+    "payload_hash",
+    "authorization_hash",
+    "payload_preview",
+    "approval_scope",
+    "reason",
+    "policy_ids",
+    "expires_at",
+    "created_at",
+    "approval_id",
+    "status",
+    "decided_by",
+    "decided_at",
+    "note",
+    "decision_attestation",
+    "reserved_usd",
+    "action_snapshot",
+    "request_snapshot",
+    "decision_snapshot",
+    "execution_record_id",
+    "consumed_at",
+    "execution_owner",
+    "execution_key",
+    "reconciliation_outcome",
+    "reconciled_by",
+    "reconciliation_note",
+    "reconciliation_started_at",
+    "reconciliation_completed_at",
+    "reconciliation_attestation",
+}
+
+_APPROVAL_REQUIRED_FIELDS = {
+    "action_id",
+    "request_id",
+    "tool_name",
+    "target",
+    "payload_hash",
+    "authorization_hash",
+    "payload_preview",
+    "approval_scope",
+    "reason",
+    "created_at",
+    "approval_id",
+}
+
+_APPROVAL_DEFAULTS: dict[str, Any] = {
+    "policy_ids": [],
+    "expires_at": "",
+    "status": "pending",
+    "decided_by": None,
+    "decided_at": None,
+    "note": "",
+    "decision_attestation": None,
+    "reserved_usd": "0",
+    "action_snapshot": None,
+    "request_snapshot": None,
+    "decision_snapshot": None,
+    "execution_record_id": "",
+    "consumed_at": None,
+    "execution_owner": "",
+    "execution_key": "",
+    "reconciliation_outcome": "",
+    "reconciled_by": "",
+    "reconciliation_note": "",
+    "reconciliation_started_at": None,
+    "reconciliation_completed_at": None,
+    "reconciliation_attestation": None,
+}
 
 APPROVAL_STATUSES = {
     "pending",
@@ -57,7 +136,7 @@ def _parse(ts: str) -> datetime:
     return value
 
 
-@dataclass
+@dataclass(frozen=True, init=False)
 class PendingApproval:
     action_id: str
     request_id: str
@@ -68,7 +147,7 @@ class PendingApproval:
     payload_preview: str
     approval_scope: str
     reason: str
-    policy_ids: list[str] = field(default_factory=list)
+    _policy_ids: Any = field(repr=False)
     expires_at: str = ""
     created_at: str = field(default_factory=utc_now)
     approval_id: str = field(default_factory=lambda: new_id("apr"))
@@ -76,11 +155,11 @@ class PendingApproval:
     decided_by: str | None = None
     decided_at: str | None = None
     note: str = ""
-    decision_attestation: dict[str, Any] | None = None
+    _decision_attestation: Any = field(repr=False)
     reserved_usd: str = "0"
-    action_snapshot: dict[str, Any] | None = None
-    request_snapshot: dict[str, Any] | None = None
-    decision_snapshot: dict[str, Any] | None = None
+    _action_snapshot: Any = field(repr=False)
+    _request_snapshot: Any = field(repr=False)
+    _decision_snapshot: Any = field(repr=False)
     execution_record_id: str = ""
     consumed_at: str | None = None
     execution_owner: str = ""
@@ -90,85 +169,330 @@ class PendingApproval:
     reconciliation_note: str = ""
     reconciliation_started_at: str | None = None
     reconciliation_completed_at: str | None = None
-    reconciliation_attestation: dict[str, Any] | None = None
+    _reconciliation_attestation: Any = field(repr=False)
 
-    def __post_init__(self) -> None:
-        if self.status not in APPROVAL_STATUSES:
-            raise ApprovalError(f"invalid approval status: {self.status}")
-        for name in ("action_id", "request_id", "tool_name", "approval_id"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value:
+    def __init__(
+        self,
+        action_id: str,
+        request_id: str,
+        tool_name: str,
+        target: str,
+        payload_hash: str,
+        authorization_hash: str,
+        payload_preview: str,
+        approval_scope: str,
+        reason: str,
+        policy_ids: list[str] | tuple[str, ...] | None = None,
+        expires_at: str = "",
+        created_at: str | None = None,
+        approval_id: str | None = None,
+        status: str = "pending",
+        decided_by: str | None = None,
+        decided_at: str | None = None,
+        note: str = "",
+        decision_attestation: dict[str, Any] | None = None,
+        reserved_usd: MoneyLike = "0",
+        action_snapshot: dict[str, Any] | None = None,
+        request_snapshot: dict[str, Any] | None = None,
+        decision_snapshot: dict[str, Any] | None = None,
+        execution_record_id: str = "",
+        consumed_at: str | None = None,
+        execution_owner: str = "",
+        execution_key: str = "",
+        reconciliation_outcome: str = "",
+        reconciled_by: str = "",
+        reconciliation_note: str = "",
+        reconciliation_started_at: str | None = None,
+        reconciliation_completed_at: str | None = None,
+        reconciliation_attestation: dict[str, Any] | None = None,
+    ) -> None:
+        validated = type(self).from_dict(
+            {
+                "action_id": action_id,
+                "request_id": request_id,
+                "tool_name": tool_name,
+                "target": target,
+                "payload_hash": payload_hash,
+                "authorization_hash": authorization_hash,
+                "payload_preview": payload_preview,
+                "approval_scope": approval_scope,
+                "reason": reason,
+                "policy_ids": [] if policy_ids is None else policy_ids,
+                "expires_at": expires_at,
+                "created_at": utc_now() if created_at is None else created_at,
+                "approval_id": new_id("apr") if approval_id is None else approval_id,
+                "status": status,
+                "decided_by": decided_by,
+                "decided_at": decided_at,
+                "note": note,
+                "decision_attestation": decision_attestation,
+                "reserved_usd": money_text(reserved_usd),
+                "action_snapshot": action_snapshot,
+                "request_snapshot": request_snapshot,
+                "decision_snapshot": decision_snapshot,
+                "execution_record_id": execution_record_id,
+                "consumed_at": consumed_at,
+                "execution_owner": execution_owner,
+                "execution_key": execution_key,
+                "reconciliation_outcome": reconciliation_outcome,
+                "reconciled_by": reconciled_by,
+                "reconciliation_note": reconciliation_note,
+                "reconciliation_started_at": reconciliation_started_at,
+                "reconciliation_completed_at": reconciliation_completed_at,
+                "reconciliation_attestation": reconciliation_attestation,
+            }
+        )
+        for name in self.__dataclass_fields__:
+            object.__setattr__(self, name, getattr(validated, name))
+
+    @property
+    def policy_ids(self) -> list[str]:
+        return thaw_snapshot(self._policy_ids)
+
+    @property
+    def decision_attestation(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._decision_attestation)
+
+    @property
+    def action_snapshot(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._action_snapshot)
+
+    @property
+    def request_snapshot(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._request_snapshot)
+
+    @property
+    def decision_snapshot(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._decision_snapshot)
+
+    @property
+    def reconciliation_attestation(self) -> dict[str, Any] | None:
+        return thaw_snapshot(self._reconciliation_attestation)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "PendingApproval":
+        return cls._from_snapshot(_approval_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, snapshot: dict[str, Any]) -> "PendingApproval":
+        unknown = set(snapshot) - _APPROVAL_FIELDS
+        missing = _APPROVAL_REQUIRED_FIELDS - set(snapshot)
+        if unknown or missing:
+            raise ApprovalError("approval fields do not match schema")
+        values = {**_APPROVAL_DEFAULTS, **snapshot}
+
+        for name in (
+            "action_id",
+            "request_id",
+            "tool_name",
+            "approval_id",
+        ):
+            if type(values[name]) is not str or not values[name]:
                 raise ApprovalError(f"{name} must be non-empty")
-        if bool(self.execution_owner) != bool(self.execution_key):
+        for name in (
+            "target",
+            "payload_hash",
+            "authorization_hash",
+            "payload_preview",
+            "approval_scope",
+            "reason",
+            "expires_at",
+            "note",
+            "execution_record_id",
+            "execution_owner",
+            "execution_key",
+            "reconciliation_outcome",
+            "reconciled_by",
+            "reconciliation_note",
+        ):
+            if type(values[name]) is not str:
+                raise ApprovalError(f"{name} must be text")
+        if values["decided_by"] is not None and type(values["decided_by"]) is not str:
+            raise ApprovalError("decided_by must be text or null")
+        if values["status"] not in APPROVAL_STATUSES:
+            raise ApprovalError(f"invalid approval status: {values['status']}")
+        policy_ids = values["policy_ids"]
+        if type(policy_ids) is not list or any(
+            type(policy_id) is not str or not policy_id for policy_id in policy_ids
+        ):
+            raise ApprovalError("policy_ids must be a list of non-empty strings")
+        if bool(values["execution_owner"]) != bool(values["execution_key"]):
             raise ApprovalError(
                 "execution_owner and execution_key must be supplied together"
             )
-        _parse(self.created_at)
-        if self.expires_at:
-            _parse(self.expires_at)
+
+        if type(values["created_at"]) is not str:
+            raise ApprovalError("created_at must be a timestamp")
+        _parse(values["created_at"])
+        if values["expires_at"]:
+            _parse(values["expires_at"])
         for name in (
             "decided_at",
             "consumed_at",
             "reconciliation_started_at",
             "reconciliation_completed_at",
         ):
-            value = getattr(self, name)
+            value = values[name]
             if value is not None:
+                if type(value) is not str:
+                    raise ApprovalError(f"{name} must be a timestamp or null")
                 _parse(value)
-        if self.status in {"approved", "executing", "consumed", "rejected"}:
-            if not self.decided_by or not self.decided_at:
+        status = values["status"]
+        if status in {"approved", "executing", "consumed", "rejected"}:
+            if not values["decided_by"] or not values["decided_at"]:
                 raise ApprovalError(
-                    f"{self.status} approval requires operator identity and decision time"
+                    f"{status} approval requires operator identity and decision time"
                 )
+
+        attestations: dict[str, dict[str, Any] | None] = {}
         for name in ("decision_attestation", "reconciliation_attestation"):
-            value = getattr(self, name)
-            if value is not None and not isinstance(value, dict):
+            value = values[name]
+            if value is not None and type(value) is not dict:
                 raise ApprovalError(f"{name} must be an object")
-        if self.status in {"consumed", "rejected", "expired"} and not self.consumed_at:
-            raise ApprovalError(f"{self.status} approval requires consumed_at")
-        if self.status == "consumed" and not self.execution_record_id:
+            attestations[name] = value
+        if status in {"consumed", "rejected", "expired"} and not values["consumed_at"]:
+            raise ApprovalError(f"{status} approval requires consumed_at")
+        if status == "consumed" and not values["execution_record_id"]:
             raise ApprovalError("consumed approval requires execution evidence")
+
         reconciliation_values = (
-            self.reconciliation_outcome,
-            self.reconciled_by,
-            self.reconciliation_note,
-            self.reconciliation_started_at,
+            values["reconciliation_outcome"],
+            values["reconciled_by"],
+            values["reconciliation_note"],
+            values["reconciliation_started_at"],
         )
         if any(reconciliation_values):
-            if self.reconciliation_outcome not in RECONCILIATION_OUTCOMES:
+            if values["reconciliation_outcome"] not in RECONCILIATION_OUTCOMES:
                 raise ApprovalError(
-                    f"invalid reconciliation outcome: {self.reconciliation_outcome!r}"
+                    "invalid reconciliation outcome: "
+                    f"{values['reconciliation_outcome']!r}"
                 )
-            if (
-                not isinstance(self.reconciled_by, str)
-                or not self.reconciled_by.strip()
-            ):
+            if not values["reconciled_by"].strip():
                 raise ApprovalError("reconciled_by must be non-empty")
-            if (
-                not isinstance(self.reconciliation_note, str)
-                or not self.reconciliation_note.strip()
-            ):
+            if not values["reconciliation_note"].strip():
                 raise ApprovalError("reconciliation_note must be non-empty")
-            if not self.reconciliation_started_at:
+            if not values["reconciliation_started_at"]:
                 raise ApprovalError("reconciliation_started_at must be present")
-            if self.status not in {"executing", "consumed"}:
+            if status not in {"executing", "consumed"}:
                 raise ApprovalError(
                     "reconciliation intent requires executing or consumed status"
                 )
-        if self.reconciliation_completed_at:
+        if values["reconciliation_completed_at"]:
             if not all(reconciliation_values):
                 raise ApprovalError(
                     "completed reconciliation is missing its durable intent"
                 )
-            if self.status != "consumed" or not self.execution_record_id:
+            if status != "consumed" or not values["execution_record_id"]:
                 raise ApprovalError(
                     "completed reconciliation requires consumed status and evidence"
                 )
-        elif self.status == "consumed" and self.reconciliation_outcome:
+        elif status == "consumed" and values["reconciliation_outcome"]:
             raise ApprovalError("consumed reconciliation is missing completion time")
-        self.reserved_usd = money_text(
-            money(self.reserved_usd, field_name="reserved_usd")
+
+        action = _optional_contract_snapshot(
+            values["action_snapshot"], ProposedAction.from_dict, "action_snapshot"
         )
+        request = _optional_contract_snapshot(
+            values["request_snapshot"], HarnessRequest.from_dict, "request_snapshot"
+        )
+        decision = _optional_contract_snapshot(
+            values["decision_snapshot"],
+            GuardrailDecision.from_dict,
+            "decision_snapshot",
+        )
+        if action is not None:
+            bindings = {
+                "action_id": values["action_id"],
+                "request_id": values["request_id"],
+                "tool_name": values["tool_name"],
+                "target": values["target"],
+                "payload_hash": values["payload_hash"],
+                "authorization_hash": values["authorization_hash"],
+            }
+            if any(action.get(name) != expected for name, expected in bindings.items()):
+                raise ApprovalError("approval action snapshot binding is invalid")
+        if request is not None and request.get("request_id") != values["request_id"]:
+            raise ApprovalError("approval request snapshot binding is invalid")
+        if action is not None and request is not None:
+            if action.get("request_id") != request.get("request_id"):
+                raise ApprovalError("approval action/request binding is invalid")
+        if decision is not None:
+            if (
+                decision.get("reason") != values["reason"]
+                or decision.get("approval_scope") != values["approval_scope"]
+                or decision.get("policy_ids") != policy_ids
+            ):
+                raise ApprovalError("approval decision snapshot binding is invalid")
+
+        approval = object.__new__(cls)
+        private = {
+            "policy_ids": "_policy_ids",
+            "decision_attestation": "_decision_attestation",
+            "action_snapshot": "_action_snapshot",
+            "request_snapshot": "_request_snapshot",
+            "decision_snapshot": "_decision_snapshot",
+            "reconciliation_attestation": "_reconciliation_attestation",
+        }
+        for name in _APPROVAL_FIELDS:
+            if name in private:
+                object.__setattr__(
+                    approval, private[name], freeze_snapshot(values[name])
+                )
+            elif name == "reserved_usd":
+                object.__setattr__(
+                    approval,
+                    name,
+                    money_text(money(values[name], field_name="reserved_usd")),
+                )
+            else:
+                object.__setattr__(approval, name, values[name])
+        object.__setattr__(approval, "_action_snapshot", freeze_snapshot(action))
+        object.__setattr__(approval, "_request_snapshot", freeze_snapshot(request))
+        object.__setattr__(approval, "_decision_snapshot", freeze_snapshot(decision))
+        return approval
+
+    def with_updates(self, **updates: Any) -> "PendingApproval":
+        if set(updates) - _APPROVAL_FIELDS:
+            raise ApprovalError("approval update fields do not match schema")
+        raw = self.to_dict()
+        raw.update(updates)
+        return type(self).from_dict(raw)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action_id": self.action_id,
+            "request_id": self.request_id,
+            "tool_name": self.tool_name,
+            "target": self.target,
+            "payload_hash": self.payload_hash,
+            "authorization_hash": self.authorization_hash,
+            "payload_preview": self.payload_preview,
+            "approval_scope": self.approval_scope,
+            "reason": self.reason,
+            "policy_ids": self.policy_ids,
+            "expires_at": self.expires_at,
+            "created_at": self.created_at,
+            "approval_id": self.approval_id,
+            "status": self.status,
+            "decided_by": self.decided_by,
+            "decided_at": self.decided_at,
+            "note": self.note,
+            "decision_attestation": self.decision_attestation,
+            "reserved_usd": self.reserved_usd,
+            "action_snapshot": self.action_snapshot,
+            "request_snapshot": self.request_snapshot,
+            "decision_snapshot": self.decision_snapshot,
+            "execution_record_id": self.execution_record_id,
+            "consumed_at": self.consumed_at,
+            "execution_owner": self.execution_owner,
+            "execution_key": self.execution_key,
+            "reconciliation_outcome": self.reconciliation_outcome,
+            "reconciled_by": self.reconciled_by,
+            "reconciliation_note": self.reconciliation_note,
+            "reconciliation_started_at": self.reconciliation_started_at,
+            "reconciliation_completed_at": self.reconciliation_completed_at,
+            "reconciliation_attestation": self.reconciliation_attestation,
+        }
 
     def is_expired(self, now: datetime | None = None) -> bool:
         if not self.expires_at:
@@ -222,21 +546,50 @@ class ApprovalStore:
 
     # -- persistence --------------------------------------------------
 
-    def _read_all(self) -> dict[str, dict]:
-        data = read_json(self.path)
-        for approval_id, raw in data.items():
-            if not isinstance(raw, dict):
-                raise ApprovalError(f"approval {approval_id} is not an object")
-            PendingApproval(**raw)
-        return data
+    def _read_all(self) -> dict[str, PendingApproval]:
+        try:
+            data = _store_snapshot(read_json(self.path, max_bytes=_MAX_STATE_BYTES))
+            approvals: dict[str, PendingApproval] = {}
+            for approval_id, raw in data.items():
+                if type(approval_id) is not str or not approval_id:
+                    raise ApprovalError("approval key must be non-empty text")
+                if type(raw) is not dict:
+                    raise ApprovalError(f"approval {approval_id} is not an object")
+                approval = PendingApproval._from_snapshot(raw)
+                if approval.approval_id != approval_id:
+                    raise ApprovalError(f"approval {approval_id} key mismatch")
+                approvals[approval_id] = approval
+            return approvals
+        except ApprovalError:
+            raise
+        except (OSError, PersistenceError, RuntimeError) as exc:
+            raise ApprovalError(_error_detail(exc)) from exc
 
-    def _write_all(self, data: dict[str, dict]) -> None:
-        atomic_write_json(self.path, data)
+    def _write_all(self, data: dict[str, PendingApproval]) -> None:
+        try:
+            for approval_id, approval in data.items():
+                if type(approval_id) is not str or not approval_id:
+                    raise ApprovalError("approval key must be non-empty text")
+                if type(approval) is not PendingApproval:
+                    raise ApprovalError("approval store values must be sealed records")
+                if approval.approval_id != approval_id:
+                    raise ApprovalError(f"approval {approval_id} key mismatch")
+            document = _store_snapshot(
+                {
+                    approval_id: approval.to_dict()
+                    for approval_id, approval in data.items()
+                }
+            )
+            atomic_write_json(self.path, document, max_bytes=_MAX_STATE_BYTES)
+        except ApprovalError:
+            raise
+        except (OSError, PersistenceError, RuntimeError) as exc:
+            raise ApprovalError(_error_detail(exc)) from exc
 
     def _save(self, approval: PendingApproval) -> None:
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            data[approval.approval_id] = asdict(approval)
+            data[approval.approval_id] = approval
             self._write_all(data)
 
     # -- api ----------------------------------------------------------
@@ -288,67 +641,69 @@ class ApprovalStore:
         if ttl <= 0:
             raise ApprovalError("approval TTL must be positive")
         expires = datetime.now(timezone.utc) + timedelta(minutes=ttl)
+        action_snapshot = action.to_dict()
+        request_snapshot = request.to_dict() if request else None
+        decision_snapshot = decision.to_dict() if decision else None
         return PendingApproval(
-            action_id=action.action_id,
-            request_id=action.request_id,
-            tool_name=action.tool_name,
-            target=action.target,
-            payload_hash=action.payload_hash,
-            authorization_hash=action.authorization_hash,
-            payload_preview=_preview(action.payload),
+            action_id=action_snapshot["action_id"],
+            request_id=action_snapshot["request_id"],
+            tool_name=action_snapshot["tool_name"],
+            target=action_snapshot["target"],
+            payload_hash=action_snapshot["payload_hash"],
+            authorization_hash=action_snapshot["authorization_hash"],
+            payload_preview=_preview(action_snapshot["payload"]),
             approval_scope=approval_scope,
             reason=decision_reason,
-            policy_ids=list(policy_ids),
+            policy_ids=policy_ids,
             expires_at=expires.isoformat().replace("+00:00", "Z"),
             reserved_usd=money_text(reserved_usd),
-            action_snapshot=action.to_dict(),
-            request_snapshot=request.to_dict() if request else None,
-            decision_snapshot=decision.to_dict() if decision else None,
+            action_snapshot=action_snapshot,
+            request_snapshot=request_snapshot,
+            decision_snapshot=decision_snapshot,
             execution_owner=execution_owner,
             execution_key=execution_key,
         )
 
     def create_prepared(self, pending: PendingApproval) -> PendingApproval:
         """Store one prepared approval idempotently or reject a conflict."""
+        if type(pending) is not PendingApproval:
+            raise ApprovalError("pending must be a sealed PendingApproval")
         with exclusive_file_lock(self.path):
             data = self._read_all()
             existing = data.get(pending.approval_id)
             if existing is not None:
-                if existing == asdict(pending):
-                    return PendingApproval(**existing)
+                if existing.to_dict() == pending.to_dict():
+                    return existing
                 raise ApprovalError(
                     f"approval {pending.approval_id} conflicts with prepared state"
                 )
             if any(
-                raw.get("action_id") == pending.action_id
-                and raw.get("status") in {"pending", "approved", "executing"}
-                for raw in data.values()
+                approval.action_id == pending.action_id
+                and approval.status in {"pending", "approved", "executing"}
+                for approval in data.values()
             ):
                 raise ApprovalError(
                     f"action {pending.action_id} already has an active approval"
                 )
-            data[pending.approval_id] = asdict(pending)
+            data[pending.approval_id] = pending
             self._write_all(data)
         return pending
 
     def get(self, approval_id: str) -> PendingApproval | None:
-        raw = self._read_all().get(approval_id)
-        return PendingApproval(**raw) if raw else None
+        return self._read_all().get(approval_id)
 
     def for_action(self, action_id: str) -> list[PendingApproval]:
         return [
-            PendingApproval(**raw)
-            for raw in self._read_all().values()
-            if raw.get("action_id") == action_id
+            approval
+            for approval in self._read_all().values()
+            if approval.action_id == action_id
         ]
 
     def list_pending(self) -> list[PendingApproval]:
         return sorted(
             (
                 approval
-                for approval in (
-                    PendingApproval(**raw) for raw in self._read_all().values()
-                )
+                for approval in self._read_all().values()
                 if approval.status == "pending" and not approval.is_expired()
             ),
             key=lambda approval: approval.created_at,
@@ -358,9 +713,8 @@ class ApprovalStore:
         return sorted(
             (
                 approval
-                for raw in self._read_all().values()
-                if (approval := PendingApproval(**raw)).status
-                in {"pending", "approved", "executing"}
+                for approval in self._read_all().values()
+                if approval.status in {"pending", "approved", "executing"}
                 and (approval.status == "executing" or not approval.is_expired())
             ),
             key=lambda approval: approval.created_at,
@@ -380,11 +734,11 @@ class ApprovalStore:
         if not execution_owner or not execution_key:
             return None
         matches = [
-            PendingApproval(**raw)
-            for raw in self._read_all().values()
-            if raw.get("execution_owner") == execution_owner
-            and raw.get("execution_key") == execution_key
-            and raw.get("status") in {"pending", "approved", "rejected", "executing"}
+            approval
+            for approval in self._read_all().values()
+            if approval.execution_owner == execution_owner
+            and approval.execution_key == execution_key
+            and approval.status in {"pending", "approved", "rejected", "executing"}
         ]
         active = [
             approval
@@ -398,14 +752,14 @@ class ApprovalStore:
         with exclusive_file_lock(self.path):
             data = self._read_all()
             changed = False
-            for approval_id, raw in data.items():
-                approval = PendingApproval(**raw)
+            for approval_id, approval in data.items():
                 if approval.status in {"pending", "approved"} and approval.is_expired(
                     now
                 ):
-                    approval.status = "expired"
-                    approval.consumed_at = utc_now()
-                    data[approval_id] = asdict(approval)
+                    approval = approval.with_updates(
+                        status="expired", consumed_at=utc_now()
+                    )
+                    data[approval_id] = approval
                     expired.append(approval)
                     changed = True
             if changed:
@@ -417,9 +771,7 @@ class ApprovalStore:
         return sorted(
             (
                 approval
-                for approval in (
-                    PendingApproval(**raw) for raw in self._read_all().values()
-                )
+                for approval in self._read_all().values()
                 if approval.status in {"pending", "approved"}
                 and approval.is_expired(now)
             ),
@@ -430,10 +782,9 @@ class ApprovalStore:
         """Expire exactly one due approval idempotently."""
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if approval.status == "expired":
                 return approval
             if approval.status not in {"pending", "approved"}:
@@ -442,9 +793,8 @@ class ApprovalStore:
                 )
             if not approval.is_expired():
                 raise ApprovalError(f"approval {approval_id} is not due")
-            approval.status = "expired"
-            approval.consumed_at = utc_now()
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(status="expired", consumed_at=utc_now())
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -491,10 +841,9 @@ class ApprovalStore:
     ) -> PendingApproval:
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if approval.status != "pending":
                 raise ApprovalError(
                     f"approval {approval_id} is already {approval.status}; "
@@ -507,16 +856,18 @@ class ApprovalStore:
             decided_by, note = self._validate_decision(
                 approval, approved, decided_by, note, attestation
             )
-            approval.status = "approved" if approved else "rejected"
-            approval.decided_by = decided_by
-            approval.decided_at = (
+            decided_at = (
                 attestation["signed_at"] if attestation is not None else utc_now()
             )
-            approval.note = note
-            approval.decision_attestation = attestation
-            if not approved:
-                approval.consumed_at = approval.decided_at
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(
+                status="approved" if approved else "rejected",
+                decided_by=decided_by,
+                decided_at=decided_at,
+                note=note,
+                decision_attestation=attestation,
+                consumed_at=None if approved else decided_at,
+            )
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -606,18 +957,18 @@ class ApprovalStore:
     ) -> PendingApproval:
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if approval.status != "approved":
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executable"
                 )
             if approval.is_expired():
-                approval.status = "expired"
-                approval.consumed_at = utc_now()
-                data[approval_id] = asdict(approval)
+                approval = approval.with_updates(
+                    status="expired", consumed_at=utc_now()
+                )
+                data[approval_id] = approval
                 self._write_all(data)
                 raise ApprovalError(
                     f"approval {approval_id} expired at {approval.expires_at}"
@@ -627,8 +978,8 @@ class ApprovalStore:
             if approval.authorization_hash != action.authorization_hash:
                 raise ApprovalError("action changed after approval")
             self._require_decision_identity(approval)
-            approval.status = "executing"
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(status="executing")
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -639,10 +990,9 @@ class ApprovalStore:
     ) -> PendingApproval:
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if approval.status != "executing":
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executing"
@@ -651,10 +1001,12 @@ class ApprovalStore:
                 raise ApprovalError(
                     f"approval {approval_id} has operator reconciliation in progress"
                 )
-            approval.status = "consumed"
-            approval.execution_record_id = execution_record_id
-            approval.consumed_at = utc_now()
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(
+                status="consumed",
+                execution_record_id=execution_record_id,
+                consumed_at=utc_now(),
+            )
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -668,10 +1020,9 @@ class ApprovalStore:
             raise ApprovalError("execution_record_id must be non-empty")
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if approval.status == "consumed":
                 if approval.execution_record_id != execution_record_id:
                     raise ApprovalError(
@@ -686,10 +1037,12 @@ class ApprovalStore:
                 raise ApprovalError(
                     f"approval {approval_id} has operator reconciliation in progress"
                 )
-            approval.status = "consumed"
-            approval.execution_record_id = execution_record_id
-            approval.consumed_at = utc_now()
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(
+                status="consumed",
+                execution_record_id=execution_record_id,
+                consumed_at=utc_now(),
+            )
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -716,10 +1069,9 @@ class ApprovalStore:
 
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             supplied = (outcome, reconciled_by, note)
             existing = (
                 approval.reconciliation_outcome,
@@ -762,14 +1114,17 @@ class ApprovalStore:
                     )
                 except OperatorIdentityError as exc:
                     raise ApprovalError(str(exc)) from exc
-            approval.reconciliation_outcome = outcome
-            approval.reconciled_by = reconciled_by
-            approval.reconciliation_note = note
-            approval.reconciliation_started_at = (
+            reconciliation_started_at = (
                 attestation["signed_at"] if attestation is not None else utc_now()
             )
-            approval.reconciliation_attestation = attestation
-            data[approval_id] = asdict(approval)
+            approval = approval.with_updates(
+                reconciliation_outcome=outcome,
+                reconciled_by=reconciled_by,
+                reconciliation_note=note,
+                reconciliation_started_at=reconciliation_started_at,
+                reconciliation_attestation=attestation,
+            )
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -835,10 +1190,9 @@ class ApprovalStore:
             raise ApprovalError("execution_record_id must be non-empty")
         with exclusive_file_lock(self.path):
             data = self._read_all()
-            raw = data.get(approval_id)
-            if raw is None:
+            approval = data.get(approval_id)
+            if approval is None:
                 raise ApprovalError(f"unknown approval {approval_id}")
-            approval = PendingApproval(**raw)
             if not approval.reconciliation_outcome:
                 raise ApprovalError(
                     f"approval {approval_id} has no operator reconciliation intent"
@@ -853,11 +1207,14 @@ class ApprovalStore:
                 raise ApprovalError(
                     f"approval {approval_id} is {approval.status}, not executing"
                 )
-            approval.status = "consumed"
-            approval.execution_record_id = execution_record_id
-            approval.consumed_at = utc_now()
-            approval.reconciliation_completed_at = approval.consumed_at
-            data[approval_id] = asdict(approval)
+            consumed_at = utc_now()
+            approval = approval.with_updates(
+                status="consumed",
+                execution_record_id=execution_record_id,
+                consumed_at=consumed_at,
+                reconciliation_completed_at=consumed_at,
+            )
+            data[approval_id] = approval
             self._write_all(data)
             return approval
 
@@ -865,3 +1222,50 @@ class ApprovalStore:
 def _preview(payload: dict, limit: int = 400) -> str:
     text = json.dumps(payload, indent=2, sort_keys=True, default=str)
     return text if len(text) <= limit else text[:limit] + "\n... [truncated]"
+
+
+def _approval_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise ApprovalError("approval exceeds bounded canonical contract") from exc
+    if type(snapshot) is not dict:
+        raise ApprovalError("approval must be an object")
+    return snapshot
+
+
+def _store_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise ApprovalError(
+            "approval state exceeds bounded canonical contract"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise ApprovalError("approval state must be an object")
+    return snapshot
+
+
+def _optional_contract_snapshot(value: Any, loader, field_name: str):
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ApprovalError(f"{field_name} must be an object")
+    try:
+        normalized = loader(value).to_dict()
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ApprovalError(f"{field_name} is invalid") from exc
+    if normalized != value:
+        raise ApprovalError(f"{field_name} is not canonical")
+    return normalized
+
+
+def _error_detail(exc: BaseException) -> str:
+    detail = str(exc).strip()
+    return detail or type(exc).__name__

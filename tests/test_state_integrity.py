@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 import json
 
 import pytest
@@ -150,7 +149,7 @@ def test_consumed_approval_must_reference_matching_terminal_evidence(tmp_path):
     [outcome] = harness.run(_request())
     approval = harness.approvals.get(outcome.approval_id)
     assert approval is not None
-    raw = asdict(approval)
+    raw = approval.to_dict()
     raw["status"] = "consumed"
     raw["decided_by"] = "operator-7"
     raw["decided_at"] = "2026-01-01T00:00:00Z"

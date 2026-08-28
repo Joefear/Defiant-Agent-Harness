@@ -102,13 +102,19 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.55.0`. The browser cannot raise, disable, or replace them and never receives
+`0.56.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
 sealed-state posture. The dashboard does not receive held action, request,
 decision, authorization, approval, or completion records and gains no hook
 completion or repair control.
+
+v0.62 adds only the static approval-state byte ceiling and sealed-record
+posture. Actionable approval cards remain sanitized operational metadata. The
+browser never receives held action/request/decision snapshots, payload
+previews, targets, operator notes, attestations, or a decision, execution,
+reconciliation, repair, or record-update endpoint.
 
 ## Read-only boundary
 

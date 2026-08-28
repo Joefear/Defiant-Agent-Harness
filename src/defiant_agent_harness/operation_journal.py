@@ -433,7 +433,7 @@ def _validate_payload(kind: str, payload: dict[str, Any]) -> None:
         return
     if kind == "approval_create":
         try:
-            approval = PendingApproval(**payload["approval"])
+            approval = PendingApproval.from_dict(payload["approval"])
         except (TypeError, ValueError, RuntimeError) as exc:
             raise OperationJournalError(f"journal approval is invalid: {exc}") from exc
         if (

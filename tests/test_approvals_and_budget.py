@@ -86,10 +86,12 @@ def test_expired_approval_cannot_be_granted(tmp_path):
     pending = s.create(a, "needs review", "scope", ["r1"])
     # force expiry
     p = s.get(pending.approval_id)
-    p.expires_at = (
-        (datetime.now(timezone.utc) - timedelta(minutes=1))
-        .isoformat()
-        .replace("+00:00", "Z")
+    p = p.with_updates(
+        expires_at=(
+            (datetime.now(timezone.utc) - timedelta(minutes=1))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
     )
     s._save(p)
     with pytest.raises(ApprovalError, match="expired"):
@@ -100,10 +102,12 @@ def test_expired_approvals_drop_out_of_pending(tmp_path):
     s = ApprovalStore(tmp_path / "a.json")
     pending = s.create(action(), "needs review", "scope", ["r1"])
     p = s.get(pending.approval_id)
-    p.expires_at = (
-        (datetime.now(timezone.utc) - timedelta(minutes=1))
-        .isoformat()
-        .replace("+00:00", "Z")
+    p = p.with_updates(
+        expires_at=(
+            (datetime.now(timezone.utc) - timedelta(minutes=1))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
     )
     s._save(p)
     assert s.list_pending() == []

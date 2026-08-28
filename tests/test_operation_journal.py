@@ -6,7 +6,7 @@ import pytest
 
 import defiant_agent_harness.operation_journal as operation_journal_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter, SCRIPTS
-from defiant_agent_harness.approvals.store import ApprovalStore
+from defiant_agent_harness.approvals.store import ApprovalStore, PendingApproval
 from defiant_agent_harness.budgets.ledger import BudgetLedger
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.contracts import HarnessRequest, canonical_json, sha256_of
@@ -387,7 +387,7 @@ def test_restart_finishes_expiry_without_double_release(tmp_path, monkeypatch):
     [held] = harness.run(_request())
     approval = harness.approvals.get(held.approval_id)
     assert approval is not None
-    approval.expires_at = "2020-01-01T00:00:00Z"
+    approval = approval.with_updates(expires_at="2020-01-01T00:00:00Z")
     harness.approvals._save(approval)
 
     def crash_before_evidence(_record):
@@ -544,7 +544,11 @@ def test_conflicting_approval_binding_fails_closed_and_keeps_journal(
 
     approval = ApprovalStore(state / "approvals.json").get(held.approval_id)
     assert approval is not None
-    approval.request_id = "conflicting_request"
+    raw = approval.to_dict()
+    raw["request_id"] = "conflicting_request"
+    raw["action_snapshot"] = None
+    raw["request_snapshot"] = None
+    approval = PendingApproval.from_dict(raw)
     ApprovalStore(state / "approvals.json")._save(approval)
     operation = OperationJournal(state / "operation_journal.json").active()
 

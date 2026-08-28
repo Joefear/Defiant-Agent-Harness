@@ -298,7 +298,7 @@ class Harness:
             operation = self.operation_journal.prepare(
                 "approval_create",
                 {
-                    "approval": asdict(pending),
+                    "approval": pending.to_dict(),
                     "reserved_usd": pending.reserved_usd,
                     "evidence": record.to_dict(),
                 },
@@ -1236,7 +1236,7 @@ class Harness:
             raise ValueError("journal evidence must be an unsealed prepared record")
         reserved = money(payload.get("expected_usd", payload.get("reserved_usd", "0")))
         if operation.kind == "approval_create":
-            approval = PendingApproval(**payload["approval"])
+            approval = PendingApproval.from_dict(payload["approval"])
             if reserved > ZERO:
                 self.budget.ensure_reservation(
                     reserved, approval.request_id, approval.action_id

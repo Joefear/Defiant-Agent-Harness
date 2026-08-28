@@ -29,6 +29,12 @@ MAX_OPERATOR_TRUST_STATE_BYTES = 1 * MIB
 # explicit ceiling. This preserves the established durable-state allowance.
 MAX_HOOK_EXECUTION_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 
+# Approval records retain the exact action, request, policy decision, and
+# operator attestations that authorize execution. Apply one symmetric ceiling
+# to in-process canonical capture, recovery reads, and atomic publication while
+# preserving the established aggregate durable-state allowance.
+MAX_APPROVAL_STATE_BYTES = MAX_DURABLE_JSON_BYTES
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

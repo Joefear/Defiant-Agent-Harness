@@ -44,7 +44,7 @@ paths.
 
 ## Read-only projection
 
-Command Core schema `0.55.0` publishes
+Command Core schema `0.56.0` publishes
 `mcp_config_collection_items`, `mcp_dependency_file_pins`, and
 `mcp_launch_environment_entries` under `resource_limits`, plus the static
 `mcp_collection_preflight` posture. Command Center renders those values but
