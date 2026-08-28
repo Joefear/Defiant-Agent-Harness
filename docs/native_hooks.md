@@ -84,6 +84,14 @@ If the process stops after authorization but before `PostToolUse`, Defiant does
 not claim success. An approval left in `executing` is treated as uncertain and
 automatic replay is refused.
 
+The local `hook_executions.json` correlation record is also an authority
+boundary. v0.61 captures each complete record once, revalidates its action,
+request, and decision contracts, seals those trees behind defensive
+projections, and records completion by replacing the immutable record with a
+new validated state. Its 64 MiB ceiling is identical for canonical capture,
+recovery reads, and atomic publication. See
+`sealed_native_hook_correlation_state.md`.
+
 For signed mode, set `DAH_TRUSTED_OPERATOR_KEYS` to a JSON array of
 `IDENTITY=PUBLIC_KEY.pem` bindings before starting the runner. The hook loads
 only public keys and fails closed on malformed configuration or an unsigned,

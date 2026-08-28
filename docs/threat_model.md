@@ -799,6 +799,17 @@ to capture, publication, and recovery reads. This protects state-object
 ownership and recoverability; it does not make already-trusted process code or
 a privileged host untrusted.
 
+**Mutable native-hook correlation after authorization.** Through v0.60,
+`HookExecution` retained public action, request, and decision dictionaries and
+changed completion fields in place. Dataclass serialization could traverse
+those values again, allowing an in-process caller mutation or subclass hook to
+make durable completion correlation differ from the accepted authorization
+context. v0.61 captures one bounded canonical record, revalidates governed
+snapshots from that observation, recursively freezes retained trees, and uses
+copy-on-write completion. The established 64 MiB store limit now applies to
+capture, recovery, and atomic publication. This does not create OS containment,
+guarantee that a runner emits `PostToolUse`, or infer an unknown outcome.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

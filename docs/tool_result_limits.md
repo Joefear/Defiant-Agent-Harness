@@ -74,7 +74,7 @@ rejected output.
 
 ## Read-only projection
 
-Command Core schema `0.54.0` publishes the summary and output ceilings under
+Command Core schema `0.55.0` publishes the summary and output ceilings under
 `resource_limits` and reports `tool_result_contract_preflight: true`. Command
 Center renders only that static posture plus the existing sanitized
 reconciliation-required state. Neither surface can submit a result, change a

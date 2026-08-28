@@ -146,6 +146,7 @@ function renderResourceLimits(limits, configuration) {
     `evidence export ${bytes(limits.evidence_export_bytes)}`,
     `MCP message ${bytes(limits.mcp_message_bytes)}`,
     `hook event ${bytes(limits.hook_event_bytes)}`,
+    `hook execution state ${bytes(limits.hook_execution_state_bytes)}`,
     `operation journal ${bytes(limits.operation_journal_bytes)}`,
     `authority profile state ${bytes(limits.authority_profile_state_bytes)}`,
     `operator trust state ${bytes(limits.operator_trust_state_bytes)}`,
@@ -201,8 +202,11 @@ function renderResourceLimits(limits, configuration) {
     const authorityContinuity = configuration.sealed_authority_continuity_state
       ? "authority profile and operator trust state retained as sealed bounded snapshots with defensive projections and symmetric publication limits"
       : "authority continuity state seal unverified";
+    const nativeHookCorrelation = configuration.sealed_native_hook_correlation_state
+      ? "native hook authorization and completion correlation retained as sealed bounded snapshots with copy-on-write transitions"
+      : "native hook correlation state seal unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${nativeHookCorrelation}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

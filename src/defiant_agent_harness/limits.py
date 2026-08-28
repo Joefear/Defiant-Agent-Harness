@@ -23,6 +23,12 @@ MAX_OPERATION_JOURNAL_BYTES = 4 * MIB
 MAX_AUTHORITY_PROFILE_STATE_BYTES = 1 * MIB
 MAX_OPERATOR_TRUST_STATE_BYTES = 1 * MIB
 
+# Native-hook correlation retains the exact authorization context needed to
+# bind PostToolUse completion to its PreToolUse decision. Keep canonical
+# capture, durable recovery reads, and atomic publication under the same
+# explicit ceiling. This preserves the established durable-state allowance.
+MAX_HOOK_EXECUTION_STATE_BYTES = MAX_DURABLE_JSON_BYTES
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

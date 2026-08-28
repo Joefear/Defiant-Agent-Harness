@@ -803,6 +803,15 @@ also constrain canonical capture and atomic publication, preserving the prior
 generation if a proposed rotation is too large. See
 `sealed_authority_continuity_state.md`.
 
+v0.61 makes durable native-hook correlation an immutable ownership boundary.
+The complete store and every public record construction are captured under one
+fixed canonical ceiling before field or governed-contract validation. Retained
+action, request, and decision snapshots are recursively frozen and exposed
+only as detached projections. `authorized` to `completed` is copy-on-write,
+and the established 64 MiB state ceiling applies symmetrically to canonical
+capture, recovery reads, and atomic publication. See
+`sealed_native_hook_correlation_state.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
@@ -859,6 +868,10 @@ generation if a proposed rotation is too large. See
   needed for source-specific taint.
 - **Exact-call retry requires client cooperation.** After approval, the MCP
   client or agent must repeat the same tool params before expiry.
+- **Native-hook correlation is finite local state.** v0.61 explicitly bounds
+  `hook_executions.json` at 64 MiB and refuses further publication once the
+  complete document cannot fit. It does not prune completed records, infer a
+  missing post-event, or replace external retention and deployment monitoring.
 - **MCP task augmentation is not yet supported.** Initialization is negotiated
   down to `2025-06-18`; task-aware governance belongs in a later release.
 - **Declared hashes are not dependency discovery or binary attestation.** v0.16

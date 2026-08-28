@@ -160,7 +160,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.54.0"
+    assert output["schema_version"] == "0.55.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
@@ -194,6 +194,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "evidence_record_bytes": 16 * 1024 * 1024,
         "mcp_message_bytes": 10 * 1024 * 1024,
         "hook_event_bytes": 10 * 1024 * 1024,
+        "hook_execution_state_bytes": 64 * 1024 * 1024,
         "operation_journal_bytes": 4 * 1024 * 1024,
         "authority_profile_state_bytes": 1024 * 1024,
         "operator_trust_state_bytes": 1024 * 1024,
@@ -266,6 +267,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "validated_operation_journal_snapshot": True,
         "validated_native_hook_event_snapshot": True,
         "sealed_authority_continuity_state": True,
+        "sealed_native_hook_correlation_state": True,
         "request_contract_preflight": True,
         "tool_call_contract_preflight": True,
         "tool_result_contract_preflight": True,

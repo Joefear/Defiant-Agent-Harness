@@ -34,6 +34,7 @@ from ..limits import (
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
     MAX_HOOK_EVENT_BYTES,
+    MAX_HOOK_EXECUTION_STATE_BYTES,
     MAX_JSON_LEXICAL_TOKENS,
     MAX_JSON_NESTING_DEPTH,
     MAX_JSON_NUMBER_TOKEN_CHARACTERS,
@@ -97,7 +98,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.54.0"
+SNAPSHOT_VERSION = "0.55.0"
 
 
 class CommandError(RuntimeError):
@@ -246,6 +247,7 @@ class CommandCore:
                     "evidence_record_bytes": MAX_EVIDENCE_RECORD_BYTES,
                     "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
+                    "hook_execution_state_bytes": MAX_HOOK_EXECUTION_STATE_BYTES,
                     "operation_journal_bytes": MAX_OPERATION_JOURNAL_BYTES,
                     "authority_profile_state_bytes": (
                         MAX_AUTHORITY_PROFILE_STATE_BYTES
@@ -342,6 +344,7 @@ class CommandCore:
                     "validated_operation_journal_snapshot": True,
                     "validated_native_hook_event_snapshot": True,
                     "sealed_authority_continuity_state": True,
+                    "sealed_native_hook_correlation_state": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,
