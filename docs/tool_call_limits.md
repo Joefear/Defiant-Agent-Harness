@@ -78,7 +78,7 @@ combined semantic call surface after parsing.
 
 ## Read-only projection
 
-Command Core schema `0.57.0` publishes tool-call-specific name, identifier,
+Command Core schema `0.58.0` publishes tool-call-specific name, identifier,
 depth, node, mapping-entry, mapping-sort-work, string-character,
 escaped-string-token, number, and canonical-byte ceilings under
 `resource_limits` and reports

@@ -40,6 +40,11 @@ MAX_APPROVAL_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 # ceiling while preserving the established durable JSON allowance.
 MAX_BUDGET_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 
+# The profile-bound evidence-head checkpoint is a small rollback-detection
+# root. Keep its canonical in-process snapshot, recovery read, and atomic
+# publication under the same narrow ceiling.
+MAX_EVIDENCE_HEAD_STATE_BYTES = 64 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

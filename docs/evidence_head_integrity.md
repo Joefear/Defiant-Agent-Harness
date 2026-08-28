@@ -46,6 +46,14 @@ authority runtime before using those auxiliary paths.
 
 ## Read-only projection and limits
 
+v0.64 captures every loaded or constructed checkpoint as one detached
+canonical built-in snapshot before schema or field validation. Public profile
+and head hashes normalize to exact built-in strings before comparison and
+retention. The same explicit 64 KiB ceiling governs canonical capture, the
+descriptor-backed recovery read, and atomic publication, so failed publication
+leaves the prior recoverable checkpoint unchanged. See
+`validated_evidence_head_snapshot.md`.
+
 The state-integrity report and Command snapshot expose only mode, verification,
 profile hash, record count, head hash, and last checkpoint time. Command Center
 renders that sanitized posture but has no checkpoint, repair, acceptance,

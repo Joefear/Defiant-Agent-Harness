@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from .contracts import utc_now
+from .contracts import authority_snapshot_and_sha256_of, utc_now
+from .limits import MAX_EVIDENCE_HEAD_STATE_BYTES
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -30,14 +31,14 @@ _STATE_FIELDS = {
     "head_hash",
     "checkpointed_at",
 }
-_MAX_STATE_BYTES = 64 * 1024
+_MAX_STATE_BYTES = MAX_EVIDENCE_HEAD_STATE_BYTES
 
 
 class EvidenceHeadError(RuntimeError):
     """The durable evidence checkpoint could not be trusted or advanced."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class EvidenceHeadState:
     profile_hash: str
     mode: str
@@ -45,9 +46,42 @@ class EvidenceHeadState:
     head_hash: str
     checkpointed_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        record_count: int,
+        head_hash: str,
+        checkpointed_at: str,
+    ):
+        state = self._from_snapshot(
+            _evidence_head_snapshot(
+                {
+                    "schema_name": EVIDENCE_HEAD_SCHEMA,
+                    "schema_version": EVIDENCE_HEAD_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "record_count": record_count,
+                    "head_hash": head_hash,
+                    "checkpointed_at": checkpointed_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            record_count=state.record_count,
+            head_hash=state.head_hash,
+            checkpointed_at=state.checkpointed_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "EvidenceHeadState":
-        if not isinstance(raw, dict) or set(raw) != _STATE_FIELDS:
+        return cls._from_snapshot(_evidence_head_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "EvidenceHeadState":
+        if set(raw) != _STATE_FIELDS:
             raise EvidenceHeadError("evidence head fields do not match schema")
         if raw.get("schema_name") != EVIDENCE_HEAD_SCHEMA:
             raise EvidenceHeadError("unsupported evidence head schema")
@@ -63,16 +97,31 @@ class EvidenceHeadState:
         head_hash = _hash(raw.get("head_hash"), "head_hash")
         if record_count == 0 and head_hash != GENESIS_HEAD:
             raise EvidenceHeadError("empty evidence checkpoint must use genesis")
-        checkpointed_at = raw.get("checkpointed_at")
-        if not isinstance(checkpointed_at, str) or not checkpointed_at:
-            raise EvidenceHeadError("checkpointed_at must be a timestamp")
-        try:
-            parsed = datetime.fromisoformat(checkpointed_at.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise EvidenceHeadError("checkpointed_at must be a timestamp") from exc
-        if parsed.tzinfo is None or parsed.utcoffset() is None:
-            raise EvidenceHeadError("checkpointed_at must include a timezone")
-        return cls(profile_hash, mode, record_count, head_hash, checkpointed_at)
+        checkpointed_at = _timestamp(raw.get("checkpointed_at"))
+        state = object.__new__(cls)
+        state._install(
+            profile_hash=profile_hash,
+            mode=mode,
+            record_count=record_count,
+            head_hash=head_hash,
+            checkpointed_at=checkpointed_at,
+        )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        record_count: int,
+        head_hash: str,
+        checkpointed_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "record_count", record_count)
+        object.__setattr__(self, "head_hash", head_hash)
+        object.__setattr__(self, "checkpointed_at", checkpointed_at)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -107,9 +156,9 @@ class EvidenceHeadStateStore:
             current = inspect_state_file(self.path)
             if current is None:
                 return None
-            if current.st_size > _MAX_STATE_BYTES:
-                raise EvidenceHeadError("evidence head state is too large")
-            return EvidenceHeadState.from_dict(read_json(self.path))
+            return EvidenceHeadState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except EvidenceHeadError:
             raise
         except (OSError, PersistenceError, RuntimeError) as exc:
@@ -215,7 +264,11 @@ class EvidenceHeadStateStore:
             head_hash=head_hash,
             checkpointed_at=utc_now(),
         )
-        atomic_write_json(self.path, state.to_dict())
+        atomic_write_json(
+            self.path,
+            state.to_dict(),
+            max_bytes=_MAX_STATE_BYTES,
+        )
         return state
 
 
@@ -243,12 +296,45 @@ def assess_evidence_head(
 
 
 def _hash(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("sha256:"):
+    if not isinstance(value, str):
         raise EvidenceHeadError(f"{field} is not a sha256 identifier")
-    digest = value.removeprefix("sha256:")
+    normalized = str.__str__(value)
+    if not str.startswith(normalized, "sha256:"):
+        raise EvidenceHeadError(f"{field} is not a sha256 identifier")
+    digest = str.removeprefix(normalized, "sha256:")
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise EvidenceHeadError(f"{field} is not a sha256 identifier")
-    return value
+    return normalized
+
+
+def _timestamp(value: Any) -> str:
+    if not isinstance(value, str):
+        raise EvidenceHeadError("checkpointed_at must be a timestamp")
+    normalized = str.__str__(value)
+    if not normalized:
+        raise EvidenceHeadError("checkpointed_at must be a timestamp")
+    try:
+        parsed = datetime.fromisoformat(str.replace(normalized, "Z", "+00:00"))
+    except ValueError as exc:
+        raise EvidenceHeadError("checkpointed_at must be a timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise EvidenceHeadError("checkpointed_at must include a timezone")
+    return normalized
+
+
+def _evidence_head_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise EvidenceHeadError(
+            "evidence head exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise EvidenceHeadError("evidence head state must be an object")
+    return snapshot
 
 
 def _error_detail(exc: BaseException) -> str:

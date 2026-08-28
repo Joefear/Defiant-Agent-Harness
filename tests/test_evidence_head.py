@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+import defiant_agent_harness.evidence_head as evidence_head_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
@@ -20,6 +21,7 @@ from defiant_agent_harness.evidence.store import EvidenceError, EvidenceStore
 from defiant_agent_harness.evidence_head import (
     GENESIS_HEAD,
     EvidenceHeadError,
+    EvidenceHeadState,
     EvidenceHeadStateStore,
 )
 from defiant_agent_harness.orchestrator.harness import build_harness
@@ -43,6 +45,175 @@ def _build(tmp_path):
     workspace = tmp_path / "workspace"
     harness = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
     return state, workspace, harness
+
+
+class HostileText(str):
+    def __str__(self):
+        raise AssertionError("caller string rendering hook invoked")
+
+    def __len__(self):
+        raise AssertionError("caller string length hook invoked")
+
+    def startswith(self, *args, **kwargs):
+        raise AssertionError("caller string prefix hook invoked")
+
+    def removeprefix(self, *args, **kwargs):
+        raise AssertionError("caller string removal hook invoked")
+
+    def replace(self, *args, **kwargs):
+        raise AssertionError("caller string replacement hook invoked")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("caller string copy hook invoked")
+
+
+class HostileDict(dict):
+    def __iter__(self):
+        raise AssertionError("caller mapping iterator hook invoked")
+
+    def __len__(self):
+        raise AssertionError("caller mapping length hook invoked")
+
+    def keys(self):
+        raise AssertionError("caller mapping keys hook invoked")
+
+    def items(self):
+        raise AssertionError("caller mapping items hook invoked")
+
+    def get(self, key, default=None):
+        raise AssertionError("caller mapping get hook invoked")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("caller mapping copy hook invoked")
+
+
+def _hostile_document(raw):
+    return HostileDict(
+        {
+            key: HostileText(value) if type(value) is str else value
+            for key, value in raw.items()
+        }
+    )
+
+
+def test_evidence_head_reader_captures_one_hostile_state_snapshot(
+    tmp_path, monkeypatch
+):
+    state, _workspace, _harness = _build(tmp_path)
+    path = state / "evidence_head.json"
+    raw = read_json(path)
+    supplied = _hostile_document(raw)
+    observed_limits = []
+
+    def hostile_read(source, *, max_bytes=None):
+        assert source == path
+        observed_limits.append(max_bytes)
+        return supplied
+
+    monkeypatch.setattr(evidence_head_module, "read_json", hostile_read)
+
+    restored = EvidenceHeadStateStore(path).get()
+
+    assert restored is not None
+    assert restored.to_dict() == raw
+    assert type(restored.profile_hash) is str
+    assert type(restored.checkpointed_at) is str
+    assert observed_limits == [evidence_head_module._MAX_STATE_BYTES]
+    dict.__setitem__(supplied, "profile_hash", "sha256:" + "f" * 64)
+    assert restored.to_dict() == raw
+
+
+def test_evidence_head_public_state_and_hash_inputs_are_detached(tmp_path):
+    state, _workspace, _harness = _build(tmp_path)
+    path = state / "evidence_head.json"
+    current = EvidenceHeadStateStore(path).get()
+    assert current is not None
+
+    constructed = EvidenceHeadState(
+        HostileText(current.profile_hash),
+        HostileText(current.mode),
+        current.record_count,
+        HostileText(current.head_hash),
+        HostileText(current.checkpointed_at),
+    )
+    reconciled = EvidenceHeadStateStore(path).reconcile_for_authority(
+        HostileText(current.profile_hash),
+        [],
+    )
+
+    assert constructed.to_dict() == current.to_dict()
+    assert reconciled.to_dict() == current.to_dict()
+    assert all(type(value) in {str, int} for value in constructed.to_dict().values())
+
+
+def test_evidence_head_rejects_noncanonical_input_without_secret_echo():
+    class SecretValue:
+        def __str__(self):
+            raise AssertionError("secret rendered")
+
+        def __repr__(self):
+            raise AssertionError("secret represented")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("secret copied")
+
+    with pytest.raises(
+        EvidenceHeadError, match="exceeds bounded canonical state"
+    ) as failure:
+        EvidenceHeadState.from_dict(HostileDict({"secret": SecretValue()}))
+
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_evidence_head_store_uses_one_explicit_read_write_ceiling(
+    tmp_path, monkeypatch
+):
+    read_limits = []
+    write_limits = []
+    original_read = evidence_head_module.read_json
+    original_write = evidence_head_module.atomic_write_json
+
+    def observed_read(path, *, max_bytes=None):
+        read_limits.append(max_bytes)
+        return original_read(path, max_bytes=max_bytes)
+
+    def observed_write(path, data, *, max_bytes=None):
+        write_limits.append(max_bytes)
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(evidence_head_module, "read_json", observed_read)
+    monkeypatch.setattr(evidence_head_module, "atomic_write_json", observed_write)
+    path = tmp_path / "state" / "evidence_head.json"
+    store = EvidenceHeadStateStore(path)
+    store.reconcile_for_authority("sha256:" + "1" * 64, [])
+    assert store.get() is not None
+
+    assert read_limits
+    assert write_limits
+    assert set(read_limits) == {evidence_head_module._MAX_STATE_BYTES}
+    assert set(write_limits) == {evidence_head_module._MAX_STATE_BYTES}
+
+
+def test_evidence_head_refuses_unrecoverable_publication_without_replacement(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "state" / "evidence_head.json"
+    store = EvidenceHeadStateStore(path)
+    current = store.reconcile_for_authority("sha256:" + "1" * 64, [])
+    prior = path.read_bytes()
+    original_limit = evidence_head_module._MAX_STATE_BYTES
+    monkeypatch.setattr(evidence_head_module, "_MAX_STATE_BYTES", 1)
+
+    with pytest.raises(EvidenceHeadError, match="bounded canonical state"):
+        store._write(current.profile_hash, 1, "sha256:" + "2" * 64)
+
+    assert path.read_bytes() == prior
+    monkeypatch.setattr(
+        evidence_head_module,
+        "_MAX_STATE_BYTES",
+        original_limit,
+    )
+    assert store.get() == current
 
 
 def test_authority_startup_records_sanitized_profile_bound_empty_head(tmp_path):
