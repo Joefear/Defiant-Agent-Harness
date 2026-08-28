@@ -31,6 +31,7 @@ from ..limits import (
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
     MAX_ACTION_HASH_STRING_TOKEN_BYTES,
     MAX_APPROVAL_STATE_BYTES,
+    MAX_BUDGET_STATE_BYTES,
     MAX_DURABLE_JSON_BYTES,
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
@@ -99,7 +100,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.56.0"
+SNAPSHOT_VERSION = "0.57.0"
 
 
 class CommandError(RuntimeError):
@@ -250,6 +251,7 @@ class CommandCore:
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
                     "hook_execution_state_bytes": MAX_HOOK_EXECUTION_STATE_BYTES,
                     "approval_state_bytes": MAX_APPROVAL_STATE_BYTES,
+                    "budget_state_bytes": MAX_BUDGET_STATE_BYTES,
                     "operation_journal_bytes": MAX_OPERATION_JOURNAL_BYTES,
                     "authority_profile_state_bytes": (
                         MAX_AUTHORITY_PROFILE_STATE_BYTES
@@ -348,6 +350,7 @@ class CommandCore:
                     "sealed_authority_continuity_state": True,
                     "sealed_native_hook_correlation_state": True,
                     "sealed_approval_record_state": True,
+                    "validated_budget_ledger_snapshot": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,
@@ -665,12 +668,8 @@ class CommandCore:
                 },
             }
 
-        ledger = BudgetLedger(path)
-        return {
-            "state": "ready",
-            "summary": ledger.summary(),
-            "drift": ledger.drift(),
-        }
+        report = BudgetLedger(path).report()
+        return {"state": "ready", **report}
 
 
 def _empty_evidence(request_id: str) -> dict[str, Any]:

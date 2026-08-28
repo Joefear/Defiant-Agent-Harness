@@ -7,7 +7,8 @@ from decimal import Decimal, DecimalException, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from ..contracts import utc_now
+from ..contracts import authority_snapshot_and_sha256_of, utc_now
+from ..limits import MAX_BUDGET_STATE_BYTES
 from ..money import ZERO, MoneyLike, money, money_text
 from ..persistence import (
     atomic_write_json,
@@ -15,6 +16,8 @@ from ..persistence import (
     prepare_storage_root,
     read_json,
 )
+
+_MAX_STATE_BYTES = MAX_BUDGET_STATE_BYTES
 
 
 class BudgetError(RuntimeError):
@@ -75,10 +78,14 @@ class BudgetLedger:
     # -- persistence --------------------------------------------------
 
     def _read(self) -> dict:
-        return read_json(self.path)
+        return read_json(self.path, max_bytes=_MAX_STATE_BYTES)
 
     def _validated_read(self) -> dict:
-        data = self._read()
+        return self._validate(_budget_snapshot(self._read()))
+
+    def _validate(self, data: dict[str, Any]) -> dict[str, Any]:
+        if data.get("schema_version") not in {"0.1.0", "0.2.0"}:
+            raise BudgetError("unsupported budget ledger schema")
         for key in ("balance_usd", "total_spent_usd", "total_estimated_usd"):
             _finite_decimal(data.get(key, "0"), key)
         reservations = data.setdefault("reservations", {})
@@ -186,7 +193,8 @@ class BudgetLedger:
         return data
 
     def _write(self, data: dict) -> None:
-        atomic_write_json(self.path, data)
+        document = self._validate(_budget_snapshot(data))
+        atomic_write_json(self.path, document, max_bytes=_MAX_STATE_BYTES)
 
     def _append(self, data: dict, entry: LedgerEntry) -> None:
         data["entries"].append(entry.to_dict())
@@ -210,6 +218,7 @@ class BudgetLedger:
         return balance - reserved
 
     def reservation_for(self, action_id: str) -> Decimal:
+        action_id = _text(action_id, "action_id", required=True)
         data = self._validated_read()
         reservation = data.get("reservations", {}).get(action_id)
         return (
@@ -220,6 +229,8 @@ class BudgetLedger:
 
     def exposure_for(self, request_id: str, action_id: str) -> Decimal:
         """Return the durable worst-case estimate for one authorized action."""
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         data = self._validated_read()
         reservation = data.get("reservations", {}).get(action_id)
         if reservation is not None:
@@ -237,6 +248,8 @@ class BudgetLedger:
 
     def prior_debit_for(self, request_id: str, action_id: str) -> Decimal | None:
         """Return a durable prior debit amount, if execution already settled."""
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         data = self._validated_read()
         for entry in reversed(data.get("entries", [])):
             if (
@@ -251,6 +264,7 @@ class BudgetLedger:
 
     def grant(self, amount_usd: MoneyLike, note: str = "") -> Decimal:
         amount = money(amount_usd, field_name="grant amount")
+        note = _text(note, "note")
         with exclusive_file_lock(self.path):
             data = self._validated_read()
             balance = _finite_decimal(data["balance_usd"], "balance_usd") + amount
@@ -300,10 +314,10 @@ class BudgetLedger:
         action_id: str,
     ) -> None:
         amount = money(amount_usd, field_name="reservation amount")
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         if amount == ZERO:
             raise BudgetError("zero-value reservations are not recorded")
-        if not request_id or not action_id:
-            raise BudgetError("reservation requires request_id and action_id")
         with exclusive_file_lock(self.path):
             data = self._validated_read()
             if action_id in data["reservations"]:
@@ -338,7 +352,9 @@ class BudgetLedger:
     ) -> None:
         """Create or recognize one exact reservation during journal recovery."""
         amount = money(amount_usd, field_name="reservation amount")
-        if amount == ZERO or not request_id or not action_id:
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
+        if amount == ZERO:
             raise BudgetError("journal reservation requires positive bound values")
         with exclusive_file_lock(self.path):
             data = self._validated_read()
@@ -382,6 +398,8 @@ class BudgetLedger:
         action_id: str,
     ) -> Decimal:
         actual = money(actual_usd, field_name="actual_usd")
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         with exclusive_file_lock(self.path):
             data = self._validated_read()
             reserved = self._pop_reservation(data, request_id, action_id)
@@ -413,8 +431,8 @@ class BudgetLedger:
         """Validate and return the available balance after an exact settlement."""
         expected = money(expected_usd, field_name="expected reservation")
         actual = money(actual_usd, field_name="actual settlement")
-        if not request_id or not action_id:
-            raise BudgetError("settlement requires request_id and action_id")
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         data = self._validated_read()
         reservation = data["reservations"].get(action_id)
         prior = [
@@ -450,11 +468,14 @@ class BudgetLedger:
         """Apply or recognize one exact journaled result settlement."""
         expected = money(expected_usd, field_name="expected reservation")
         actual = money(actual_usd, field_name="actual settlement")
-        if not request_id or not action_id:
-            raise BudgetError("settlement requires request_id and action_id")
-        if not isinstance(
-            completion_record_id, str
-        ) or not completion_record_id.startswith("evd_"):
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
+        completion_record_id = _text(
+            completion_record_id,
+            "completion_record_id",
+            required=True,
+        )
+        if not completion_record_id.startswith("evd_"):
             raise BudgetError("settlement requires a terminal evidence record id")
         with exclusive_file_lock(self.path):
             data = self._validated_read()
@@ -517,6 +538,8 @@ class BudgetLedger:
             return remaining
 
     def release(self, request_id: str, action_id: str) -> Decimal:
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         with exclusive_file_lock(self.path):
             data = self._validated_read()
             reserved = self._pop_reservation(data, request_id, action_id)
@@ -546,6 +569,8 @@ class BudgetLedger:
     ) -> Decimal:
         """Release or recognize one exact journaled reservation disposition."""
         expected = money(expected_usd, field_name="expected reservation")
+        request_id = _text(request_id, "request_id", required=True)
+        action_id = _text(action_id, "action_id", required=True)
         if expected == ZERO:
             return self.balance_usd
         with exclusive_file_lock(self.path):
@@ -613,16 +638,43 @@ class BudgetLedger:
         after a process crash idempotent.
         """
         expected = money(expected_usd, field_name="reconciliation expected_usd")
-        if not request_id or not action_id:
-            raise BudgetError("reconciliation requires request_id and action_id")
+        supplied_input = _budget_value_snapshot(
+            {
+                "request_id": request_id,
+                "action_id": action_id,
+                "outcome": outcome,
+                "reconciled_by": reconciled_by,
+                "note": note,
+                "authority_record_id": authority_record_id,
+                "authority_record_hash": authority_record_hash,
+                "attestation": attestation,
+            },
+            "budget reconciliation input",
+        )
+        request_id = _text(supplied_input["request_id"], "request_id", required=True)
+        action_id = _text(supplied_input["action_id"], "action_id", required=True)
+        outcome = _text(supplied_input["outcome"], "outcome", required=True)
         if outcome not in {"succeeded", "failed", "not_executed"}:
             raise BudgetError("invalid reconciliation outcome")
-        if not isinstance(reconciled_by, str) or not reconciled_by.strip():
-            raise BudgetError("reconciled_by must be non-empty")
-        if not isinstance(note, str) or not note.strip():
-            raise BudgetError("reconciliation note must be non-empty")
-        reconciled_by = reconciled_by.strip()
-        note = note.strip()
+        reconciled_by = _text(
+            supplied_input["reconciled_by"],
+            "reconciled_by",
+            required=True,
+            strip=True,
+        )
+        note = _text(
+            supplied_input["note"],
+            "reconciliation note",
+            required=True,
+            strip=True,
+        )
+        authority_record_id = _text(
+            supplied_input["authority_record_id"], "authority_record_id"
+        )
+        authority_record_hash = _text(
+            supplied_input["authority_record_hash"], "authority_record_hash"
+        )
+        attestation = supplied_input["attestation"]
 
         with exclusive_file_lock(self.path):
             data = self._validated_read()
@@ -751,7 +803,9 @@ class BudgetLedger:
     # -- reporting ----------------------------------------------------
 
     def drift(self) -> dict[str, str]:
-        data = self._validated_read()
+        return self._drift(self._validated_read())
+
+    def _drift(self, data: dict[str, Any]) -> dict[str, str]:
         estimated = _finite_decimal(data["total_estimated_usd"], "total_estimated_usd")
         actual = _finite_decimal(data["total_spent_usd"], "total_spent_usd")
         drift = actual - estimated
@@ -764,7 +818,9 @@ class BudgetLedger:
         }
 
     def summary(self) -> dict[str, str | int]:
-        data = self._validated_read()
+        return self._summary(self._validated_read())
+
+    def _summary(self, data: dict[str, Any]) -> dict[str, str | int]:
         balance = _finite_decimal(data["balance_usd"], "balance_usd")
         available = self._available(data)
         reserved = balance - available
@@ -776,6 +832,14 @@ class BudgetLedger:
                 _finite_decimal(data["total_spent_usd"], "total_spent_usd")
             ),
             "entry_count": len(data["entries"]),
+        }
+
+    def report(self) -> dict[str, dict[str, str | int]]:
+        """Project summary and drift from one validated durable observation."""
+        data = self._validated_read()
+        return {
+            "summary": self._summary(data),
+            "drift": self._drift(data),
         }
 
 
@@ -809,3 +873,38 @@ def _decimal_text(value: Decimal) -> str:
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
+
+
+def _budget_snapshot(value: Any) -> dict[str, Any]:
+    snapshot = _budget_value_snapshot(value, "budget state")
+    if type(snapshot) is not dict:
+        raise BudgetError("budget state must be an object")
+    return snapshot
+
+
+def _budget_value_snapshot(value: Any, label: str) -> Any:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise BudgetError(f"{label} exceeds bounded canonical contract") from exc
+    return snapshot
+
+
+def _text(
+    value: Any,
+    field_name: str,
+    *,
+    required: bool = False,
+    strip: bool = False,
+) -> str:
+    if not isinstance(value, str):
+        raise BudgetError(f"{field_name} must be text")
+    normalized = str.__str__(value)
+    if strip:
+        normalized = normalized.strip()
+    if required and not normalized:
+        raise BudgetError(f"{field_name} must be non-empty")
+    return normalized

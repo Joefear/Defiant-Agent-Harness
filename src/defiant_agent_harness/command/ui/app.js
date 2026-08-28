@@ -148,6 +148,7 @@ function renderResourceLimits(limits, configuration) {
     `hook event ${bytes(limits.hook_event_bytes)}`,
     `hook execution state ${bytes(limits.hook_execution_state_bytes)}`,
     `approval state ${bytes(limits.approval_state_bytes)}`,
+    `budget state ${bytes(limits.budget_state_bytes)}`,
     `operation journal ${bytes(limits.operation_journal_bytes)}`,
     `authority profile state ${bytes(limits.authority_profile_state_bytes)}`,
     `operator trust state ${bytes(limits.operator_trust_state_bytes)}`,
@@ -209,8 +210,11 @@ function renderResourceLimits(limits, configuration) {
     const approvalRecordState = configuration.sealed_approval_record_state
       ? "approval records and held authority snapshots retained as sealed bounded state with copy-on-write lifecycle transitions"
       : "approval record state seal unverified";
+    const budgetLedgerSnapshot = configuration.validated_budget_ledger_snapshot
+      ? "budget validation and publication use detached bounded canonical ledger snapshots with symmetric I/O limits"
+      : "budget ledger snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${nativeHookCorrelation}; ${approvalRecordState}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

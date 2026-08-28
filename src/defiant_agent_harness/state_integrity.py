@@ -1507,9 +1507,7 @@ class StateIntegrityAuditor:
             # The constructor validates the existing file but cannot initialize it
             # here because existence was checked above. No store method mutates.
             ledger = BudgetLedger(path)
-            ledger.summary()
-            ledger.drift()
-            data = read_json(path)
+            data = ledger._validated_read()
             data.setdefault("reservations", {})
             data.setdefault("reconciliations", {})
             entries = data.setdefault("entries", [])

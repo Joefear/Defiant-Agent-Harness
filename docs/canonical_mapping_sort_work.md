@@ -43,7 +43,7 @@ unchanged.
 
 ## Read-only projection
 
-Command Core schema `0.56.0` publishes the action, tool-call, and tool-result
+Command Core schema `0.57.0` publishes the action, tool-call, and tool-result
 budgets under `resource_limits` and reports
 `canonical_mapping_sort_preflight: true`. Command Center renders only those
 fixed values and posture. It cannot submit a value, change a budget, approve,
