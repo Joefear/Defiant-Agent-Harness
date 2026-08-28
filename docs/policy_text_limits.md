@@ -40,7 +40,7 @@ redactions, or source paths.
 
 ## Read-only projection
 
-Command Core schema `0.54.0` publishes `policy_text_item_characters` and
+Command Core schema `0.55.0` publishes `policy_text_item_characters` and
 `policy_text_characters` under `resource_limits`, plus the static
 `policy_text_preflight` posture. Command Center only renders these values. It
 cannot upload policy, change a ceiling, grant an exception, activate a ruleset,

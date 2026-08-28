@@ -47,7 +47,7 @@ retry, target, result, and evidence behavior. MCP proxy requests are unchanged:
 they already enter through the bounded strict JSON transport and are outside
 this release's authority gap.
 
-Command Core schema `0.54.0` reports
+Command Core schema `0.55.0` reports
 `validated_native_hook_event_snapshot: true` under
 `authority_configuration`. Command Center renders only that static posture. It
 receives no hook event, tool arguments, target, result, approval note, mutation
