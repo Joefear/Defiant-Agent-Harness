@@ -17,6 +17,12 @@ MAX_EVIDENCE_EXPORT_BYTES = 64 * MIB
 # ceiling so the writer cannot create a journal the recovery reader refuses.
 MAX_OPERATION_JOURNAL_BYTES = 4 * MIB
 
+# Operator trust and the complete authority profile are independently bounded
+# continuity roots. Their canonical in-process snapshot, durable publication,
+# and recovery read all use the same store-specific ceilings.
+MAX_AUTHORITY_PROFILE_STATE_BYTES = 1 * MIB
+MAX_OPERATOR_TRUST_STATE_BYTES = 1 * MIB
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

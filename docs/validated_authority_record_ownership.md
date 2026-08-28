@@ -40,7 +40,7 @@ explicit reconciliation workflow.
 
 ## Read-only projection
 
-Command Core schema `0.53.0` reports
+Command Core schema `0.54.0` reports
 `validated_authority_record_ownership: true`. Command Center renders only this
 static posture. It cannot submit or alter a decision, grant, evidence record,
 budget value, approval, reconciliation, policy, or execution.

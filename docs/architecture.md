@@ -490,7 +490,7 @@ later owning and operator-control paths. Diagnostic surfaces verify read-only,
 show current/max lag, and withhold paths, signatures, and notes. See
 `evidence_head_witness.md`.
 
-## What is deliberately absent from v0.59
+## What is deliberately absent from v0.60
 
 - **Automatic witness transport or remote/multi-user Command.** Command Center
   is a local loopback view, not
@@ -793,6 +793,15 @@ longer deep-copies caller-controlled hook values. The CLI's existing bounded
 strict JSON ingestion remains the outer transport limit, while in-process
 callers receive the fixed canonical authority profile. See
 `validated_native_hook_event_snapshot.md`.
+
+v0.60 makes the authority-profile and operator-trust state objects immutable
+ownership boundaries. Loading captures one bounded exact built-in tree before
+schema or signature-chain validation. Runtime retention recursively freezes
+bindings, transitions, and attestations; public attributes and `to_dict()`
+return detached projections. Their established 1 MiB recovery-read ceilings
+also constrain canonical capture and atomic publication, preserving the prior
+generation if a proposed rotation is too large. See
+`sealed_authority_continuity_state.md`.
 
 ## Known limits
 

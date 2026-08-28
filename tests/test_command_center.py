@@ -134,6 +134,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"durable_json_bytes" in javascript
     assert b"evidence_export_bytes" in javascript
     assert b"operation_journal_bytes" in javascript
+    assert b"authority_profile_state_bytes" in javascript
+    assert b"operator_trust_state_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
     assert b"mcp_dependency_file_pins" in javascript
     assert b"mcp_launch_environment_entries" in javascript
@@ -217,6 +219,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"operation journal payload bounded" in javascript
     assert b"validated_native_hook_event_snapshot" in javascript
     assert b"native hook retry identity" in javascript
+    assert b"sealed_authority_continuity_state" in javascript
+    assert b"authority profile and operator trust state retained" in javascript
     assert b"json_parser_profile" in javascript
     assert b"json_nesting_depth" in javascript
     assert b"json_lexical_tokens" in javascript

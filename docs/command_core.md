@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.53.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.54.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -20,6 +20,8 @@ contains:
 - fixed pre-parse and publication ceilings, including the evidence-export cap;
 - the fixed symmetric operation-journal read/write and canonical snapshot
   ceiling;
+- fixed symmetric authority-profile and operator-trust state read/write and
+  canonical snapshot ceilings;
 - fixed trusted-public-key count, per-key byte, and aggregate key-set ceilings;
 - fixed complete-policy pack, rule, known-tool, per-field, and aggregate-list
   ceilings;
@@ -91,6 +93,7 @@ contains:
   validated-policy-context-snapshot,
   validated-operation-journal-snapshot,
   validated-native-hook-event-snapshot,
+  sealed-authority-continuity-state,
   canonical-mapping-size,
   canonical-mapping-sort-work,
   complete-canonical-value, MCP-collection, policy-text,

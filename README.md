@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.59.
+logs. A full trusted-memory/DKE system is not part of v0.60.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.59 is
+## What v0.60 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -543,6 +543,14 @@ now descend from that same owned observation. Caller copy, mapping, list, and
 scalar hooks cannot substitute a second event between those decisions. Command
 Core and the strictly read-only Command Center expose only static posture.
 
+v0.60 seals the nested state retained by the durable authority profile and
+operator-trust roots. Each loaded state is validated from one bounded canonical
+snapshot, internal transition, binding, and attestation trees are recursively
+frozen, and public access returns fresh built-in projections. The existing
+1 MiB read ceilings now also govern canonical capture and atomic writes, so a
+successful rotation cannot strand the next restart with unreadable state.
+Command Center remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -879,7 +887,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.59 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.60 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -938,6 +946,8 @@ fixed bounded exact policy evaluation context shared by matching and evidence,
 fixed bounded and sealed operation-journal snapshots with symmetric I/O limits,
 fixed bounded exact native-hook events shared by retry identity, authorization,
 targeting, payload, and completion,
+fixed bounded and sealed authority-profile and operator-trust continuity state
+with defensive projections and symmetric I/O limits,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -980,6 +990,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_policy_context_snapshot.md`,
 `docs/validated_operation_journal_snapshot.md`,
 `docs/validated_native_hook_event_snapshot.md`,
+`docs/sealed_authority_continuity_state.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,
 `docs/canonical_value_preflight.md`,
