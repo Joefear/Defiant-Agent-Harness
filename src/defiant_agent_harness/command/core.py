@@ -30,6 +30,7 @@ from ..limits import (
     MAX_ACTION_HASH_NUMBER_CHARACTERS,
     MAX_ACTION_HASH_SCALAR_CHARACTERS,
     MAX_ACTION_HASH_STRING_TOKEN_BYTES,
+    MAX_APPROVAL_STATE_BYTES,
     MAX_DURABLE_JSON_BYTES,
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_RECORD_BYTES,
@@ -98,7 +99,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.55.0"
+SNAPSHOT_VERSION = "0.56.0"
 
 
 class CommandError(RuntimeError):
@@ -248,6 +249,7 @@ class CommandCore:
                     "mcp_message_bytes": MAX_MCP_MESSAGE_BYTES,
                     "hook_event_bytes": MAX_HOOK_EVENT_BYTES,
                     "hook_execution_state_bytes": MAX_HOOK_EXECUTION_STATE_BYTES,
+                    "approval_state_bytes": MAX_APPROVAL_STATE_BYTES,
                     "operation_journal_bytes": MAX_OPERATION_JOURNAL_BYTES,
                     "authority_profile_state_bytes": (
                         MAX_AUTHORITY_PROFILE_STATE_BYTES
@@ -345,6 +347,7 @@ class CommandCore:
                     "validated_native_hook_event_snapshot": True,
                     "sealed_authority_continuity_state": True,
                     "sealed_native_hook_correlation_state": True,
+                    "sealed_approval_record_state": True,
                     "request_contract_preflight": True,
                     "tool_call_contract_preflight": True,
                     "tool_result_contract_preflight": True,
@@ -471,7 +474,7 @@ class CommandCore:
                 "actionable": [],
             }
 
-        raw_approvals = read_json(path)
+        raw_approvals = read_json(path, max_bytes=MAX_APPROVAL_STATE_BYTES)
         actionable: list[dict[str, Any]] = []
         identity_counts: Counter[str] = Counter()
         overdue = 0
@@ -479,7 +482,7 @@ class CommandCore:
         for approval_id, raw in raw_approvals.items():
             if not isinstance(raw, dict):
                 raise CommandError(f"approval {approval_id} is not an object")
-            approval = PendingApproval(**raw)
+            approval = PendingApproval.from_dict(raw)
             if approval.approval_id != approval_id:
                 raise CommandError(
                     f"approval key {approval_id} does not match its stored id"

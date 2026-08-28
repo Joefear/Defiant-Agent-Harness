@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.61.
+logs. A full trusted-memory/DKE system is not part of v0.62.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.61 is
+## What v0.62 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -559,6 +559,17 @@ copy-on-write transition, and the established 64 MiB store ceiling now applies
 explicitly to canonical capture, recovery reads, and atomic publication.
 Command Center remains strictly read-only.
 
+v0.62 seals each durable approval record and its held authority context. One
+bounded canonical observation now owns the action, request, decision, policy,
+and operator-attestation trees; public access returns detached projections and
+every lifecycle change creates a new validated record. The approval store uses
+the same explicit 64 MiB ceiling for canonical capture, recovery reads, and
+atomic publication, rejects stale hashes, cross-request substitution, unknown
+fields, and record-key mismatch, and continues to load older records that omit
+newer optional reconciliation fields. Command Core and the strictly read-only
+Command Center expose only the static hardening posture and fixed ceiling;
+approval payloads, targets, notes, attestations, and mutation remain excluded.
+
 ## Install
 
 ```bash
@@ -895,7 +906,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.61 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.62 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -958,6 +969,8 @@ fixed bounded and sealed authority-profile and operator-trust continuity state
 with defensive projections and symmetric I/O limits,
 fixed bounded and sealed native-hook authorization/completion correlation state
 with defensive projections and copy-on-write transitions,
+fixed bounded and sealed approval records and held authority snapshots with
+defensive projections, key binding, and copy-on-write lifecycle transitions,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and

@@ -810,6 +810,20 @@ copy-on-write completion. The established 64 MiB store limit now applies to
 capture, recovery, and atomic publication. This does not create OS containment,
 guarantee that a runner emits `PostToolUse`, or infer an unknown outcome.
 
+**Mutable approval records after authority capture.** Through v0.61,
+`PendingApproval` retained public policy, held action/request/decision, and
+operator-attestation containers, changed lifecycle fields in place, and relied
+on dataclass traversal for persistence. A caller mutation or container-subclass
+hook could therefore make later validation, execution, reconciliation, or
+publication observe authority different from the accepted record. v0.62
+captures one bounded canonical record, reconstructs and binds governed
+snapshots from that observation, recursively freezes retained trees, returns
+only detached projections, and advances lifecycle state copy-on-write. The
+complete store is key-bound and symmetrically limited for capture, read, and
+write. This does not decide whether an uncertain external action ran, release a
+stranded reservation optimistically, make trusted in-process Python untrusted,
+or turn Command Center into an authority surface.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

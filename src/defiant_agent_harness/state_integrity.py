@@ -40,6 +40,7 @@ from .operator_identity import (
 from .operation_journal import JournalOperation, OperationJournal
 from .operator_trust_state import OperatorTrustStateStore
 from .launch_envelope import LaunchEnvelopeError, LaunchEnvelopeStateStore
+from .limits import MAX_APPROVAL_STATE_BYTES
 from .persistence import open_state_file, read_json
 from .runtime_artifacts import RuntimeArtifactError, RuntimeArtifactStateStore
 from .state_storage import (
@@ -1016,11 +1017,11 @@ class StateIntegrityAuditor:
         approvals: dict[str, PendingApproval] = {}
         valid = True
         try:
-            raw_approvals = read_json(path)
+            raw_approvals = read_json(path, max_bytes=MAX_APPROVAL_STATE_BYTES)
             for key, raw in raw_approvals.items():
                 if not isinstance(raw, dict):
                     raise ValueError(f"approval {key} is not an object")
-                approval = PendingApproval(**raw)
+                approval = PendingApproval.from_dict(raw)
                 if approval.approval_id != key:
                     raise ValueError(
                         f"approval key {key} does not match {approval.approval_id}"

@@ -812,6 +812,19 @@ and the established 64 MiB state ceiling applies symmetrically to canonical
 capture, recovery reads, and atomic publication. See
 `sealed_native_hook_correlation_state.md`.
 
+v0.62 applies the same ownership rule to durable approvals. A
+`PendingApproval` is a sealed value, not a mutable row: construction and load
+adopt one bounded canonical observation; held action, request, decision,
+policy, and attestation trees are recursively frozen; public properties return
+fresh projections; and status, operator decision, execution, consumption, and
+reconciliation advance through validated copy-on-write records. The store
+adopts records from one bounded complete-store observation, binds each map key
+to the retained approval id, and uses the same 64 MiB ceiling for publication
+and recovery. Legacy optional reconciliation fields default safely, while
+unknown fields or inconsistent authority snapshots fail closed. Command Core
+projects only static posture and sanitized queue state, and Command Center
+remains a read-only observer. See `sealed_approval_record_state.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
