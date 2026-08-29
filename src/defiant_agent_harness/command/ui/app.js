@@ -155,6 +155,7 @@ function renderResourceLimits(limits, configuration) {
     `authority profile state ${bytes(limits.authority_profile_state_bytes)}`,
     `operator trust state ${bytes(limits.operator_trust_state_bytes)}`,
     `runtime artifact state ${bytes(limits.runtime_artifact_state_bytes)}`,
+    `launch envelope state ${bytes(limits.launch_envelope_state_bytes)}`,
     `JSON depth ${integer.format(limits.json_nesting_depth)}`,
     `JSON lexical tokens ${integer.format(limits.json_lexical_tokens)}`,
     `JSON string token ${integer.format(limits.json_string_token_characters)} characters`,
@@ -213,6 +214,9 @@ function renderResourceLimits(limits, configuration) {
     const runtimeArtifactState = configuration.validated_runtime_artifact_state_snapshot
       ? "runtime artifact assurance validation and publication use one detached bounded state snapshot with symmetric I/O limits"
       : "runtime artifact state snapshot integrity unverified";
+    const launchEnvelopeState = configuration.validated_launch_envelope_state_snapshot
+      ? "launch envelope assurance validation and publication use one detached bounded state snapshot with symmetric I/O limits"
+      : "launch envelope state snapshot integrity unverified";
     const nativeHookCorrelation = configuration.sealed_native_hook_correlation_state
       ? "native hook authorization and completion correlation retained as sealed bounded snapshots with copy-on-write transitions"
       : "native hook correlation state seal unverified";
@@ -229,7 +233,7 @@ function renderResourceLimits(limits, configuration) {
       ? "evidence-witness policy validation and publication use one detached bounded canonical state snapshot with symmetric I/O limits"
       : "evidence-witness policy snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${runtimeArtifactState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }

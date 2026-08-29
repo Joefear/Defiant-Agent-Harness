@@ -46,7 +46,7 @@ Policy schema v0.2 remains current. Existing v0.1 policy observations continue
 to load with an unbounded lag and upgrade to v0.2 only when written through the
 normal owning path.
 
-Command Core schema `0.61.0` publishes only the static
+Command Core schema `0.62.0` publishes only the static
 `evidence_witness_policy_state_bytes` ceiling and
 `validated_evidence_witness_policy_snapshot: true` posture. Command Center
 continues to show sanitized witness assurance and remains strictly read-only.
