@@ -32,6 +32,7 @@ from ..limits import (
     MAX_ACTION_HASH_STRING_TOKEN_BYTES,
     MAX_APPROVAL_STATE_BYTES,
     MAX_BUDGET_STATE_BYTES,
+    MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES,
     MAX_DURABLE_JSON_BYTES,
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_EVIDENCE_HEAD_STATE_BYTES,
@@ -84,6 +85,7 @@ from ..limits import (
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
     MAX_YAML_NESTING_DEPTH,
     MAX_YAML_NODES,
+    MAX_WORKSPACE_INTEGRITY_STATE_BYTES,
 )
 from ..money import ZERO, money, money_text
 from ..operation_journal import (
@@ -105,7 +107,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.63.0"
+SNAPSHOT_VERSION = "0.64.0"
 
 
 class CommandError(RuntimeError):
@@ -269,6 +271,12 @@ class CommandCore:
                     "runtime_artifact_state_bytes": MAX_RUNTIME_ARTIFACT_STATE_BYTES,
                     "launch_envelope_state_bytes": MAX_LAUNCH_ENVELOPE_STATE_BYTES,
                     "state_storage_state_bytes": MAX_STATE_STORAGE_STATE_BYTES,
+                    "control_plane_isolation_state_bytes": (
+                        MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES
+                    ),
+                    "workspace_integrity_state_bytes": (
+                        MAX_WORKSPACE_INTEGRITY_STATE_BYTES
+                    ),
                     "json_lexical_tokens": MAX_JSON_LEXICAL_TOKENS,
                     "json_nesting_depth": MAX_JSON_NESTING_DEPTH,
                     "json_number_token_characters": MAX_JSON_NUMBER_TOKEN_CHARACTERS,
@@ -364,6 +372,8 @@ class CommandCore:
                     "validated_runtime_artifact_state_snapshot": True,
                     "validated_launch_envelope_state_snapshot": True,
                     "validated_state_storage_state_snapshot": True,
+                    "validated_control_plane_isolation_state_snapshot": True,
+                    "validated_workspace_integrity_state_snapshot": True,
                     "sealed_native_hook_correlation_state": True,
                     "sealed_approval_record_state": True,
                     "validated_budget_ledger_snapshot": True,

@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .contracts import sha256_of, utc_now
+from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
+from .limits import MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -38,7 +39,7 @@ _STATE_FIELDS = {
     "relationship",
     "verified_at",
 }
-_MAX_STATE_BYTES = 64 * 1024
+_MAX_STATE_BYTES = MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES
 
 
 class ControlPlaneIsolationError(RuntimeError):
@@ -107,7 +108,7 @@ def build_control_plane_isolation(
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class ControlPlaneIsolationState:
     profile_hash: str
     mode: str
@@ -117,9 +118,48 @@ class ControlPlaneIsolationState:
     relationship: str
     verified_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        contract_hash: str,
+        workspace_hash: str,
+        protected_root_count: int,
+        relationship: str,
+        verified_at: str,
+    ):
+        state = self._from_snapshot(
+            _control_plane_isolation_state_snapshot(
+                {
+                    "schema_name": CONTROL_PLANE_ISOLATION_SCHEMA,
+                    "schema_version": CONTROL_PLANE_ISOLATION_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "contract_hash": contract_hash,
+                    "workspace_hash": workspace_hash,
+                    "protected_root_count": protected_root_count,
+                    "relationship": relationship,
+                    "verified_at": verified_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            contract_hash=state.contract_hash,
+            workspace_hash=state.workspace_hash,
+            protected_root_count=state.protected_root_count,
+            relationship=state.relationship,
+            verified_at=state.verified_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ControlPlaneIsolationState":
-        if not isinstance(raw, dict) or set(raw) != _STATE_FIELDS:
+        return cls._from_snapshot(_control_plane_isolation_state_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "ControlPlaneIsolationState":
+        if set(raw) != _STATE_FIELDS:
             raise ControlPlaneIsolationError(
                 "control-plane isolation fields do not match schema"
             )
@@ -152,15 +192,36 @@ class ControlPlaneIsolationState:
             raise ControlPlaneIsolationError("verified_at must be a timestamp") from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ControlPlaneIsolationError("verified_at must include a timezone")
-        return cls(
-            profile_hash,
-            mode,
-            contract_hash,
-            workspace_hash,
-            count,
-            relationship,
-            verified_at,
+        state = object.__new__(cls)
+        state._install(
+            profile_hash=profile_hash,
+            mode=mode,
+            contract_hash=contract_hash,
+            workspace_hash=workspace_hash,
+            protected_root_count=count,
+            relationship=relationship,
+            verified_at=verified_at,
         )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        contract_hash: str,
+        workspace_hash: str,
+        protected_root_count: int,
+        relationship: str,
+        verified_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "contract_hash", contract_hash)
+        object.__setattr__(self, "workspace_hash", workspace_hash)
+        object.__setattr__(self, "protected_root_count", protected_root_count)
+        object.__setattr__(self, "relationship", relationship)
+        object.__setattr__(self, "verified_at", verified_at)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -208,11 +269,9 @@ class ControlPlaneIsolationStateStore:
             current = inspect_state_file(self.path)
             if current is None:
                 return None
-            if current.st_size > _MAX_STATE_BYTES:
-                raise ControlPlaneIsolationError(
-                    "control-plane isolation state is too large"
-                )
-            return ControlPlaneIsolationState.from_dict(read_json(self.path))
+            return ControlPlaneIsolationState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except ControlPlaneIsolationError:
             raise
         except (OSError, PersistenceError, RuntimeError) as exc:
@@ -224,27 +283,52 @@ class ControlPlaneIsolationStateStore:
         assurance: ControlPlaneIsolationAssurance,
     ) -> ControlPlaneIsolationState:
         profile_hash = _hash(profile_hash, "profile_hash")
-        stable = assurance.authority_dict()
+        candidate = ControlPlaneIsolationState(
+            profile_hash=profile_hash,
+            mode=assurance.mode,
+            contract_hash=assurance.contract_hash,
+            workspace_hash=assurance.workspace_hash,
+            protected_root_count=assurance.protected_root_count,
+            relationship=assurance.relationship,
+            verified_at=utc_now(),
+        )
         try:
             with exclusive_file_lock(self.path):
                 previous = self.get()
                 if previous is not None and previous.profile_hash == profile_hash:
-                    if previous.authority_dict() != stable:
+                    if previous.authority_dict() != candidate.authority_dict():
                         raise ControlPlaneIsolationError(
                             "control-plane isolation conflicts with the active "
                             "authority profile"
                         )
-                state = ControlPlaneIsolationState(
-                    profile_hash=profile_hash,
-                    **stable,
-                    verified_at=utc_now(),
-                )
-                atomic_write_json(self.path, state.to_dict())
-                return state
+                _write_state(self.path, candidate)
+                return candidate
         except ControlPlaneIsolationError:
             raise
         except (OSError, PersistenceError) as exc:
             raise ControlPlaneIsolationError(_error_detail(exc)) from exc
+
+
+def _control_plane_isolation_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise ControlPlaneIsolationError(
+            "control-plane isolation state exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise ControlPlaneIsolationError(
+            "control-plane isolation state must be an object"
+        )
+    return snapshot
+
+
+def _write_state(path: Path, state: ControlPlaneIsolationState) -> None:
+    candidate = ControlPlaneIsolationState.from_dict(state.to_dict()).to_dict()
+    atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
 
 
 def _relationship(workspace: Path, state: Path) -> str:
@@ -262,12 +346,15 @@ def _canonical_path(path: Path) -> str:
 
 
 def _hash(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("sha256:"):
+    if not isinstance(value, str):
         raise ControlPlaneIsolationError(f"{field} is not a sha256 identifier")
-    digest = value.removeprefix("sha256:")
+    normalized = str.__str__(value)
+    if not str.startswith(normalized, "sha256:"):
+        raise ControlPlaneIsolationError(f"{field} is not a sha256 identifier")
+    digest = str.removeprefix(normalized, "sha256:")
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise ControlPlaneIsolationError(f"{field} is not a sha256 identifier")
-    return value
+    return normalized
 
 
 def _error_detail(exc: BaseException) -> str:

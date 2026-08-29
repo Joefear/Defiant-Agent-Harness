@@ -79,3 +79,10 @@ v0.20 additionally protects the workspace boundary itself from root replacement;
 see `workspace_root_integrity.md`. The two controls are complementary: this
 document governs targets relative to the root, while v0.20 verifies that the
 root is still the enrolled directory.
+
+v0.70 makes the sanitized `control_plane_isolation.json` observation one
+detached canonical built-in snapshot. Capture, descriptor-backed recovery, and
+atomic publication share an explicit 64 KiB ceiling; caller mutation cannot
+change conflict checks or publication, and failed oversized publication leaves
+prior recoverable bytes unchanged. See
+`validated_filesystem_authority_state_snapshots.md`.

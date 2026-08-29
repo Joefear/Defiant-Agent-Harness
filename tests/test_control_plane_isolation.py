@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import defiant_agent_harness.control_plane_isolation as isolation_module
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.command.core import CommandCore
@@ -17,8 +18,11 @@ from defiant_agent_harness.contracts import (
 )
 from defiant_agent_harness.evidence.store import GENESIS
 from defiant_agent_harness.control_plane_isolation import (
+    ControlPlaneIsolationAssurance,
     ControlPlaneIsolationError,
+    ControlPlaneIsolationState,
     ControlPlaneIsolationStateStore,
+    build_control_plane_isolation,
 )
 from defiant_agent_harness.orchestrator.harness import build_harness
 from defiant_agent_harness.persistence import atomic_write_json, read_json
@@ -227,3 +231,156 @@ def test_profile_binding_tamper_is_reported_without_paths(tmp_path):
         for issue in report.issues
     )
     assert str(state) not in serialized
+
+
+def test_isolation_store_owns_hostile_bounded_snapshot(tmp_path, monkeypatch):
+    class HostileDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("isolation snapshot invoked deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("isolation snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("isolation snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("isolation snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("isolation snapshot invoked mapping keys hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("isolation snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("isolation snapshot invoked scalar rendering hook")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "state"
+    build_harness(state_root, MockAgentAdapter(), workspace_root=workspace)
+    path = state_root / "control_plane_isolation.json"
+    store = ControlPlaneIsolationStateStore(path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    supplied = HostileDict(
+        {
+            key: HostileString(value) if type(value) is str else value
+            for key, value in raw.items()
+        }
+    )
+    observed = []
+
+    def hostile_read(path, *, max_bytes=None):
+        observed.append(max_bytes)
+        return supplied
+
+    monkeypatch.setattr(isolation_module, "read_json", hostile_read)
+    stored = store.get()
+    expected = stored.to_dict()
+    dict.__setitem__(supplied, "contract_hash", HostileString("sha256:" + "0" * 64))
+
+    assert stored.to_dict() == expected
+    assert type(stored.profile_hash) is str
+    assert type(stored.mode) is str
+    assert type(stored.contract_hash) is str
+    assert type(stored.workspace_hash) is str
+    assert type(stored.relationship) is str
+    assert type(stored.verified_at) is str
+    assert observed == [isolation_module._MAX_STATE_BYTES]
+
+
+def test_isolation_record_detaches_inputs_before_comparison_and_write(
+    tmp_path, monkeypatch
+):
+    class HostileString(str):
+        def __str__(self):
+            raise AssertionError("isolation record rendered caller scalar")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "state"
+    state_root.mkdir(mode=0o700)
+    observed_assurance = build_control_plane_isolation(workspace, state_root)
+    profile = HostileString("sha256:" + "1" * 64)
+    contract_hash = HostileString(observed_assurance.contract_hash)
+    assurance = ControlPlaneIsolationAssurance(
+        HostileString(observed_assurance.mode),
+        contract_hash,
+        HostileString(observed_assurance.workspace_hash),
+        observed_assurance.protected_root_count,
+        HostileString(observed_assurance.relationship),
+        observed_assurance.workspace_root,
+        observed_assurance.protected_roots,
+    )
+    original_write = isolation_module.atomic_write_json
+    observed = []
+
+    def mutating_write(path, data, *, max_bytes=None):
+        object.__setattr__(assurance, "contract_hash", "sha256:" + "2" * 64)
+        observed.append(
+            (
+                max_bytes,
+                type(data["profile_hash"]),
+                type(data["mode"]),
+                type(data["contract_hash"]),
+                type(data["relationship"]),
+            )
+        )
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(isolation_module, "atomic_write_json", mutating_write)
+    store = ControlPlaneIsolationStateStore(state_root / "control_plane_isolation.json")
+    stored = store.record(profile, assurance)
+
+    assert stored.contract_hash == contract_hash
+    assert store.get().contract_hash == contract_hash
+    assert observed == [(isolation_module._MAX_STATE_BYTES, str, str, str, str)]
+
+
+def test_isolation_state_rejects_noncanonical_input_without_secret_echo():
+    class SecretValue:
+        def __repr__(self):
+            return "secret-isolation-value"
+
+    with pytest.raises(ControlPlaneIsolationError) as failure:
+        ControlPlaneIsolationState.from_dict({"secret": SecretValue()})
+
+    assert "secret-isolation-value" not in str(failure.value)
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_oversized_isolation_state_fails_at_opened_stream_ceiling(tmp_path):
+    state_root = tmp_path / "state"
+    state_root.mkdir(mode=0o700)
+    path = state_root / "control_plane_isolation.json"
+    path.write_bytes(b" " * (isolation_module._MAX_STATE_BYTES + 1))
+    path.chmod(0o600)
+
+    with pytest.raises(ControlPlaneIsolationError, match="exceeds 65536 bytes"):
+        ControlPlaneIsolationStateStore(path).get()
+
+
+def test_isolation_refuses_unrecoverable_publication_without_replacement(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "state"
+    state_root.mkdir(mode=0o700)
+    store = ControlPlaneIsolationStateStore(state_root / "control_plane_isolation.json")
+    current = store.record(
+        "sha256:" + "1" * 64,
+        build_control_plane_isolation(workspace, state_root),
+    )
+    prior = store.path.read_bytes()
+    original_limit = isolation_module._MAX_STATE_BYTES
+    monkeypatch.setattr(isolation_module, "_MAX_STATE_BYTES", 1)
+
+    with pytest.raises(ControlPlaneIsolationError, match="bounded canonical state"):
+        isolation_module._write_state(store.path, current)
+
+    assert store.path.read_bytes() == prior
+    monkeypatch.setattr(isolation_module, "_MAX_STATE_BYTES", original_limit)
+    assert store.get() == current

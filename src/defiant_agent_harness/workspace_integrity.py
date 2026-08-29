@@ -9,7 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .contracts import sha256_of, utc_now
+from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
+from .limits import MAX_WORKSPACE_INTEGRITY_STATE_BYTES
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -30,7 +31,7 @@ _STATE_FIELDS = {
     "root_hash",
     "verified_at",
 }
-_MAX_STATE_BYTES = 64 * 1024
+_MAX_STATE_BYTES = MAX_WORKSPACE_INTEGRITY_STATE_BYTES
 _REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
 
@@ -87,16 +88,46 @@ def require_workspace_root_unchanged(assurance: WorkspaceRootAssurance) -> None:
         raise WorkspaceIntegrityError("workspace root identity changed")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class WorkspaceIntegrityState:
     profile_hash: str
     mode: str
     root_hash: str
     verified_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        root_hash: str,
+        verified_at: str,
+    ):
+        state = self._from_snapshot(
+            _workspace_integrity_state_snapshot(
+                {
+                    "schema_name": WORKSPACE_INTEGRITY_SCHEMA,
+                    "schema_version": WORKSPACE_INTEGRITY_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "root_hash": root_hash,
+                    "verified_at": verified_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            root_hash=state.root_hash,
+            verified_at=state.verified_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "WorkspaceIntegrityState":
-        if not isinstance(raw, dict) or set(raw) != _STATE_FIELDS:
+        return cls._from_snapshot(_workspace_integrity_state_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "WorkspaceIntegrityState":
+        if set(raw) != _STATE_FIELDS:
             raise WorkspaceIntegrityError(
                 "workspace integrity fields do not match schema"
             )
@@ -118,7 +149,27 @@ class WorkspaceIntegrityState:
             raise WorkspaceIntegrityError("verified_at must be a timestamp") from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise WorkspaceIntegrityError("verified_at must include a timezone")
-        return cls(profile_hash, mode, root_hash, verified_at)
+        state = object.__new__(cls)
+        state._install(
+            profile_hash=profile_hash,
+            mode=mode,
+            root_hash=root_hash,
+            verified_at=verified_at,
+        )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        root_hash: str,
+        verified_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "root_hash", root_hash)
+        object.__setattr__(self, "verified_at", verified_at)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -154,9 +205,9 @@ class WorkspaceIntegrityStateStore:
             current = inspect_state_file(self.path)
             if current is None:
                 return None
-            if current.st_size > _MAX_STATE_BYTES:
-                raise WorkspaceIntegrityError("workspace integrity state is too large")
-            return WorkspaceIntegrityState.from_dict(read_json(self.path))
+            return WorkspaceIntegrityState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except WorkspaceIntegrityError:
             raise
         except (OSError, PersistenceError, RuntimeError) as exc:
@@ -168,27 +219,47 @@ class WorkspaceIntegrityStateStore:
         assurance: WorkspaceRootAssurance,
     ) -> WorkspaceIntegrityState:
         profile_hash = _hash(profile_hash, "profile_hash")
-        stable = assurance.authority_dict()
+        candidate = WorkspaceIntegrityState(
+            profile_hash=profile_hash,
+            mode=assurance.mode,
+            root_hash=assurance.root_hash,
+            verified_at=utc_now(),
+        )
         try:
             with exclusive_file_lock(self.path):
                 previous = self.get()
                 if previous is not None and previous.profile_hash == profile_hash:
-                    if previous.authority_dict() != stable:
+                    if previous.authority_dict() != candidate.authority_dict():
                         raise WorkspaceIntegrityError(
                             "workspace integrity conflicts with the active authority "
                             "profile"
                         )
-                state = WorkspaceIntegrityState(
-                    profile_hash=profile_hash,
-                    **stable,
-                    verified_at=utc_now(),
-                )
-                atomic_write_json(self.path, state.to_dict())
-                return state
+                _write_state(self.path, candidate)
+                return candidate
         except WorkspaceIntegrityError:
             raise
         except (OSError, PersistenceError) as exc:
             raise WorkspaceIntegrityError(_error_detail(exc)) from exc
+
+
+def _workspace_integrity_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise WorkspaceIntegrityError(
+            "workspace integrity state exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise WorkspaceIntegrityError("workspace integrity state must be an object")
+    return snapshot
+
+
+def _write_state(path: Path, state: WorkspaceIntegrityState) -> None:
+    candidate = WorkspaceIntegrityState.from_dict(state.to_dict()).to_dict()
+    atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
 
 
 def _observe_workspace_root(path: Path) -> WorkspaceRootAssurance:
@@ -228,12 +299,15 @@ def _is_reparse(observation: os.stat_result) -> bool:
 
 
 def _hash(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("sha256:"):
+    if not isinstance(value, str):
         raise WorkspaceIntegrityError(f"{field} is not a sha256 identifier")
-    digest = value.removeprefix("sha256:")
+    normalized = str.__str__(value)
+    if not str.startswith(normalized, "sha256:"):
+        raise WorkspaceIntegrityError(f"{field} is not a sha256 identifier")
+    digest = str.removeprefix(normalized, "sha256:")
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise WorkspaceIntegrityError(f"{field} is not a sha256 identifier")
-    return value
+    return normalized
 
 
 def _error_detail(exc: BaseException) -> str:

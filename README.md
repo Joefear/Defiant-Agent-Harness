@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.69.
+logs. A full trusted-memory/DKE system is not part of v0.70.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.69 is
+## What v0.70 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -635,6 +635,16 @@ before replacement. Existing v0.1 observations remain readable. State-root
 inspection, ACL enforcement, profile rotation, and the strictly read-only
 Command Center boundary do not change.
 
+v0.70 completes the bounded durable-snapshot contract across the remaining
+filesystem-authority observations: control-plane isolation and workspace-root
+integrity. Each store now validates, compares, and publishes from one detached
+exact built-in observation under an independent 64 KiB ceiling shared by
+canonical capture, opened-stream recovery, and atomic publication. Candidates
+are captured before the authority lock and revalidated before replacement;
+failed publication preserves prior recoverable bytes. Live path containment,
+root-identity checks, cross-store profile binding, and the strictly read-only
+Command Center boundary do not change.
+
 ## Install
 
 ```bash
@@ -971,7 +981,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.69 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.70 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -1039,6 +1049,8 @@ fixed detached and validated launch-envelope assurance state with exact scalar
 ownership and symmetric 64 KiB capture, recovery-read, and publication limits,
 fixed detached and validated state-storage assurance with exact scalar
 ownership and symmetric 64 KiB capture, recovery-read, and publication limits,
+fixed detached and validated control-plane isolation and workspace-root
+integrity observations with independent symmetric 64 KiB limits,
 fixed bounded and sealed native-hook authorization/completion correlation state
 with defensive projections and copy-on-write transitions,
 fixed bounded and sealed approval records and held authority snapshots with
@@ -1069,6 +1081,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_launch_envelope_state_snapshot.md`,
 `docs/state_storage_integrity.md`,
 `docs/validated_state_storage_state_snapshot.md`,
+`docs/validated_filesystem_authority_state_snapshots.md`,
 `docs/control_plane_isolation.md`,
 `docs/workspace_root_integrity.md`,
 `docs/evidence_head_integrity.md`,
