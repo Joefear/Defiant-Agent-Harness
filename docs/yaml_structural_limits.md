@@ -28,7 +28,7 @@ variables or policy settings.
 
 ## Read-only projection
 
-Command Core schema `0.62.0` publishes `yaml_nesting_depth`, `yaml_nodes`, and
+Command Core schema `0.63.0` publishes `yaml_nesting_depth`, `yaml_nodes`, and
 the `strict_yaml_v2` profile. Command Center displays that fixed posture. It
 cannot upload authority YAML, change either ceiling, accept an exception, or
 launch an upstream.

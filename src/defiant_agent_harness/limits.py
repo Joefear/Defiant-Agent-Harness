@@ -60,6 +60,11 @@ MAX_RUNTIME_ARTIFACT_STATE_BYTES = 64 * 1024
 # recovery read, and atomic publication under one narrow state ceiling.
 MAX_LAUNCH_ENVELOPE_STATE_BYTES = 64 * 1024
 
+# State-root assurance binds the filesystem identity and security posture of
+# every durable authority store. Keep capture, recovery, and publication under
+# one narrow symmetric ceiling.
+MAX_STATE_STORAGE_STATE_BYTES = 64 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

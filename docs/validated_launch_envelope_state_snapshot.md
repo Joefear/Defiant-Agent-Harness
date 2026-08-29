@@ -41,7 +41,7 @@ operator-authored environment allowlist, secrets, values, unsafe-variable
 acknowledgements, working-directory path, and process command remain outside
 the record and are still verified before local process creation.
 
-Command Core schema `0.62.0` reports the fixed
+Command Core schema `0.63.0` reports the fixed
 `launch_envelope_state_bytes` ceiling and
 `validated_launch_envelope_state_snapshot: true`. Command Center renders only
 that static posture and the existing sanitized launch-envelope projection. It

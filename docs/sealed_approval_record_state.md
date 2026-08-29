@@ -50,7 +50,7 @@ inventing them during recovery would change the durable story.
 
 ## Command boundary
 
-Command Core schema `0.62.0` publishes only the static
+Command Core schema `0.63.0` publishes only the static
 `approval_state_bytes` ceiling and `sealed_approval_record_state: true` build
 posture alongside the existing sanitized approval and
 reconciliation-required projections. Command Center renders those facts but
