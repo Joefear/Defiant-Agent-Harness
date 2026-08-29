@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.70.
+logs. A full trusted-memory/DKE system is not part of v0.71.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.70 is
+## What v0.71 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -645,6 +645,15 @@ failed publication preserves prior recoverable bytes. Live path containment,
 root-identity checks, cross-store profile binding, and the strictly read-only
 Command Center boundary do not change.
 
+v0.71 makes publication of profile-bound startup authority observations
+crash-safe as one recoverable local protocol. Before profile activation, the
+runtime writes an exact target generation and bounded manifest hash to a
+write-ahead checkpoint. Restart may replay only that exact candidate;
+different prepared authority is refused. Once a publication is complete,
+dependent-store disagreement is treated as possible tampering and is never
+silently overwritten. Doctor, Command Core, and Command Center expose the
+sanitized recovery state, while Command Center remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -981,13 +990,14 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.70 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.71 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
 known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
+crash-safe exact-replay publication of profile-bound authority observations,
 content-addressed local runtime artifact assurance with opt-in closed declared
 dependency roots,
 restricted and authority-bound local process launch envelopes,
@@ -1075,6 +1085,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_evidence_witness_policy_snapshot.md`,
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
+`docs/authority_publication_recovery.md`,
 `docs/runtime_artifact_integrity.md`,
 `docs/validated_runtime_artifact_state_snapshot.md`,
 `docs/launch_envelope_integrity.md`,

@@ -10,6 +10,12 @@ from pathlib import Path
 from ..adapters.base import AgentAdapter, ToolCall, ToolCallOutcome
 from ..approvals.store import ApprovalError, ApprovalStore, PendingApproval
 from ..authority_profile import AuthorityProfileStore
+from ..authority_publication import (
+    AuthorityPublicationError,
+    AuthorityPublicationIntent,
+    AuthorityPublicationStore,
+    authority_manifest_hash,
+)
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
     Decision,
@@ -32,6 +38,8 @@ from ..evidence_witness import (
     EvidenceWitnessPolicy,
     EvidenceWitnessPolicyStore,
     WITNESS_MODE,
+    WITNESS_NOT_CONFIGURED,
+    WITNESS_VERSION,
     assess_witness,
     load_witness,
     validate_external_witness_paths,
@@ -1620,7 +1628,18 @@ def build_harness(
             trust_resolved = True
         profile_store = AuthorityProfileStore(state_root / "authority_profile.json")
         profile_transition_activated = False
+        publication_intent: AuthorityPublicationIntent | None = None
         if _operator_control:
+            operator_publication = AuthorityPublicationStore(
+                state_root / "authority_publication.json"
+            ).get()
+            if (
+                operator_publication is not None
+                and operator_publication.active is not None
+            ):
+                raise AuthorityPublicationError(
+                    "authority publication recovery requires the owning runtime"
+                )
             if enrolled_witness_policy is None:
                 raise EvidenceWitnessError(
                     "evidence witness policy observation is not initialized; start "
@@ -1676,11 +1695,84 @@ def build_harness(
                     prior_profile,
                     state_storage.root_hash,
                 )
+            preview_profile = profile_store.preview_for_authority(
+                policy.ruleset_hash,
+                operator_trust,
+            )
+            publication_manifest = _authority_publication_manifest(
+                profile_hash=policy.ruleset_hash,
+                generation=preview_profile.generation,
+                state_storage=state_storage,
+                control_plane_isolation=control_plane_isolation,
+                workspace_integrity=workspace_integrity,
+                witness_policy=witness_policy,
+                runtime_artifact_assurance=runtime_artifact_assurance,
+                launch_envelope_assurance=launch_envelope_assurance,
+            )
+            manifest_hash = authority_manifest_hash(publication_manifest)
+            publication_store = AuthorityPublicationStore(
+                state_root / "authority_publication.json"
+            )
+            publication_state = publication_store.get()
+            recovering_publication = (
+                publication_state is not None
+                and publication_state.active is not None
+                and publication_state.active.matches(
+                    policy.ruleset_hash,
+                    preview_profile.generation,
+                    manifest_hash,
+                )
+            )
+            if publication_state is not None and publication_state.active is not None:
+                if not recovering_publication:
+                    raise AuthorityPublicationError(
+                        "prepared authority publication does not match configured authority"
+                    )
+            elif (
+                publication_state is not None
+                and publication_state.completed is not None
+            ):
+                completed = publication_state.completed
+                if completed.matches(
+                    policy.ruleset_hash,
+                    preview_profile.generation,
+                    manifest_hash,
+                ):
+                    _require_completed_authority_publication_intact(
+                        state_root=state_root,
+                        profile_hash=policy.ruleset_hash,
+                        state_storage=state_storage,
+                        control_plane_isolation=control_plane_isolation,
+                        workspace_integrity=workspace_integrity,
+                        witness_policy=witness_policy,
+                        runtime_artifact_assurance=runtime_artifact_assurance,
+                        launch_envelope_assurance=launch_envelope_assurance,
+                    )
+                elif (
+                    completed.profile_hash == policy.ruleset_hash
+                    and completed.generation == preview_profile.generation
+                ):
+                    raise AuthorityPublicationError(
+                        "completed authority publication manifest does not match "
+                        "configured authority"
+                    )
+            publication_intent = publication_store.prepare(
+                policy.ruleset_hash,
+                preview_profile.generation,
+                manifest_hash,
+            )
             resolved_profile = profile_store.resolve_for_authority(
                 policy.ruleset_hash,
                 operator_trust,
             )
-            profile_transition_activated = (
+            if (
+                resolved_profile.profile_hash != preview_profile.profile_hash
+                or resolved_profile.generation != preview_profile.generation
+            ):
+                raise AuthorityPublicationError(
+                    "authority profile changed after publication preparation"
+                )
+            profile_transition_activated = recovering_publication or (
                 prior_profile is not None
                 and prior_profile.profile_hash != resolved_profile.profile_hash
             )
@@ -1748,7 +1840,174 @@ def build_harness(
         )
         harness.recover_operation()
         harness.reconcile_expired_approvals()
+        if publication_intent is not None:
+            _require_completed_authority_publication_intact(
+                state_root=state_root,
+                profile_hash=publication_intent.profile_hash,
+                state_storage=state_storage,
+                control_plane_isolation=control_plane_isolation,
+                workspace_integrity=workspace_integrity,
+                witness_policy=witness_policy,
+                runtime_artifact_assurance=runtime_artifact_assurance,
+                launch_envelope_assurance=launch_envelope_assurance,
+            )
+            AuthorityPublicationStore(
+                state_root / "authority_publication.json"
+            ).complete(publication_intent)
     return harness
+
+
+def _authority_publication_manifest(
+    *,
+    profile_hash: str,
+    generation: int,
+    state_storage,
+    control_plane_isolation,
+    workspace_integrity,
+    witness_policy: EvidenceWitnessPolicy | None,
+    runtime_artifact_assurance,
+    launch_envelope_assurance,
+) -> dict:
+    witness = (
+        witness_policy.authority_dict()
+        if witness_policy is not None
+        else {
+            "mode": WITNESS_NOT_CONFIGURED,
+            "schema_version": WITNESS_VERSION,
+            "trusted_key_ids": [],
+        }
+    )
+    return {
+        "profile_hash": profile_hash,
+        "generation": generation,
+        "stores": {
+            "state_storage": state_storage.authority_dict(),
+            "control_plane_isolation": control_plane_isolation.authority_dict(),
+            "workspace_integrity": workspace_integrity.authority_dict(),
+            "evidence_witness_policy": witness,
+            "runtime_artifacts": (
+                runtime_artifact_assurance.authority_dict()
+                if runtime_artifact_assurance is not None
+                else None
+            ),
+            "launch_envelope": (
+                launch_envelope_assurance.authority_dict()
+                if launch_envelope_assurance is not None
+                else None
+            ),
+            "evidence_head": evidence_head_authority(),
+        },
+    }
+
+
+def _require_completed_authority_publication_intact(
+    *,
+    state_root: Path,
+    profile_hash: str,
+    state_storage,
+    control_plane_isolation,
+    workspace_integrity,
+    witness_policy: EvidenceWitnessPolicy | None,
+    runtime_artifact_assurance,
+    launch_envelope_assurance,
+) -> None:
+    from ..control_plane_isolation import ControlPlaneIsolationStateStore
+    from ..launch_envelope import LaunchEnvelopeStateStore
+    from ..runtime_artifacts import RuntimeArtifactStateStore
+    from ..workspace_integrity import WorkspaceIntegrityStateStore
+
+    expected = (
+        (
+            "state_storage",
+            StateStorageStateStore(state_root / "state_storage.json").get(),
+            state_storage.authority_dict(),
+        ),
+        (
+            "control_plane_isolation",
+            ControlPlaneIsolationStateStore(
+                state_root / "control_plane_isolation.json"
+            ).get(),
+            control_plane_isolation.authority_dict(),
+        ),
+        (
+            "workspace_integrity",
+            WorkspaceIntegrityStateStore(state_root / "workspace_integrity.json").get(),
+            workspace_integrity.authority_dict(),
+        ),
+    )
+    for name, state, authority in expected:
+        if (
+            state is None
+            or state.profile_hash != profile_hash
+            or state.authority_dict() != authority
+        ):
+            raise AuthorityPublicationError(
+                f"completed authority publication store '{name}' is inconsistent"
+            )
+
+    witness_state = EvidenceWitnessPolicyStore(
+        state_root / "evidence_witness_policy.json"
+    ).get()
+    expected_witness_mode = (
+        WITNESS_MODE if witness_policy is not None else WITNESS_NOT_CONFIGURED
+    )
+    expected_key_ids = (
+        witness_policy.trusted_key_ids if witness_policy is not None else ()
+    )
+    expected_lag = (
+        witness_policy.max_unwitnessed_records if witness_policy is not None else None
+    )
+    if (
+        witness_state is None
+        or witness_state.profile_hash != profile_hash
+        or witness_state.mode != expected_witness_mode
+        or witness_state.trusted_key_ids != expected_key_ids
+        or witness_state.max_unwitnessed_records != expected_lag
+    ):
+        raise AuthorityPublicationError(
+            "completed authority publication store 'evidence_witness_policy' is inconsistent"
+        )
+
+    runtime_state = RuntimeArtifactStateStore(
+        state_root / "runtime_artifacts.json"
+    ).get()
+    if runtime_artifact_assurance is None:
+        if runtime_state is not None:
+            raise AuthorityPublicationError(
+                "completed authority publication store 'runtime_artifacts' is inconsistent"
+            )
+    else:
+        if (
+            runtime_state is None
+            or runtime_state.profile_hash != profile_hash
+            or runtime_state.authority_dict()
+            != runtime_artifact_assurance.authority_dict()
+        ):
+            raise AuthorityPublicationError(
+                "completed authority publication store 'runtime_artifacts' is inconsistent"
+            )
+    launch_state = LaunchEnvelopeStateStore(state_root / "launch_envelope.json").get()
+    if launch_envelope_assurance is None:
+        if launch_state is not None:
+            raise AuthorityPublicationError(
+                "completed authority publication store 'launch_envelope' is inconsistent"
+            )
+    else:
+        if (
+            launch_state is None
+            or launch_state.profile_hash != profile_hash
+            or launch_state.authority_dict()
+            != launch_envelope_assurance.authority_dict()
+        ):
+            raise AuthorityPublicationError(
+                "completed authority publication store 'launch_envelope' is inconsistent"
+            )
+
+    evidence_head = EvidenceHeadStateStore(state_root / "evidence_head.json").get()
+    if evidence_head is None or evidence_head.profile_hash != profile_hash:
+        raise AuthorityPublicationError(
+            "completed authority publication store 'evidence_head' is inconsistent"
+        )
 
 
 def _preflight_evidence_head(state_root: Path) -> None:

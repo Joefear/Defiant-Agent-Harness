@@ -244,6 +244,15 @@ ceiling and preserves prior bytes when a candidate cannot be recovered. This
 strengthens durable assurance; it does not turn Python into an OS sandbox or
 extend protection beyond governed tool boundaries.
 
+Authority-profile activation still crossed several independently atomic state
+files. A crash between those writes could leave a mixed generation with no
+durable distinction between an interrupted authorized rollout and subsequent
+tampering. v0.71 prepares an exact profile/generation/manifest intent before
+activation, permits only exact replay, and verifies completed dependent state
+before any same-generation rewrite. This is local crash recovery, not a
+distributed transaction or privileged-host rollback witness; consistent
+replacement of code and all local state remains outside its threat boundary.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

@@ -911,6 +911,22 @@ link/reparse and protected-target checks, cross-store integrity gating,
 profile rotation, and Command Center's read-only boundary remain unchanged.
 See `validated_filesystem_authority_state_snapshots.md`.
 
+## v0.71 authority-publication transaction
+
+The authority-profile file is the generation root for several independently
+atomic observations. A crash between those writes previously left no durable
+proof that a mixed generation was an interrupted authorized rollout rather
+than later modification. `authority_publication.json` now supplies that proof.
+
+The owner previews the candidate profile, hashes one bounded manifest of all
+dependent authority projections, and durably prepares the exact profile,
+generation, and manifest before profile activation. Exact restart replays are
+permitted until the evidence head and startup recovery finish, then a completed
+checkpoint replaces the intent. A completed same-generation checkpoint forces
+read-before-write verification of every dependent store; disagreement fails
+closed. Read-only surfaces report the checkpoint but cannot drive it. See
+`authority_publication_recovery.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

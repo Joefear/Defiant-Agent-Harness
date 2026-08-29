@@ -159,7 +159,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.64.0"
+    assert output["schema_version"] == "0.65.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
@@ -200,6 +200,8 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "evidence_witness_policy_state_bytes": 256 * 1024,
         "operation_journal_bytes": 4 * 1024 * 1024,
         "authority_profile_state_bytes": 1024 * 1024,
+        "authority_publication_state_bytes": 64 * 1024,
+        "authority_publication_manifest_bytes": 64 * 1024,
         "operator_trust_state_bytes": 1024 * 1024,
         "runtime_artifact_state_bytes": 64 * 1024,
         "launch_envelope_state_bytes": 64 * 1024,
@@ -276,6 +278,8 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "validated_native_hook_event_snapshot": True,
         "sealed_authority_continuity_state": True,
         "bounded_authority_continuity_io": True,
+        "crash_safe_authority_publication": True,
+        "validated_authority_publication_snapshot": True,
         "validated_runtime_artifact_state_snapshot": True,
         "validated_launch_envelope_state_snapshot": True,
         "validated_state_storage_state_snapshot": True,

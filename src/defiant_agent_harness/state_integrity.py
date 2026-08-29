@@ -9,6 +9,10 @@ from typing import Any
 
 from .approvals.store import PendingApproval
 from .authority_profile import AuthorityProfileStore
+from .authority_publication import (
+    AuthorityPublicationError,
+    AuthorityPublicationStore,
+)
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
 from .control_plane_isolation import (
@@ -58,7 +62,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.17.0"
+AUDIT_VERSION = "0.18.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -198,6 +202,7 @@ class StateIntegrityAuditor:
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
+        self._audit_authority_publication(report)
         workspace_root_count = self._audit_workspace_integrity(report)
         protected_root_count = self._audit_control_plane_isolation(report)
         artifact_count = self._audit_runtime_artifacts(report)
@@ -387,6 +392,7 @@ class StateIntegrityAuditor:
             "control_plane_isolation.json",
             "operator_trust.json",
             "authority_profile.json",
+            "authority_publication.json",
             "operation_journal.json",
             "runtime_artifacts.json",
             "launch_envelope.json",
@@ -403,6 +409,84 @@ class StateIntegrityAuditor:
                     filename,
                     f"{lock_path.name} exists; a writer may be active or crashed",
                 )
+
+    def _audit_authority_publication(self, report: StateIntegrityReport) -> None:
+        store = AuthorityPublicationStore(self.workdir / "authority_publication.json")
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["authority_publication"] = {
+                    "state": "not_recorded",
+                    "verification": "migration_required",
+                    "profile_hash": None,
+                    "generation": 0,
+                    "manifest_hash": None,
+                    "prepared_at": None,
+                    "completed_at": None,
+                }
+                profile = AuthorityProfileStore(
+                    self.workdir / "authority_profile.json"
+                ).get()
+                if profile is not None:
+                    self._issue(
+                        report,
+                        "authority_publication_checkpoint_missing",
+                        "warning",
+                        "authority_publication.json",
+                        "the active authority profile has no publication checkpoint",
+                    )
+                return
+
+            projection = state.projection()
+            profile = AuthorityProfileStore(
+                self.workdir / "authority_profile.json"
+            ).get()
+            current = state.active or state.completed
+            if state.active is not None:
+                self._issue(
+                    report,
+                    "authority_publication_recovery_required",
+                    "warning",
+                    "authority_publication.json",
+                    "an interrupted authority publication requires exact replay",
+                )
+            if (
+                state.active is None
+                and state.completed is not None
+                and profile is not None
+                and current is not None
+                and (
+                    profile.profile_hash != current.profile_hash
+                    or profile.generation != current.generation
+                )
+            ):
+                projection["verification"] = "profile_mismatch"
+                self._issue(
+                    report,
+                    "authority_publication_profile_mismatch",
+                    "critical",
+                    "authority_publication.json",
+                    "authority publication is not bound to the active authority profile",
+                )
+            report.stores["authority_publication"] = projection
+        except (AuthorityPublicationError, RuntimeError) as exc:
+            report.stores["authority_publication"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "generation": 0,
+                "manifest_hash": None,
+                "prepared_at": None,
+                "completed_at": None,
+            }
+            self._issue(
+                report,
+                "authority_publication_invalid",
+                "critical",
+                "authority_publication.json",
+                str(exc),
+            )
 
     def _audit_control_plane_isolation(self, report: StateIntegrityReport) -> int:
         store = ControlPlaneIsolationStateStore(
