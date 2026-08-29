@@ -877,6 +877,18 @@ and upgrades on write. Artifact hashing, dependency inventory, pre-spawn
 reverification, profile rotation, and Command Center's read-only boundary are
 unchanged. See `validated_runtime_artifact_state_snapshot.md`.
 
+v0.68 makes `launch_envelope.json` one bounded ownership root. A detached
+canonical built-in observation drives schema validation, profile binding,
+launch mode, environment and working-directory hashes, counts, verification
+time, conflict comparison, and publication. The candidate is captured before
+locking and revalidated before replacement. The same explicit 64 KiB ceiling
+now governs canonical capture, descriptor-backed recovery reads, and atomic
+publication, preserving prior recoverable bytes on failure. Environment
+construction, secret handling, unsafe-variable acknowledgement, pre-spawn
+working-directory verification, profile rotation, and Command Center's
+read-only boundary remain unchanged. See
+`validated_launch_envelope_state_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

@@ -9,7 +9,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from .contracts import sha256_of, utc_now
+from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
+from .limits import MAX_LAUNCH_ENVELOPE_STATE_BYTES
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -33,7 +34,7 @@ _STATE_FIELDS = {
     "verified_at",
 }
 _MODES = {"restricted", "inherited_unrestricted", "remote_not_applicable"}
-_MAX_STATE_BYTES = 64 * 1024
+_MAX_STATE_BYTES = MAX_LAUNCH_ENVELOPE_STATE_BYTES
 
 # Variables able to redirect code loading, shell initialization, dependency
 # resolution, or runtime-wide behavior. Strict mode needs an explicit per-name
@@ -338,7 +339,7 @@ def require_launch_target_unchanged(assurance: LaunchEnvelopeAssurance) -> None:
         raise LaunchEnvelopeError("launch working directory changed after verification")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class LaunchEnvelopeState:
     profile_hash: str
     mode: str
@@ -349,9 +350,51 @@ class LaunchEnvelopeState:
     cwd_hash: str | None
     verified_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        environment_hash: str | None,
+        variable_count: int,
+        secret_count: int,
+        unsafe_count: int,
+        cwd_hash: str | None,
+        verified_at: str,
+    ):
+        state = self._from_snapshot(
+            _launch_envelope_state_snapshot(
+                {
+                    "schema_name": LAUNCH_ENVELOPE_SCHEMA,
+                    "schema_version": LAUNCH_ENVELOPE_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "environment_hash": environment_hash,
+                    "variable_count": variable_count,
+                    "secret_count": secret_count,
+                    "unsafe_count": unsafe_count,
+                    "cwd_hash": cwd_hash,
+                    "verified_at": verified_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            environment_hash=state.environment_hash,
+            variable_count=state.variable_count,
+            secret_count=state.secret_count,
+            unsafe_count=state.unsafe_count,
+            cwd_hash=state.cwd_hash,
+            verified_at=state.verified_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "LaunchEnvelopeState":
-        if not isinstance(raw, dict) or set(raw) != _STATE_FIELDS:
+        return cls._from_snapshot(_launch_envelope_state_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "LaunchEnvelopeState":
+        if set(raw) != _STATE_FIELDS:
             raise LaunchEnvelopeError(
                 "launch envelope state fields do not match schema"
             )
@@ -360,15 +403,16 @@ class LaunchEnvelopeState:
         if raw.get("schema_version") != LAUNCH_ENVELOPE_VERSION:
             raise LaunchEnvelopeError("unsupported launch envelope version")
         profile_hash = _hash(raw.get("profile_hash"), "profile_hash")
-        mode = raw.get("mode")
+        mode_value = raw.get("mode")
+        mode = str.__str__(mode_value) if isinstance(mode_value, str) else mode_value
         if mode not in _MODES:
             raise LaunchEnvelopeError("unsupported launch envelope mode")
         environment_hash = raw.get("environment_hash")
         cwd_hash = raw.get("cwd_hash")
         if environment_hash is not None:
-            _hash(environment_hash, "environment_hash")
+            environment_hash = _hash(environment_hash, "environment_hash")
         if cwd_hash is not None:
-            _hash(cwd_hash, "cwd_hash")
+            cwd_hash = _hash(cwd_hash, "cwd_hash")
         counts = []
         for field in ("variable_count", "secret_count", "unsafe_count"):
             value = raw.get(field)
@@ -387,25 +431,63 @@ class LaunchEnvelopeState:
             environment_hash is not None or cwd_hash is not None or any(counts)
         ):
             raise LaunchEnvelopeError("remote launch envelope must be empty")
-        verified_at = raw.get("verified_at")
+        verified_at_value = raw.get("verified_at")
+        verified_at = (
+            str.__str__(verified_at_value)
+            if isinstance(verified_at_value, str)
+            else verified_at_value
+        )
         if not isinstance(verified_at, str) or not verified_at:
             raise LaunchEnvelopeError("verified_at must be a timestamp")
         try:
-            parsed = datetime.fromisoformat(verified_at.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(str.replace(verified_at, "Z", "+00:00"))
         except ValueError as exc:
             raise LaunchEnvelopeError("verified_at must be a timestamp") from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise LaunchEnvelopeError("verified_at must include a timezone")
-        return cls(
-            profile_hash,
-            mode,
-            environment_hash,
-            counts[0],
-            counts[1],
-            counts[2],
-            cwd_hash,
-            verified_at,
+        state = object.__new__(cls)
+        state._install(
+            profile_hash=profile_hash,
+            mode=mode,
+            environment_hash=environment_hash,
+            variable_count=counts[0],
+            secret_count=counts[1],
+            unsafe_count=counts[2],
+            cwd_hash=cwd_hash,
+            verified_at=verified_at,
         )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        environment_hash: str | None,
+        variable_count: int,
+        secret_count: int,
+        unsafe_count: int,
+        cwd_hash: str | None,
+        verified_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "environment_hash", environment_hash)
+        object.__setattr__(self, "variable_count", variable_count)
+        object.__setattr__(self, "secret_count", secret_count)
+        object.__setattr__(self, "unsafe_count", unsafe_count)
+        object.__setattr__(self, "cwd_hash", cwd_hash)
+        object.__setattr__(self, "verified_at", verified_at)
+
+    def authority_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "environment_hash": self.environment_hash,
+            "variable_count": self.variable_count,
+            "secret_count": self.secret_count,
+            "unsafe_count": self.unsafe_count,
+            "cwd_hash": self.cwd_hash,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -443,9 +525,9 @@ class LaunchEnvelopeStateStore:
         if not self.path.exists():
             return None
         try:
-            if self.path.stat().st_size > _MAX_STATE_BYTES:
-                raise LaunchEnvelopeError("launch envelope state is too large")
-            return LaunchEnvelopeState.from_dict(read_json(self.path))
+            return LaunchEnvelopeState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except LaunchEnvelopeError:
             raise
         except (OSError, RuntimeError) as exc:
@@ -455,26 +537,51 @@ class LaunchEnvelopeStateStore:
         self, profile_hash: str, assurance: LaunchEnvelopeAssurance
     ) -> LaunchEnvelopeState:
         profile_hash = _hash(profile_hash, "profile_hash")
-        stable = assurance.authority_dict()
+        candidate = LaunchEnvelopeState(
+            profile_hash=profile_hash,
+            mode=assurance.mode,
+            environment_hash=assurance.environment_hash,
+            variable_count=assurance.variable_count,
+            secret_count=assurance.secret_count,
+            unsafe_count=assurance.unsafe_count,
+            cwd_hash=assurance.cwd_hash,
+            verified_at=utc_now(),
+        )
         prepare_storage_root(self.path.parent)
         try:
             with exclusive_file_lock(self.path):
                 previous = self.get()
                 if previous is not None and previous.profile_hash == profile_hash:
-                    previous_stable = {key: getattr(previous, key) for key in stable}
-                    if previous_stable != stable:
+                    if previous.authority_dict() != candidate.authority_dict():
                         raise LaunchEnvelopeError(
                             "launch envelope state conflicts with the active authority profile"
                         )
-                state = LaunchEnvelopeState(
-                    profile_hash=profile_hash, **stable, verified_at=utc_now()
-                )
-                atomic_write_json(self.path, state.to_dict())
-                return state
+                _write_state(self.path, candidate)
+                return candidate
         except LaunchEnvelopeError:
             raise
         except (OSError, PersistenceError) as exc:
             raise LaunchEnvelopeError(str(exc)) from exc
+
+
+def _launch_envelope_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise LaunchEnvelopeError(
+            "launch envelope state exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise LaunchEnvelopeError("launch envelope state must be an object")
+    return snapshot
+
+
+def _write_state(path: Path, state: LaunchEnvelopeState) -> None:
+    candidate = LaunchEnvelopeState.from_dict(state.to_dict()).to_dict()
+    atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
 
 
 def _resolve_cwd(
@@ -539,9 +646,12 @@ def _value(value: Any, field: str) -> str:
 
 
 def _hash(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("sha256:"):
+    if not isinstance(value, str):
         raise LaunchEnvelopeError(f"{field} is not a sha256 identifier")
-    digest = value.removeprefix("sha256:")
+    normalized = str.__str__(value)
+    if not str.startswith(normalized, "sha256:"):
+        raise LaunchEnvelopeError(f"{field} is not a sha256 identifier")
+    digest = str.removeprefix(normalized, "sha256:")
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise LaunchEnvelopeError(f"{field} is not a sha256 identifier")
-    return value
+    return normalized

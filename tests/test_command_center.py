@@ -230,6 +230,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"runtime_artifact_state_bytes" in javascript
     assert b"validated_runtime_artifact_state_snapshot" in javascript
     assert b"runtime artifact assurance validation and publication" in javascript
+    assert b"launch_envelope_state_bytes" in javascript
+    assert b"validated_launch_envelope_state_snapshot" in javascript
+    assert b"launch envelope assurance validation and publication" in javascript
     assert b"sealed_native_hook_correlation_state" in javascript
     assert b"sealed_approval_record_state" in javascript
     assert b"approval records and held authority snapshots retained" in javascript
