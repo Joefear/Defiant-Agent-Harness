@@ -876,6 +876,21 @@ atomic publication. This does not protect against a privileged host that can
 replace state consistently, make trusted process code untrusted, change signer
 or rotation requirements, or grant Command Center authority.
 
+**Runtime-artifact state validation and publication observed caller-owned
+values.** Through v0.66, `runtime_artifacts.json` used a separate 64 KiB path
+stat followed by the broader default durable-state read, parsed the returned
+mapping directly, retained accepted string subclasses, compared a fresh
+`RuntimeArtifactAssurance` projection, and published without its recovery
+ceiling. A replacement or hostile in-process value could therefore make
+profile binding, bundle identity, counts, conflict checks, timestamps, and
+publication disagree. v0.67 captures one bounded exact built-in state before
+validation, captures public assurance inputs into one candidate before locking,
+revalidates before publication, and applies the explicit 64 KiB ceiling to
+capture, descriptor-backed reads, and atomic writes. This does not attest
+undeclared dependencies, replace pre-spawn verification, weaken profile
+rotation, protect against privileged host compromise, or grant Command Center
+authority.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

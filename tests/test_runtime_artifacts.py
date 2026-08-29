@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import defiant_agent_harness.runtime_artifacts as runtime_artifacts_module
 from defiant_agent_harness.authority_profile import AuthorityProfileError
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.mcp.config import McpConfigError, load_proxy_config
@@ -16,6 +17,7 @@ from defiant_agent_harness.runtime_artifacts import (
     RuntimeArtifactAssurance,
     RuntimeArtifactError,
     RuntimeArtifactPin,
+    RuntimeArtifactState,
     RuntimeArtifactStateStore,
     RuntimeDependencyFilePin,
     RuntimeDependencyRoot,
@@ -550,6 +552,149 @@ def test_artifact_state_cannot_change_under_the_same_profile(tmp_path):
     store.record(profile, first)
     with pytest.raises(RuntimeArtifactError, match="conflicts"):
         store.record(profile, changed)
+
+
+def test_artifact_state_store_owns_hostile_bounded_snapshot(tmp_path, monkeypatch):
+    class HostileDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("artifact snapshot invoked deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("artifact snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("artifact snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("artifact snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("artifact snapshot invoked mapping keys hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("artifact snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("artifact snapshot invoked scalar rendering hook")
+
+    path = tmp_path / "state" / "runtime_artifacts.json"
+    store = RuntimeArtifactStateStore(path)
+    store.record(
+        "sha256:" + "1" * 64,
+        RuntimeArtifactAssurance(
+            "required", "sha256:" + "2" * 64, 1, True, (sys.executable,)
+        ),
+    )
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    supplied = HostileDict(
+        {
+            key: HostileString(value) if type(value) is str else value
+            for key, value in raw.items()
+        }
+    )
+    observed = []
+
+    def hostile_read(path, *, max_bytes=None):
+        observed.append(max_bytes)
+        return supplied
+
+    monkeypatch.setattr(runtime_artifacts_module, "read_json", hostile_read)
+    state = store.get()
+    expected = state.to_dict()
+    dict.__setitem__(supplied, "bundle_hash", HostileString("sha256:" + "3" * 64))
+
+    assert state.to_dict() == expected
+    assert type(state.profile_hash) is str
+    assert type(state.bundle_hash) is str
+    assert type(state.mode) is str
+    assert type(state.verified_at) is str
+    assert observed == [runtime_artifacts_module._MAX_STATE_BYTES]
+
+
+def test_artifact_record_detaches_public_inputs_before_comparison_and_write(
+    tmp_path, monkeypatch
+):
+    class HostileString(str):
+        def __str__(self):
+            raise AssertionError("artifact record rendered caller scalar")
+
+    profile = HostileString("sha256:" + "1" * 64)
+    bundle = HostileString("sha256:" + "2" * 64)
+    assurance = RuntimeArtifactAssurance(
+        HostileString("required"),
+        bundle,
+        1,
+        True,
+        (sys.executable,),
+    )
+    original_write = runtime_artifacts_module.atomic_write_json
+    observed = []
+
+    def mutating_write(path, data, *, max_bytes=None):
+        object.__setattr__(assurance, "bundle_hash", "sha256:" + "3" * 64)
+        observed.append(
+            (
+                max_bytes,
+                type(data["profile_hash"]),
+                type(data["mode"]),
+                type(data["bundle_hash"]),
+            )
+        )
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(runtime_artifacts_module, "atomic_write_json", mutating_write)
+    store = RuntimeArtifactStateStore(tmp_path / "state" / "runtime_artifacts.json")
+    state = store.record(profile, assurance)
+
+    assert state.bundle_hash == bundle
+    assert store.get().bundle_hash == bundle
+    assert observed == [(runtime_artifacts_module._MAX_STATE_BYTES, str, str, str)]
+
+
+def test_artifact_state_rejects_noncanonical_input_without_secret_echo():
+    class SecretValue:
+        def __repr__(self):
+            return "secret-artifact-value"
+
+    with pytest.raises(RuntimeArtifactError) as failure:
+        RuntimeArtifactState.from_dict({"secret": SecretValue()})
+
+    assert "secret-artifact-value" not in str(failure.value)
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_oversized_artifact_state_fails_at_opened_stream_ceiling(tmp_path):
+    path = tmp_path / "state" / "runtime_artifacts.json"
+    path.parent.mkdir(mode=0o700)
+    path.write_bytes(b" " * (runtime_artifacts_module._MAX_STATE_BYTES + 1))
+    path.chmod(0o600)
+
+    with pytest.raises(RuntimeArtifactError, match="exceeds 65536 bytes"):
+        RuntimeArtifactStateStore(path).get()
+
+
+def test_artifact_state_refuses_unrecoverable_publication_without_replacement(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "state" / "runtime_artifacts.json"
+    store = RuntimeArtifactStateStore(path)
+    current = store.record(
+        "sha256:" + "1" * 64,
+        RuntimeArtifactAssurance(
+            "required", "sha256:" + "2" * 64, 1, True, (sys.executable,)
+        ),
+    )
+    prior = path.read_bytes()
+    original_limit = runtime_artifacts_module._MAX_STATE_BYTES
+    monkeypatch.setattr(runtime_artifacts_module, "_MAX_STATE_BYTES", 1)
+
+    with pytest.raises(RuntimeArtifactError, match="bounded canonical state"):
+        runtime_artifacts_module._write_state(path, current)
+
+    assert path.read_bytes() == prior
+    monkeypatch.setattr(runtime_artifacts_module, "_MAX_STATE_BYTES", original_limit)
+    assert store.get() == current
 
 
 def test_v1_artifact_state_remains_readable_and_upgrades_on_write(tmp_path):

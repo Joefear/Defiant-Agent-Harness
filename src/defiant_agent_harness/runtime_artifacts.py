@@ -12,7 +12,8 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
-from .contracts import sha256_of, utc_now
+from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
+from .limits import MAX_RUNTIME_ARTIFACT_STATE_BYTES
 from .persistence import (
     PersistenceError,
     atomic_write_json,
@@ -38,7 +39,7 @@ _STATE_FIELDS = _STATE_FIELDS_V1 | {
     "dependency_file_count",
 }
 _MODES = {"required", "closed", "unverified", "remote_not_applicable"}
-_MAX_STATE_BYTES = 64 * 1024
+_MAX_STATE_BYTES = MAX_RUNTIME_ARTIFACT_STATE_BYTES
 _MAX_DEPENDENCY_FILES = 100_000
 _MAX_DEPENDENCY_ENTRIES = 200_000
 _CHUNK_SIZE = 1024 * 1024
@@ -280,7 +281,7 @@ def require_same_artifact_bundle(
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class RuntimeArtifactState:
     profile_hash: str
     mode: str
@@ -291,12 +292,50 @@ class RuntimeArtifactState:
     dependency_file_count: int
     verified_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        bundle_hash: str | None,
+        artifact_count: int,
+        executable_pinned: bool,
+        dependency_root_count: int,
+        dependency_file_count: int,
+        verified_at: str,
+    ):
+        state = self._from_snapshot(
+            _runtime_artifact_state_snapshot(
+                {
+                    "schema_name": RUNTIME_ARTIFACT_SCHEMA,
+                    "schema_version": RUNTIME_ARTIFACT_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "bundle_hash": bundle_hash,
+                    "artifact_count": artifact_count,
+                    "executable_pinned": executable_pinned,
+                    "dependency_root_count": dependency_root_count,
+                    "dependency_file_count": dependency_file_count,
+                    "verified_at": verified_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            bundle_hash=state.bundle_hash,
+            artifact_count=state.artifact_count,
+            executable_pinned=state.executable_pinned,
+            dependency_root_count=state.dependency_root_count,
+            dependency_file_count=state.dependency_file_count,
+            verified_at=state.verified_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "RuntimeArtifactState":
-        if not isinstance(raw, dict):
-            raise RuntimeArtifactError(
-                "runtime artifact state fields do not match schema"
-            )
+        return cls._from_snapshot(_runtime_artifact_state_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "RuntimeArtifactState":
         if raw.get("schema_name") != RUNTIME_ARTIFACT_SCHEMA:
             raise RuntimeArtifactError("unsupported runtime artifact schema")
         version = raw.get("schema_version")
@@ -317,16 +356,9 @@ class RuntimeArtifactState:
             raw.get("dependency_root_count", 0),
             raw.get("dependency_file_count", 0),
         )
-        verified_at = raw.get("verified_at")
-        if not isinstance(verified_at, str) or not verified_at:
-            raise RuntimeArtifactError("verified_at must be a timestamp")
-        try:
-            parsed = datetime.fromisoformat(verified_at.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise RuntimeArtifactError("verified_at must be a timestamp") from exc
-        if parsed.tzinfo is None or parsed.utcoffset() is None:
-            raise RuntimeArtifactError("verified_at must include a timezone")
-        return cls(
+        verified_at = _timestamp(raw.get("verified_at"))
+        state = object.__new__(cls)
+        state._install(
             profile_hash=profile_hash,
             mode=assurance.mode,
             bundle_hash=assurance.bundle_hash,
@@ -336,6 +368,42 @@ class RuntimeArtifactState:
             dependency_file_count=assurance.dependency_file_count,
             verified_at=verified_at,
         )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        bundle_hash: str | None,
+        artifact_count: int,
+        executable_pinned: bool,
+        dependency_root_count: int,
+        dependency_file_count: int,
+        verified_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "bundle_hash", bundle_hash)
+        object.__setattr__(self, "artifact_count", artifact_count)
+        object.__setattr__(self, "executable_pinned", executable_pinned)
+        object.__setattr__(self, "dependency_root_count", dependency_root_count)
+        object.__setattr__(self, "dependency_file_count", dependency_file_count)
+        object.__setattr__(self, "verified_at", verified_at)
+
+    def authority_dict(self) -> dict[str, Any]:
+        result = {
+            "mode": self.mode,
+            "bundle_hash": self.bundle_hash,
+            "artifact_count": self.artifact_count,
+            "executable_pinned": self.executable_pinned,
+        }
+        if self.mode == "closed":
+            result.update(
+                dependency_root_count=self.dependency_root_count,
+                dependency_file_count=self.dependency_file_count,
+            )
+        return result
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -375,9 +443,9 @@ class RuntimeArtifactStateStore:
         if not self.path.exists():
             return None
         try:
-            if self.path.stat().st_size > _MAX_STATE_BYTES:
-                raise RuntimeArtifactError("runtime artifact state is too large")
-            return RuntimeArtifactState.from_dict(read_json(self.path))
+            return RuntimeArtifactState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except RuntimeArtifactError:
             raise
         except (OSError, RuntimeError) as exc:
@@ -389,39 +457,27 @@ class RuntimeArtifactStateStore:
         assurance: RuntimeArtifactAssurance,
     ) -> RuntimeArtifactState:
         profile_hash = _hash(profile_hash, "profile_hash")
+        candidate = RuntimeArtifactState(
+            profile_hash=profile_hash,
+            mode=assurance.mode,
+            bundle_hash=assurance.bundle_hash,
+            artifact_count=assurance.artifact_count,
+            executable_pinned=assurance.executable_pinned,
+            dependency_root_count=assurance.dependency_root_count,
+            dependency_file_count=assurance.dependency_file_count,
+            verified_at=utc_now(),
+        )
         prepare_storage_root(self.path.parent)
         try:
             with exclusive_file_lock(self.path):
                 previous = self.get()
-                stable = assurance.authority_dict()
                 if previous is not None and previous.profile_hash == profile_hash:
-                    previous_stable: dict[str, Any] = {
-                        "mode": previous.mode,
-                        "bundle_hash": previous.bundle_hash,
-                        "artifact_count": previous.artifact_count,
-                        "executable_pinned": previous.executable_pinned,
-                    }
-                    if previous.mode == "closed":
-                        previous_stable.update(
-                            dependency_root_count=previous.dependency_root_count,
-                            dependency_file_count=previous.dependency_file_count,
-                        )
-                    if previous_stable != stable:
+                    if previous.authority_dict() != candidate.authority_dict():
                         raise RuntimeArtifactError(
                             "runtime artifact state conflicts with the active authority profile"
                         )
-                state = RuntimeArtifactState(
-                    profile_hash=profile_hash,
-                    mode=assurance.mode,
-                    bundle_hash=assurance.bundle_hash,
-                    artifact_count=assurance.artifact_count,
-                    executable_pinned=assurance.executable_pinned,
-                    dependency_root_count=assurance.dependency_root_count,
-                    dependency_file_count=assurance.dependency_file_count,
-                    verified_at=utc_now(),
-                )
-                atomic_write_json(self.path, state.to_dict())
-                return state
+                _write_state(self.path, candidate)
+                return candidate
         except RuntimeArtifactError:
             raise
         except (OSError, PersistenceError) as exc:
@@ -612,12 +668,50 @@ def _file_hash(path: Path) -> str:
 
 
 def _hash(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.startswith("sha256:"):
+    if not isinstance(value, str):
         raise RuntimeArtifactError(f"{field} is not a sha256 identifier")
-    digest = value.removeprefix("sha256:")
+    normalized = str.__str__(value)
+    if not str.startswith(normalized, "sha256:"):
+        raise RuntimeArtifactError(f"{field} is not a sha256 identifier")
+    digest = str.removeprefix(normalized, "sha256:")
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise RuntimeArtifactError(f"{field} is not a sha256 identifier")
-    return value
+    return normalized
+
+
+def _timestamp(value: Any) -> str:
+    if not isinstance(value, str):
+        raise RuntimeArtifactError("verified_at must be a timestamp")
+    normalized = str.__str__(value)
+    if not normalized:
+        raise RuntimeArtifactError("verified_at must be a timestamp")
+    try:
+        parsed = datetime.fromisoformat(str.replace(normalized, "Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeArtifactError("verified_at must be a timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise RuntimeArtifactError("verified_at must include a timezone")
+    return normalized
+
+
+def _runtime_artifact_state_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise RuntimeArtifactError(
+            "runtime artifact state exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise RuntimeArtifactError("runtime artifact state must be an object")
+    return snapshot
+
+
+def _write_state(path: Path, state: RuntimeArtifactState) -> None:
+    candidate = RuntimeArtifactState.from_dict(state.to_dict()).to_dict()
+    atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
 
 
 def _is_within(path: Path, root: Path) -> bool:

@@ -227,6 +227,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"sealed_authority_continuity_state" in javascript
     assert b"bounded_authority_continuity_io" in javascript
     assert b"authority continuity recovery and publication" in javascript
+    assert b"runtime_artifact_state_bytes" in javascript
+    assert b"validated_runtime_artifact_state_snapshot" in javascript
+    assert b"runtime artifact assurance validation and publication" in javascript
     assert b"sealed_native_hook_correlation_state" in javascript
     assert b"sealed_approval_record_state" in javascript
     assert b"approval records and held authority snapshots retained" in javascript
