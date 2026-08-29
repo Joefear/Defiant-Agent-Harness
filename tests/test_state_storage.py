@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import defiant_agent_harness.state_storage as state_storage_module
 from defiant_agent_harness.adapters.base import ToolCall
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_profile import (
@@ -28,7 +29,9 @@ from defiant_agent_harness.state_integrity import (
     StateIntegrityError,
 )
 from defiant_agent_harness.state_storage import (
+    StateStorageAssurance,
     StateStorageError,
+    StateStorageState,
     StateStorageStateStore,
     prepare_state_storage,
     require_state_storage_unchanged,
@@ -428,6 +431,11 @@ def test_v1_state_storage_observation_remains_readable(tmp_path):
     assert stored.acl_policy is None
     assert stored.acl_protected is None
     assert stored.acl_principal_count == 0
+    StateStorageStateStore(path).record(
+        stored.profile_hash,
+        prepare_state_storage(state),
+    )
+    assert read_json(path)["schema_version"] == "0.2.0"
 
 
 @pytest.mark.parametrize(
@@ -466,3 +474,149 @@ def test_v2_windows_acl_observation_rejects_inconsistent_fields(tmp_path, change
     assert report.safe_to_execute is False
     assert report.stores["state_storage"]["verification"] == "invalid"
     assert "S-1-5-21-attacker" not in serialized
+
+
+def test_state_storage_store_owns_hostile_bounded_snapshot(tmp_path, monkeypatch):
+    class HostileDict(dict):
+        def __deepcopy__(self, memo):
+            raise AssertionError("storage snapshot invoked deepcopy hook")
+
+        def __iter__(self):
+            raise AssertionError("storage snapshot invoked mapping iterator hook")
+
+        def get(self, key, default=None):
+            raise AssertionError("storage snapshot invoked mapping get hook")
+
+        def items(self):
+            raise AssertionError("storage snapshot invoked mapping items hook")
+
+        def keys(self):
+            raise AssertionError("storage snapshot invoked mapping keys hook")
+
+    class HostileString(str):
+        def __deepcopy__(self, memo):
+            raise AssertionError("storage snapshot invoked scalar deepcopy hook")
+
+        def __str__(self):
+            raise AssertionError("storage snapshot invoked scalar rendering hook")
+
+    root = tmp_path / "state"
+    assurance = prepare_state_storage(root)
+    path = root / "state_storage.json"
+    store = StateStorageStateStore(path)
+    store.record("sha256:" + "1" * 64, assurance)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    supplied = HostileDict(
+        {
+            key: HostileString(value) if type(value) is str else value
+            for key, value in raw.items()
+        }
+    )
+    observed = []
+
+    def hostile_read(path, *, max_bytes=None):
+        observed.append(max_bytes)
+        return supplied
+
+    monkeypatch.setattr(state_storage_module, "read_json", hostile_read)
+    state = store.get()
+    expected = state.to_dict()
+    dict.__setitem__(supplied, "root_hash", HostileString("sha256:" + "2" * 64))
+
+    assert state.to_dict() == expected
+    assert type(state.profile_hash) is str
+    assert type(state.mode) is str
+    assert type(state.root_hash) is str
+    assert type(state.directory_sync) is str
+    assert type(state.verified_at) is str
+    assert observed == [state_storage_module._MAX_STATE_BYTES]
+
+
+def test_state_storage_record_detaches_public_inputs_before_comparison_and_write(
+    tmp_path, monkeypatch
+):
+    class HostileString(str):
+        def __str__(self):
+            raise AssertionError("storage record rendered caller scalar")
+
+    root = tmp_path / "state"
+    observed_assurance = prepare_state_storage(root)
+    profile = HostileString("sha256:" + "1" * 64)
+    root_hash = HostileString(observed_assurance.root_hash)
+    assurance = StateStorageAssurance(
+        HostileString(observed_assurance.mode),
+        root_hash,
+        observed_assurance.private_permissions,
+        HostileString(observed_assurance.directory_sync),
+        observed_assurance.acl_policy,
+        observed_assurance.acl_protected,
+        observed_assurance.acl_principal_count,
+        observed_assurance.root,
+        observed_assurance.identity,
+    )
+    original_write = state_storage_module.atomic_write_json
+    observed = []
+
+    def mutating_write(path, data, *, max_bytes=None):
+        object.__setattr__(assurance, "root_hash", "sha256:" + "2" * 64)
+        observed.append(
+            (
+                max_bytes,
+                type(data["profile_hash"]),
+                type(data["mode"]),
+                type(data["root_hash"]),
+                type(data["directory_sync"]),
+            )
+        )
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(state_storage_module, "atomic_write_json", mutating_write)
+    store = StateStorageStateStore(root / "state_storage.json")
+    state = store.record(profile, assurance)
+
+    assert state.root_hash == root_hash
+    assert store.get().root_hash == root_hash
+    assert observed == [(state_storage_module._MAX_STATE_BYTES, str, str, str, str)]
+
+
+def test_state_storage_rejects_noncanonical_input_without_secret_echo():
+    class SecretValue:
+        def __repr__(self):
+            return "secret-storage-value"
+
+    with pytest.raises(StateStorageError) as failure:
+        StateStorageState.from_dict({"secret": SecretValue()})
+
+    assert "secret-storage-value" not in str(failure.value)
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_oversized_state_storage_fails_at_opened_stream_ceiling(tmp_path):
+    root = tmp_path / "state"
+    root.mkdir(mode=0o700)
+    path = root / "state_storage.json"
+    path.write_bytes(b" " * (state_storage_module._MAX_STATE_BYTES + 1))
+    path.chmod(0o600)
+
+    with pytest.raises(StateStorageError, match="exceeds 65536 bytes"):
+        StateStorageStateStore(path).get()
+
+
+def test_state_storage_refuses_unrecoverable_publication_without_replacement(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "state"
+    assurance = prepare_state_storage(root)
+    path = root / "state_storage.json"
+    store = StateStorageStateStore(path)
+    current = store.record("sha256:" + "1" * 64, assurance)
+    prior = path.read_bytes()
+    original_limit = state_storage_module._MAX_STATE_BYTES
+    monkeypatch.setattr(state_storage_module, "_MAX_STATE_BYTES", 1)
+
+    with pytest.raises(StateStorageError, match="bounded canonical state"):
+        state_storage_module._write_state(path, current)
+
+    assert path.read_bytes() == prior
+    monkeypatch.setattr(state_storage_module, "_MAX_STATE_BYTES", original_limit)
+    assert store.get() == current

@@ -889,6 +889,17 @@ working-directory verification, profile rotation, and Command Center's
 read-only boundary remain unchanged. See
 `validated_launch_envelope_state_snapshot.md`.
 
+v0.69 makes `state_storage.json` one bounded ownership root. A detached
+canonical built-in observation drives schema compatibility, profile and root
+binding, filesystem-security mode, permission and directory-sync posture,
+Windows ACL posture, verification time, conflict comparison, and publication.
+The candidate is captured before the authority lock and revalidated before
+replacement. The same explicit 64 KiB ceiling governs canonical capture,
+descriptor-backed recovery reads, and atomic publication, preserving prior
+recoverable bytes on failure. Live filesystem inspection, identity and ACL
+replacement checks, profile rotation, and Command Center's read-only boundary
+remain unchanged. See `validated_state_storage_state_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
