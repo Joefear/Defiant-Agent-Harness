@@ -927,6 +927,17 @@ read-before-write verification of every dependent store; disagreement fails
 closed. Read-only surfaces report the checkpoint but cannot drive it. See
 `authority_publication_recovery.md`.
 
+## v0.72 read-only publication verification
+
+Doctor and Command Core reconstruct a completed authority-publication manifest
+from the strict durable dependent observations and compare it with the
+checkpoint hash. Required stores must exist; every present store must bind the
+same profile; optional-store presence is part of the manifest. Missing,
+invalid, added, removed, or authority-mismatched state is therefore visible and
+critical before another owning runtime starts. Active partial publication
+remains a recovery state that read-only and operator-control paths cannot
+complete. See `authority_publication_manifest_verification.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

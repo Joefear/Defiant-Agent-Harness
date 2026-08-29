@@ -55,6 +55,10 @@ critical. Command Center displays that projection and remains strictly
 read-only: it has no prepare, replay, complete, repair, acceptance, rotation,
 approval, execution, or mutation endpoint.
 
+v0.72 additionally recomputes a completed checkpoint's manifest from the
+current durable dependent observations. See
+`authority_publication_manifest_verification.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or

@@ -320,16 +320,17 @@ def test_crash_after_evidence_fsync_is_visible_and_recovers_forward_only(
     assert len(reopened.evidence.records()) == 1
 
 
-def test_missing_checkpoint_is_read_only_migration_state(tmp_path):
+def test_missing_completed_publication_checkpoint_is_read_only_unsafe_state(tmp_path):
     state, workspace, _harness = _build(tmp_path)
     path = state / "evidence_head.json"
     path.unlink()
 
     snapshot = CommandCore(state, workspace_root=workspace).snapshot()
 
-    assert snapshot["authoritative"] is True
-    assert snapshot["state_integrity"]["recovery_required"] is True
+    assert snapshot["authoritative"] is False
+    assert snapshot["state_integrity"]["status"] == "unsafe"
     assert snapshot["evidence_head"]["verification"] == "migration_required"
+    assert snapshot["authority_publication"]["verification"] == ("dependency_invalid")
     assert not path.exists()
 
 

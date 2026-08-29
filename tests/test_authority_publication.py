@@ -11,6 +11,7 @@ from defiant_agent_harness.authority_publication import (
     AuthorityPublicationState,
     AuthorityPublicationStore,
     authority_manifest_hash,
+    authority_manifest_hash_for,
 )
 from defiant_agent_harness.authority_profile import AuthorityProfileStore
 from defiant_agent_harness.command.core import CommandCore
@@ -162,6 +163,26 @@ def test_manifest_hash_is_bounded_and_owns_the_candidate(monkeypatch):
     )
     with pytest.raises(AuthorityPublicationError, match="bounded canonical state"):
         authority_manifest_hash({"secret": "do-not-render" * 20})
+
+
+def test_component_manifest_hash_matches_the_complete_contract():
+    stores = {
+        "state_storage": {"mode": "structural_only"},
+        "control_plane_isolation": {"mode": "enforced"},
+        "workspace_integrity": {"mode": "verified"},
+        "evidence_witness_policy": {"mode": "not_configured"},
+        "runtime_artifacts": None,
+        "launch_envelope": None,
+        "evidence_head": {"mode": "checkpointed"},
+    }
+
+    assert authority_manifest_hash_for(
+        profile_hash=PROFILE,
+        generation=1,
+        **stores,
+    ) == authority_manifest_hash(
+        {"profile_hash": PROFILE, "generation": 1, "stores": stores}
+    )
 
 
 @pytest.mark.parametrize(
@@ -334,12 +355,92 @@ def test_completed_publication_refuses_dependent_store_tampering(tmp_path):
     assert (state / "authority_publication.json").read_bytes() == publication_before
 
 
+def test_read_only_audit_detects_completed_manifest_tampering(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter(), workspace_root=tmp_path / "workspace")
+    workspace_path = state / "workspace_integrity.json"
+    raw = json.loads(workspace_path.read_text(encoding="utf-8"))
+    raw["root_hash"] = "sha256:" + "8" * 64
+    workspace_path.write_text(json.dumps(raw), encoding="utf-8")
+    before = {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    }
+
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["workspace_integrity"]["verification"] == "profile_bound"
+    assert report.stores["authority_publication"]["verification"] == (
+        "manifest_mismatch"
+    )
+    assert any(
+        issue.code == "authority_publication_manifest_mismatch"
+        for issue in report.issues
+    )
+    assert snapshot["authoritative"] is False
+    assert snapshot["authority_publication"]["verification"] == "manifest_mismatch"
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
+
+
+def test_read_only_audit_requires_every_completed_manifest_dependency(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    (state / "control_plane_isolation.json").unlink()
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "dependency_invalid"
+    )
+    issue = next(
+        issue
+        for issue in report.issues
+        if issue.code == "authority_publication_dependency_invalid"
+    )
+    assert "control_plane_isolation" in issue.detail
+
+
+def test_read_only_manifest_verification_requires_dependency_profile_binding(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    workspace_path = state / "workspace_integrity.json"
+    raw = json.loads(workspace_path.read_text(encoding="utf-8"))
+    raw["profile_hash"] = "sha256:" + "7" * 64
+    workspace_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "dependency_invalid"
+    )
+    issue = next(
+        issue
+        for issue in report.issues
+        if issue.code == "authority_publication_dependency_invalid"
+    )
+    assert "workspace_integrity" in issue.detail
+    assert "profile mismatch" in issue.detail
+
+
 def test_completed_publication_refuses_unexpected_optional_store(tmp_path):
     state = tmp_path / "state"
     harness = build_harness(state, MockAgentAdapter())
     RuntimeArtifactStateStore(state / "runtime_artifacts.json").record(
         harness.policy.ruleset_hash,
         unverified_artifacts(("injected-tool",)),
+    )
+
+    report = StateIntegrityAuditor(state).audit()
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "manifest_mismatch"
     )
 
     with pytest.raises(AuthorityPublicationError, match="runtime_artifacts"):

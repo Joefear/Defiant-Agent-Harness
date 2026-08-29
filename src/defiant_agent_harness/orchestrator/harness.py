@@ -14,7 +14,7 @@ from ..authority_publication import (
     AuthorityPublicationError,
     AuthorityPublicationIntent,
     AuthorityPublicationStore,
-    authority_manifest_hash,
+    authority_manifest_hash_for,
 )
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
@@ -1699,17 +1699,33 @@ def build_harness(
                 policy.ruleset_hash,
                 operator_trust,
             )
-            publication_manifest = _authority_publication_manifest(
+            manifest_hash = authority_manifest_hash_for(
                 profile_hash=policy.ruleset_hash,
                 generation=preview_profile.generation,
-                state_storage=state_storage,
-                control_plane_isolation=control_plane_isolation,
-                workspace_integrity=workspace_integrity,
-                witness_policy=witness_policy,
-                runtime_artifact_assurance=runtime_artifact_assurance,
-                launch_envelope_assurance=launch_envelope_assurance,
+                state_storage=state_storage.authority_dict(),
+                control_plane_isolation=control_plane_isolation.authority_dict(),
+                workspace_integrity=workspace_integrity.authority_dict(),
+                evidence_witness_policy=(
+                    witness_policy.authority_dict()
+                    if witness_policy is not None
+                    else {
+                        "mode": WITNESS_NOT_CONFIGURED,
+                        "schema_version": WITNESS_VERSION,
+                        "trusted_key_ids": [],
+                    }
+                ),
+                runtime_artifacts=(
+                    runtime_artifact_assurance.authority_dict()
+                    if runtime_artifact_assurance is not None
+                    else None
+                ),
+                launch_envelope=(
+                    launch_envelope_assurance.authority_dict()
+                    if launch_envelope_assurance is not None
+                    else None
+                ),
+                evidence_head=evidence_head_authority(),
             )
-            manifest_hash = authority_manifest_hash(publication_manifest)
             publication_store = AuthorityPublicationStore(
                 state_root / "authority_publication.json"
             )
@@ -1855,49 +1871,6 @@ def build_harness(
                 state_root / "authority_publication.json"
             ).complete(publication_intent)
     return harness
-
-
-def _authority_publication_manifest(
-    *,
-    profile_hash: str,
-    generation: int,
-    state_storage,
-    control_plane_isolation,
-    workspace_integrity,
-    witness_policy: EvidenceWitnessPolicy | None,
-    runtime_artifact_assurance,
-    launch_envelope_assurance,
-) -> dict:
-    witness = (
-        witness_policy.authority_dict()
-        if witness_policy is not None
-        else {
-            "mode": WITNESS_NOT_CONFIGURED,
-            "schema_version": WITNESS_VERSION,
-            "trusted_key_ids": [],
-        }
-    )
-    return {
-        "profile_hash": profile_hash,
-        "generation": generation,
-        "stores": {
-            "state_storage": state_storage.authority_dict(),
-            "control_plane_isolation": control_plane_isolation.authority_dict(),
-            "workspace_integrity": workspace_integrity.authority_dict(),
-            "evidence_witness_policy": witness,
-            "runtime_artifacts": (
-                runtime_artifact_assurance.authority_dict()
-                if runtime_artifact_assurance is not None
-                else None
-            ),
-            "launch_envelope": (
-                launch_envelope_assurance.authority_dict()
-                if launch_envelope_assurance is not None
-                else None
-            ),
-            "evidence_head": evidence_head_authority(),
-        },
-    }
 
 
 def _require_completed_authority_publication_intact(

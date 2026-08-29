@@ -12,6 +12,7 @@ from .authority_profile import AuthorityProfileStore
 from .authority_publication import (
     AuthorityPublicationError,
     AuthorityPublicationStore,
+    authority_manifest_hash_for,
 )
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
@@ -24,12 +25,14 @@ from .evidence_head import (
     EvidenceHeadError,
     EvidenceHeadStateStore,
     assess_evidence_head,
+    evidence_head_authority,
 )
 from .evidence_witness import (
     EvidenceWitnessError,
     EvidenceWitnessPolicy,
     EvidenceWitnessPolicyStore,
     WITNESS_NOT_CONFIGURED,
+    WITNESS_VERSION,
     assess_witness,
     load_witness,
     validate_external_witness_paths,
@@ -62,7 +65,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.18.0"
+AUDIT_VERSION = "0.19.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -202,11 +205,11 @@ class StateIntegrityAuditor:
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)
         profile_generation = self._audit_authority_profile(report)
-        self._audit_authority_publication(report)
         workspace_root_count = self._audit_workspace_integrity(report)
         protected_root_count = self._audit_control_plane_isolation(report)
         artifact_count = self._audit_runtime_artifacts(report)
         launch_variable_count = self._audit_launch_envelope(report)
+        self._audit_authority_publication(report)
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
@@ -441,7 +444,6 @@ class StateIntegrityAuditor:
             profile = AuthorityProfileStore(
                 self.workdir / "authority_profile.json"
             ).get()
-            current = state.active or state.completed
             if state.active is not None:
                 self._issue(
                     report,
@@ -450,24 +452,55 @@ class StateIntegrityAuditor:
                     "authority_publication.json",
                     "an interrupted authority publication requires exact replay",
                 )
-            if (
-                state.active is None
-                and state.completed is not None
-                and profile is not None
-                and current is not None
-                and (
-                    profile.profile_hash != current.profile_hash
-                    or profile.generation != current.generation
-                )
-            ):
-                projection["verification"] = "profile_mismatch"
-                self._issue(
-                    report,
-                    "authority_publication_profile_mismatch",
-                    "critical",
-                    "authority_publication.json",
-                    "authority publication is not bound to the active authority profile",
-                )
+            elif state.completed is not None:
+                if profile is None:
+                    projection["verification"] = "profile_missing"
+                    self._issue(
+                        report,
+                        "authority_publication_profile_missing",
+                        "critical",
+                        "authority_publication.json",
+                        "completed authority publication has no active authority profile",
+                    )
+                elif (
+                    profile.profile_hash != state.completed.profile_hash
+                    or profile.generation != state.completed.generation
+                ):
+                    projection["verification"] = "profile_mismatch"
+                    self._issue(
+                        report,
+                        "authority_publication_profile_mismatch",
+                        "critical",
+                        "authority_publication.json",
+                        "authority publication is not bound to the active authority profile",
+                    )
+                else:
+                    try:
+                        observed_manifest_hash = (
+                            self._completed_authority_manifest_hash(
+                                state.completed.profile_hash,
+                                state.completed.generation,
+                            )
+                        )
+                    except AuthorityPublicationError as exc:
+                        projection["verification"] = "dependency_invalid"
+                        self._issue(
+                            report,
+                            "authority_publication_dependency_invalid",
+                            "critical",
+                            "authority_publication.json",
+                            str(exc),
+                        )
+                    else:
+                        if observed_manifest_hash != state.completed.manifest_hash:
+                            projection["verification"] = "manifest_mismatch"
+                            self._issue(
+                                report,
+                                "authority_publication_manifest_mismatch",
+                                "critical",
+                                "authority_publication.json",
+                                "completed authority publication does not match durable dependent state",
+                            )
             report.stores["authority_publication"] = projection
         except (AuthorityPublicationError, RuntimeError) as exc:
             report.stores["authority_publication"] = {
@@ -487,6 +520,91 @@ class StateIntegrityAuditor:
                 "authority_publication.json",
                 str(exc),
             )
+
+    def _completed_authority_manifest_hash(
+        self,
+        profile_hash: str,
+        generation: int,
+    ) -> str:
+        try:
+            storage = StateStorageStateStore(self.workdir / "state_storage.json").get()
+            isolation = ControlPlaneIsolationStateStore(
+                self.workdir / "control_plane_isolation.json"
+            ).get()
+            workspace = WorkspaceIntegrityStateStore(
+                self.workdir / "workspace_integrity.json"
+            ).get()
+            witness = EvidenceWitnessPolicyStore(
+                self.workdir / "evidence_witness_policy.json"
+            ).get()
+            runtime = RuntimeArtifactStateStore(
+                self.workdir / "runtime_artifacts.json"
+            ).get()
+            launch = LaunchEnvelopeStateStore(
+                self.workdir / "launch_envelope.json"
+            ).get()
+            evidence_head = EvidenceHeadStateStore(
+                self.workdir / "evidence_head.json"
+            ).get()
+        except RuntimeError as exc:
+            raise AuthorityPublicationError(
+                "a completed authority publication dependency is invalid"
+            ) from exc
+
+        required = {
+            "state_storage": storage,
+            "control_plane_isolation": isolation,
+            "workspace_integrity": workspace,
+            "evidence_witness_policy": witness,
+            "evidence_head": evidence_head,
+        }
+        missing = next(
+            (name for name, value in required.items() if value is None), None
+        )
+        if missing is not None:
+            raise AuthorityPublicationError(
+                f"completed authority publication dependency '{missing}' is missing"
+            )
+        bound = {
+            **required,
+            "runtime_artifacts": runtime,
+            "launch_envelope": launch,
+        }
+        mismatched = next(
+            (
+                name
+                for name, value in bound.items()
+                if value is not None and value.profile_hash != profile_hash
+            ),
+            None,
+        )
+        if mismatched is not None:
+            raise AuthorityPublicationError(
+                f"completed authority publication dependency '{mismatched}' has a profile mismatch"
+            )
+
+        witness_authority = {
+            "mode": witness.mode,
+            "schema_version": WITNESS_VERSION,
+            "trusted_key_ids": list(witness.trusted_key_ids),
+        }
+        if witness.max_unwitnessed_records is not None:
+            witness_authority["max_unwitnessed_records"] = (
+                witness.max_unwitnessed_records
+            )
+        return authority_manifest_hash_for(
+            profile_hash=profile_hash,
+            generation=generation,
+            state_storage=storage.authority_dict(),
+            control_plane_isolation=isolation.authority_dict(),
+            workspace_integrity=workspace.authority_dict(),
+            evidence_witness_policy=witness_authority,
+            runtime_artifacts=(
+                runtime.authority_dict() if runtime is not None else None
+            ),
+            launch_envelope=(launch.authority_dict() if launch is not None else None),
+            evidence_head=evidence_head_authority(),
+        )
 
     def _audit_control_plane_isolation(self, report: StateIntegrityReport) -> int:
         store = ControlPlaneIsolationStateStore(

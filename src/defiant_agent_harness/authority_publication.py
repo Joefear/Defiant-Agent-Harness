@@ -293,6 +293,36 @@ def authority_manifest_hash(manifest: Any) -> str:
     return digest
 
 
+def authority_manifest_hash_for(
+    *,
+    profile_hash: str,
+    generation: int,
+    state_storage: Any,
+    control_plane_isolation: Any,
+    workspace_integrity: Any,
+    evidence_witness_policy: Any,
+    runtime_artifacts: Any | None,
+    launch_envelope: Any | None,
+    evidence_head: Any,
+) -> str:
+    """Hash one complete set of sanitized profile-bound observations."""
+    return authority_manifest_hash(
+        {
+            "profile_hash": _hash(profile_hash, "profile_hash"),
+            "generation": _generation(generation),
+            "stores": {
+                "state_storage": state_storage,
+                "control_plane_isolation": control_plane_isolation,
+                "workspace_integrity": workspace_integrity,
+                "evidence_witness_policy": evidence_witness_policy,
+                "runtime_artifacts": runtime_artifacts,
+                "launch_envelope": launch_envelope,
+                "evidence_head": evidence_head,
+            },
+        }
+    )
+
+
 def _snapshot(value: Any, field: str) -> dict[str, Any]:
     try:
         snapshot, _ = authority_snapshot_and_sha256_of(

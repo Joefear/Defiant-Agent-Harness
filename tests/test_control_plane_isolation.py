@@ -201,16 +201,19 @@ def test_isolation_state_tamper_fails_read_only_integrity_gate(tmp_path):
     )
 
 
-def test_missing_profile_bound_observation_requires_migration(tmp_path):
+def test_missing_completed_publication_observation_is_critical(tmp_path):
     state = tmp_path / "state"
     build_harness(state, MockAgentAdapter())
     (state / "control_plane_isolation.json").unlink()
 
     report = StateIntegrityAuditor(state).audit()
-    assert report.safe_to_execute is True
-    assert report.recovery_required is True
+    assert report.safe_to_execute is False
     assert any(
         issue.code == "control_plane_isolation_observation_missing"
+        for issue in report.issues
+    )
+    assert any(
+        issue.code == "authority_publication_dependency_invalid"
         for issue in report.issues
     )
 

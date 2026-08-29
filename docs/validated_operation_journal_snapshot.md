@@ -43,7 +43,7 @@ hashed, and sealed through the v0.58 runtime contract before recovery.
 
 ## Read-only projection
 
-Command Core schema `0.65.0` publishes `operation_journal_bytes` under
+Command Core schema `0.66.0` publishes `operation_journal_bytes` under
 `resource_limits` and reports `validated_operation_journal_snapshot: true`
 under `authority_configuration`. The active-operation projection remains
 limited to operation id, kind, and preparation time. Command Center receives no

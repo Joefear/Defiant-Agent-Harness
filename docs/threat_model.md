@@ -253,6 +253,14 @@ before any same-generation rewrite. This is local crash recovery, not a
 distributed transaction or privileged-host rollback witness; consistent
 replacement of code and all local state remains outside its threat boundary.
 
+Through v0.71, the owning runtime performed completed-manifest consistency
+checks, but read-only diagnostics validated only the checkpoint schema and
+profile generation. A modified durable dependency could therefore appear as a
+verified publication until runtime startup. v0.72 reconstructs the manifest in
+Doctor and Command Core and treats missing, invalid, profile-mismatched, added,
+removed, or changed authority observations as critical. Consistent rollback of
+the checkpoint and every dependency remains an external-witness problem.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix
