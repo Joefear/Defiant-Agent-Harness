@@ -65,6 +65,12 @@ MAX_LAUNCH_ENVELOPE_STATE_BYTES = 64 * 1024
 # one narrow symmetric ceiling.
 MAX_STATE_STORAGE_STATE_BYTES = 64 * 1024
 
+# The remaining filesystem-authority observations bind governed workspace
+# identity and its isolation from protected control state. Keep each capture,
+# recovery read, and publication under its own symmetric narrow ceiling.
+MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES = 64 * 1024
+MAX_WORKSPACE_INTEGRITY_STATE_BYTES = 64 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

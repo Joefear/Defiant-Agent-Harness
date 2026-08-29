@@ -236,6 +236,14 @@ and state together, manipulating storage after the final check, or giving an
 upstream a broader mount. OS containment and off-box witnessing remain separate
 deployment controls.
 
+v0.70 makes both durable filesystem-authority observations detached, bounded
+ownership roots. Hostile in-process containers or scalar subclasses cannot
+retain behavior in accepted state, and recovery no longer separates a file-size
+observation from the opened read. Each 64 KiB writer ceiling matches its reader
+ceiling and preserves prior bytes when a candidate cannot be recovered. This
+strengthens durable assurance; it does not turn Python into an OS sandbox or
+extend protection beyond governed tool boundaries.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

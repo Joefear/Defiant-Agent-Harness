@@ -900,6 +900,17 @@ recoverable bytes on failure. Live filesystem inspection, identity and ACL
 replacement checks, profile rotation, and Command Center's read-only boundary
 remain unchanged. See `validated_state_storage_state_snapshot.md`.
 
+v0.70 closes the same ownership and recoverability gap in
+`control_plane_isolation.json` and `workspace_integrity.json`. Each store
+captures one detached canonical built-in observation before validation or
+locking, uses it for profile-bound conflict checks, and revalidates it before
+atomic replacement. Independent 64 KiB ceilings govern canonical capture,
+descriptor-backed recovery reads, and publication for both stores. Prior bytes
+survive an invalid or oversized attempted replacement. Live root identity,
+link/reparse and protected-target checks, cross-store integrity gating,
+profile rotation, and Command Center's read-only boundary remain unchanged.
+See `validated_filesystem_authority_state_snapshots.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

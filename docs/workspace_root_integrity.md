@@ -64,3 +64,10 @@ least-privilege mounts, immutable deployment inputs, OS containment, and
 off-box observations where host-level rollback matters.
 
 This release adds no DKE, Spartan, remote Command, or Command Center authority.
+
+v0.70 makes the sanitized `workspace_integrity.json` observation one detached
+canonical built-in snapshot. Capture, descriptor-backed recovery, and atomic
+publication share an explicit 64 KiB ceiling; caller mutation cannot change
+conflict checks or publication, and failed oversized publication leaves prior
+recoverable bytes unchanged. See
+`validated_filesystem_authority_state_snapshots.md`.

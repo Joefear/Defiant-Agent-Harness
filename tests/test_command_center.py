@@ -236,6 +236,12 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"state_storage_state_bytes" in javascript
     assert b"validated_state_storage_state_snapshot" in javascript
     assert b"state storage assurance validation and publication" in javascript
+    assert b"control_plane_isolation_state_bytes" in javascript
+    assert b"validated_control_plane_isolation_state_snapshot" in javascript
+    assert b"control-plane isolation validation and publication" in javascript
+    assert b"workspace_integrity_state_bytes" in javascript
+    assert b"validated_workspace_integrity_state_snapshot" in javascript
+    assert b"workspace-root validation and publication" in javascript
     assert b"sealed_native_hook_correlation_state" in javascript
     assert b"sealed_approval_record_state" in javascript
     assert b"approval records and held authority snapshots retained" in javascript
