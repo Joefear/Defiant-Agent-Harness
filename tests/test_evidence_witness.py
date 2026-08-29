@@ -108,6 +108,209 @@ def _enroll_required_witness(
     return state, workspace, harness, private_key, public_key, witness_path
 
 
+class HostileText(str):
+    def __str__(self):
+        raise AssertionError("caller string rendering hook invoked")
+
+    def __len__(self):
+        raise AssertionError("caller string length hook invoked")
+
+    def __eq__(self, other):
+        raise AssertionError("caller string comparison hook invoked")
+
+    def __lt__(self, other):
+        raise AssertionError("caller string ordering hook invoked")
+
+    def __hash__(self):
+        raise AssertionError("caller string hash hook invoked")
+
+    def startswith(self, *args, **kwargs):
+        raise AssertionError("caller string prefix hook invoked")
+
+    def replace(self, *args, **kwargs):
+        raise AssertionError("caller string replacement hook invoked")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("caller string copy hook invoked")
+
+
+class HostileList(list):
+    def __iter__(self):
+        raise AssertionError("caller list iterator hook invoked")
+
+    def __len__(self):
+        raise AssertionError("caller list length hook invoked")
+
+    def __getitem__(self, key):
+        raise AssertionError("caller list item hook invoked")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("caller list copy hook invoked")
+
+
+class HostileDict(dict):
+    def __iter__(self):
+        raise AssertionError("caller mapping iterator hook invoked")
+
+    def __len__(self):
+        raise AssertionError("caller mapping length hook invoked")
+
+    def keys(self):
+        raise AssertionError("caller mapping keys hook invoked")
+
+    def items(self):
+        raise AssertionError("caller mapping items hook invoked")
+
+    def get(self, key, default=None):
+        raise AssertionError("caller mapping get hook invoked")
+
+    def __deepcopy__(self, memo):
+        raise AssertionError("caller mapping copy hook invoked")
+
+
+def _hostile_policy_document(raw):
+    return HostileDict(
+        {
+            key: (
+                HostileList([HostileText(item) for item in value])
+                if type(value) is list
+                else HostileText(value)
+                if type(value) is str
+                else value
+            )
+            for key, value in raw.items()
+        }
+    )
+
+
+def test_witness_policy_reader_captures_one_hostile_state_snapshot(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "state" / "evidence_witness_policy.json"
+    policy = EvidenceWitnessPolicy(
+        trusted_key_ids=("sha256:" + "1" * 64,),
+        trusted_key_paths=(),
+        max_unwitnessed_records=3,
+    )
+    store = EvidenceWitnessPolicyStore(path)
+    store.record("sha256:" + "a" * 64, policy)
+    raw = read_json(path)
+    supplied = _hostile_policy_document(raw)
+    observed_limits = []
+
+    def hostile_read(source, *, max_bytes=None):
+        assert source == path
+        observed_limits.append(max_bytes)
+        return supplied
+
+    monkeypatch.setattr(witness_module, "read_json", hostile_read)
+
+    restored = store.get()
+
+    assert restored is not None
+    assert restored.to_dict() == raw
+    assert type(restored.profile_hash) is str
+    assert type(restored.trusted_key_ids) is tuple
+    assert type(restored.trusted_key_ids[0]) is str
+    assert observed_limits == [witness_module._MAX_POLICY_STATE_BYTES]
+    supplied_ids = dict.__getitem__(supplied, "trusted_key_ids")
+    list.__setitem__(supplied_ids, 0, "sha256:" + "f" * 64)
+    assert restored.to_dict() == raw
+
+
+def test_witness_policy_public_inputs_are_detached_before_comparison_and_write(
+    tmp_path,
+):
+    path = tmp_path / "state" / "evidence_witness_policy.json"
+    key_ids = HostileList([HostileText("sha256:" + "1" * 64)])
+    policy = EvidenceWitnessPolicy(
+        trusted_key_ids=key_ids,
+        trusted_key_paths=(),
+        max_unwitnessed_records=2,
+    )
+
+    stored = EvidenceWitnessPolicyStore(path).record(
+        HostileText("sha256:" + "a" * 64),
+        policy,
+    )
+
+    list.__setitem__(key_ids, 0, "sha256:" + "f" * 64)
+    assert stored.profile_hash == "sha256:" + "a" * 64
+    assert stored.trusted_key_ids == ("sha256:" + "1" * 64,)
+    assert EvidenceWitnessPolicyStore(path).get() == stored
+
+
+def test_witness_policy_rejects_noncanonical_input_without_secret_echo():
+    class SecretValue:
+        def __str__(self):
+            raise AssertionError("secret rendered")
+
+        def __repr__(self):
+            raise AssertionError("secret represented")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("secret copied")
+
+    with pytest.raises(
+        EvidenceWitnessError, match="exceeds bounded canonical state"
+    ) as failure:
+        EvidenceWitnessPolicyState.from_dict(HostileDict({"secret": SecretValue()}))
+
+    assert "SecretValue" not in str(failure.value)
+
+
+def test_witness_policy_store_uses_one_explicit_read_write_ceiling(
+    tmp_path, monkeypatch
+):
+    read_limits = []
+    write_limits = []
+    original_read = witness_module.read_json
+    original_write = witness_module.atomic_write_json
+
+    def observed_read(path, *, max_bytes=None):
+        read_limits.append(max_bytes)
+        return original_read(path, max_bytes=max_bytes)
+
+    def observed_write(path, data, *, max_bytes=None):
+        write_limits.append(max_bytes)
+        return original_write(path, data, max_bytes=max_bytes)
+
+    monkeypatch.setattr(witness_module, "read_json", observed_read)
+    monkeypatch.setattr(witness_module, "atomic_write_json", observed_write)
+    store = EvidenceWitnessPolicyStore(
+        tmp_path / "state" / "evidence_witness_policy.json"
+    )
+    store.record("sha256:" + "a" * 64, None)
+    assert store.get() is not None
+
+    assert read_limits
+    assert write_limits
+    assert set(read_limits) == {witness_module._MAX_POLICY_STATE_BYTES}
+    assert set(write_limits) == {witness_module._MAX_POLICY_STATE_BYTES}
+
+
+def test_witness_policy_refuses_unrecoverable_publication_without_replacement(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "state" / "evidence_witness_policy.json"
+    store = EvidenceWitnessPolicyStore(path)
+    current = store.record("sha256:" + "a" * 64, None)
+    prior = path.read_bytes()
+    original_limit = witness_module._MAX_POLICY_STATE_BYTES
+    monkeypatch.setattr(witness_module, "_MAX_POLICY_STATE_BYTES", 1)
+
+    with pytest.raises(EvidenceWitnessError, match="bounded canonical state"):
+        store._write(current)
+
+    assert path.read_bytes() == prior
+    monkeypatch.setattr(
+        witness_module,
+        "_MAX_POLICY_STATE_BYTES",
+        original_limit,
+    )
+    assert store.get() == current
+
+
 def test_required_witness_is_profile_bound_and_visible_read_only(tmp_path):
     state, workspace, _harness, _private, public, witness = _enroll_required_witness(
         tmp_path

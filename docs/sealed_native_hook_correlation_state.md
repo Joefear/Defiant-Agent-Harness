@@ -49,7 +49,7 @@ being repeatedly reconstructed from a live mapping.
 
 ## Command boundary
 
-Command Core schema `0.58.0` publishes only the static
+Command Core schema `0.59.0` publishes only the static
 `hook_execution_state_bytes` ceiling and
 `sealed_native_hook_correlation_state: true` build posture. Command Center
 renders those static facts. Neither surface receives hook execution snapshots,

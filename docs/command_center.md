@@ -81,6 +81,8 @@ Press `Ctrl+C` in the serving terminal to stop it.
   and symmetric bounded capture, publication, and recovery reads;
 - detached bounded evidence-head checkpoint state with symmetric capture,
   recovery-read, and publication limits;
+- detached bounded evidence-witness policy state with symmetric capture,
+  recovery-read, and publication limits;
 - aggregate canonical mapping sort-work preflight before encoder sorting;
 - complete canonical-value byte preflight before sorting or encoding;
 - the fixed pre-encoding canonical-number token ceiling;
@@ -104,7 +106,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.58.0`. The browser cannot raise, disable, or replace them and never receives
+`0.59.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -129,6 +131,11 @@ checkpoint-snapshot posture. The browser continues to receive the existing
 sanitized checkpoint position and verification projection. It gains no
 checkpoint write, advance, repair, acceptance, profile-rebind, evidence append,
 or other authority endpoint.
+
+v0.65 adds only the static evidence-witness-policy-state byte ceiling and
+validated policy-snapshot posture. Existing witness cards remain sanitized.
+The browser gains no witness upload, signing, acceptance, trust-key, lag-policy,
+profile-rotation, repair, or other mutation endpoint.
 
 ## Read-only boundary
 

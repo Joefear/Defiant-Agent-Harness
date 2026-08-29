@@ -21,7 +21,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from .authority_profile import AuthorityProfileState
-from .contracts import canonical_json, sha256_of, utc_now
+from .contracts import (
+    authority_snapshot_and_sha256_of,
+    canonical_json,
+    sha256_of,
+    utc_now,
+)
 from .evidence.store import EvidenceStore
 from .evidence.signing import public_key_id
 from .evidence_head import (
@@ -30,6 +35,7 @@ from .evidence_head import (
     assess_evidence_head,
 )
 from .limits import (
+    MAX_EVIDENCE_WITNESS_POLICY_STATE_BYTES,
     MAX_TRUSTED_PUBLIC_KEYS,
     MAX_TRUSTED_PUBLIC_KEY_BYTES,
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
@@ -89,6 +95,7 @@ _POLICY_FIELDS_V1 = {
 }
 _POLICY_FIELDS = _POLICY_FIELDS_V1 | {"max_unwitnessed_records"}
 _MAX_DOCUMENT_BYTES = 256 * 1024
+_MAX_POLICY_STATE_BYTES = MAX_EVIDENCE_WITNESS_POLICY_STATE_BYTES
 _MAX_KEY_BYTES = 64 * 1024
 _MAX_SIGNER_CHARS = 256
 _MAX_NOTE_CHARS = 4096
@@ -137,7 +144,7 @@ class EvidenceWitnessPolicy:
         return result
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class EvidenceWitnessPolicyState:
     profile_hash: str
     mode: str
@@ -145,12 +152,41 @@ class EvidenceWitnessPolicyState:
     max_unwitnessed_records: int | None
     recorded_at: str
 
+    def __init__(
+        self,
+        profile_hash: str,
+        mode: str,
+        trusted_key_ids: Iterable[str],
+        max_unwitnessed_records: int | None,
+        recorded_at: str,
+    ):
+        state = self._from_snapshot(
+            _witness_policy_snapshot(
+                {
+                    "schema_name": POLICY_SCHEMA,
+                    "schema_version": POLICY_VERSION,
+                    "profile_hash": profile_hash,
+                    "mode": mode,
+                    "trusted_key_ids": trusted_key_ids,
+                    "max_unwitnessed_records": max_unwitnessed_records,
+                    "recorded_at": recorded_at,
+                }
+            )
+        )
+        self._install(
+            profile_hash=state.profile_hash,
+            mode=state.mode,
+            trusted_key_ids=state.trusted_key_ids,
+            max_unwitnessed_records=state.max_unwitnessed_records,
+            recorded_at=state.recorded_at,
+        )
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "EvidenceWitnessPolicyState":
-        if not isinstance(raw, dict):
-            raise EvidenceWitnessError(
-                "evidence witness policy fields do not match schema"
-            )
+        return cls._from_snapshot(_witness_policy_snapshot(raw))
+
+    @classmethod
+    def _from_snapshot(cls, raw: dict[str, Any]) -> "EvidenceWitnessPolicyState":
         if raw.get("schema_name") != POLICY_SCHEMA:
             raise EvidenceWitnessError("unsupported evidence witness policy schema")
         version = raw.get("schema_version")
@@ -166,7 +202,7 @@ class EvidenceWitnessPolicyState:
         if mode not in {WITNESS_MODE, WITNESS_NOT_CONFIGURED}:
             raise EvidenceWitnessError("unsupported evidence witness policy mode")
         values = raw.get("trusted_key_ids")
-        if not isinstance(values, list) or any(
+        if type(values) not in {list, tuple} or any(
             not isinstance(value, str) for value in values
         ):
             raise EvidenceWitnessError("trusted_key_ids must be an array")
@@ -191,13 +227,34 @@ class EvidenceWitnessPolicyState:
                 "unconfigured witness policy cannot set a witness lag bound"
             )
         recorded_at = _timestamp(raw.get("recorded_at"), "recorded_at")
-        return cls(
-            profile_hash,
-            mode,
-            key_ids,
-            max_unwitnessed_records,
-            recorded_at,
+        state = object.__new__(cls)
+        state._install(
+            profile_hash=profile_hash,
+            mode=mode,
+            trusted_key_ids=key_ids,
+            max_unwitnessed_records=max_unwitnessed_records,
+            recorded_at=recorded_at,
         )
+        return state
+
+    def _install(
+        self,
+        *,
+        profile_hash: str,
+        mode: str,
+        trusted_key_ids: tuple[str, ...],
+        max_unwitnessed_records: int | None,
+        recorded_at: str,
+    ) -> None:
+        object.__setattr__(self, "profile_hash", profile_hash)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "trusted_key_ids", trusted_key_ids)
+        object.__setattr__(
+            self,
+            "max_unwitnessed_records",
+            max_unwitnessed_records,
+        )
+        object.__setattr__(self, "recorded_at", recorded_at)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -273,9 +330,9 @@ class EvidenceWitnessPolicyStore:
             current = inspect_state_file(self.path)
             if current is None:
                 return None
-            if current.st_size > _MAX_DOCUMENT_BYTES:
-                raise EvidenceWitnessError("evidence witness policy is too large")
-            return EvidenceWitnessPolicyState.from_dict(read_json(self.path))
+            return EvidenceWitnessPolicyState.from_dict(
+                read_json(self.path, max_bytes=_MAX_POLICY_STATE_BYTES)
+            )
         except EvidenceWitnessError:
             raise
         except (OSError, PersistenceError, RuntimeError) as exc:
@@ -286,38 +343,50 @@ class EvidenceWitnessPolicyStore:
         profile_hash: str,
         policy: EvidenceWitnessPolicy | None,
     ) -> EvidenceWitnessPolicyState:
-        profile_hash = _hash(profile_hash, "profile_hash")
+        mode = WITNESS_MODE if policy is not None else WITNESS_NOT_CONFIGURED
+        candidate = EvidenceWitnessPolicyState(
+            profile_hash=profile_hash,
+            mode=mode,
+            trusted_key_ids=(policy.trusted_key_ids if policy is not None else ()),
+            max_unwitnessed_records=(
+                policy.max_unwitnessed_records if policy is not None else None
+            ),
+            recorded_at=utc_now(),
+        )
         try:
             with exclusive_file_lock(self.path):
                 current = self.get()
-                mode = WITNESS_MODE if policy is not None else WITNESS_NOT_CONFIGURED
-                key_ids = policy.trusted_key_ids if policy is not None else ()
-                max_unwitnessed_records = (
-                    policy.max_unwitnessed_records if policy is not None else None
-                )
-                if current is not None and current.profile_hash == profile_hash:
+                if (
+                    current is not None
+                    and current.profile_hash == candidate.profile_hash
+                ):
                     if (
-                        current.mode != mode
-                        or current.trusted_key_ids != key_ids
-                        or current.max_unwitnessed_records != max_unwitnessed_records
+                        current.mode != candidate.mode
+                        or current.trusted_key_ids != candidate.trusted_key_ids
+                        or current.max_unwitnessed_records
+                        != candidate.max_unwitnessed_records
                     ):
                         raise EvidenceWitnessError(
                             "evidence witness policy changed within one authority profile"
                         )
                     return current
-                state = EvidenceWitnessPolicyState(
-                    profile_hash=profile_hash,
-                    mode=mode,
-                    trusted_key_ids=key_ids,
-                    max_unwitnessed_records=max_unwitnessed_records,
-                    recorded_at=utc_now(),
-                )
-                atomic_write_json(self.path, state.to_dict())
-                return state
+                return self._write(candidate)
         except EvidenceWitnessError:
             raise
         except (OSError, PersistenceError) as exc:
             raise EvidenceWitnessError(_error_detail(exc)) from exc
+
+    def _write(
+        self,
+        state: EvidenceWitnessPolicyState,
+    ) -> EvidenceWitnessPolicyState:
+        document = EvidenceWitnessPolicyState.from_dict(state.to_dict())
+        atomic_write_json(
+            self.path,
+            document.to_dict(),
+            max_bytes=_MAX_POLICY_STATE_BYTES,
+        )
+        return document
 
 
 def validate_external_witness_paths(
@@ -772,3 +841,18 @@ def _error_detail(exc: BaseException) -> str:
     if isinstance(exc, OSError):
         return exc.strerror or exc.__class__.__name__
     return str(exc)
+
+
+def _witness_policy_snapshot(value: Any) -> dict[str, Any]:
+    try:
+        snapshot, _ = authority_snapshot_and_sha256_of(
+            value,
+            maximum_canonical_bytes=_MAX_POLICY_STATE_BYTES,
+        )
+    except ValueError as exc:
+        raise EvidenceWitnessError(
+            "evidence witness policy exceeds bounded canonical state"
+        ) from exc
+    if type(snapshot) is not dict:
+        raise EvidenceWitnessError("evidence witness policy fields do not match schema")
+    return snapshot

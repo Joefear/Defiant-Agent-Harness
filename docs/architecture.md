@@ -847,6 +847,15 @@ the prior checkpoint remains intact if a proposed publication is refused. The
 forward-recovery, rollback, divergence, and profile-rebind rules do not change.
 See `validated_evidence_head_snapshot.md`.
 
+v0.65 makes `evidence_witness_policy.json` a matching bounded ownership root.
+One detached built-in observation drives schema compatibility, profile and
+mode checks, trusted key-ID ordering, optional lag validation, retention, and
+publication. The established 256 KiB allowance now governs canonical capture,
+descriptor-backed recovery reads, and atomic replacement. Failed publication
+preserves the prior policy, v0.1 observations remain readable, and the external
+signed witness itself remains outside harness state under its existing
+verification contract. See `validated_evidence_witness_policy_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
