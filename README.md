@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.66.
+logs. A full trusted-memory/DKE system is not part of v0.67.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.66 is
+## What v0.67 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -605,6 +605,16 @@ projection immediately before atomic replacement. Durable schemas, rotation
 semantics, signer requirements, and the read-only Command Center boundary do
 not change.
 
+v0.67 makes the sanitized runtime-artifact assurance record one detached,
+bounded durable-state observation. Profile binding, assurance mode, bundle
+hash, artifact and dependency counts, executable-pin posture, and verification
+time validate and persist from exact built-in values. Canonical capture,
+opened-stream recovery, and atomic publication now share one explicit 64 KiB
+ceiling; the candidate is captured before the state lock and revalidated before
+replacement. Legacy `0.1.0` records remain readable and upgrade on write.
+Executable and dependency verification, profile rotation, and the strictly
+read-only Command Center boundary do not change.
+
 ## Install
 
 ```bash
@@ -941,7 +951,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.66 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.67 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -1003,6 +1013,8 @@ targeting, payload, and completion,
 fixed bounded and sealed authority-profile and operator-trust continuity state
 with defensive projections, descriptor-backed recovery reads, detached
 publication revalidation, and symmetric I/O limits,
+fixed detached and validated runtime-artifact assurance state with exact scalar
+ownership and symmetric 64 KiB capture, recovery-read, and publication limits,
 fixed bounded and sealed native-hook authorization/completion correlation state
 with defensive projections and copy-on-write transitions,
 fixed bounded and sealed approval records and held authority snapshots with
@@ -1028,6 +1040,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
 `docs/runtime_artifact_integrity.md`,
+`docs/validated_runtime_artifact_state_snapshot.md`,
 `docs/launch_envelope_integrity.md`,
 `docs/state_storage_integrity.md`,
 `docs/control_plane_isolation.md`,

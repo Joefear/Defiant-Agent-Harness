@@ -866,6 +866,17 @@ recaptures and revalidates a detached state projection. State schemas,
 generation and signature rules, rotation behavior, and Command Center's
 read-only boundary remain unchanged. See `bounded_authority_continuity_io.md`.
 
+v0.67 makes `runtime_artifacts.json` one bounded ownership root. One detached
+canonical built-in observation drives schema compatibility, profile binding,
+assurance mode, bundle hash, artifact and dependency counts, executable-pin
+posture, verification time, conflict comparison, and publication. The state
+candidate is captured before locking and revalidated before replacement; its
+explicit 64 KiB ceiling now governs canonical capture, descriptor-backed
+recovery reads, and atomic publication. Existing v0.1 state remains readable
+and upgrades on write. Artifact hashing, dependency inventory, pre-spawn
+reverification, profile rotation, and Command Center's read-only boundary are
+unchanged. See `validated_runtime_artifact_state_snapshot.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

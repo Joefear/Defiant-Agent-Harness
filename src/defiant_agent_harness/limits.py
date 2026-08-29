@@ -50,6 +50,11 @@ MAX_EVIDENCE_HEAD_STATE_BYTES = 64 * 1024
 # atomic publication under the same established document ceiling.
 MAX_EVIDENCE_WITNESS_POLICY_STATE_BYTES = 256 * 1024
 
+# Runtime-artifact assurance decides which local executable and dependency
+# bytes belong to one authority profile. Keep its canonical snapshot, recovery
+# read, and atomic publication under the same narrow state ceiling.
+MAX_RUNTIME_ARTIFACT_STATE_BYTES = 64 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

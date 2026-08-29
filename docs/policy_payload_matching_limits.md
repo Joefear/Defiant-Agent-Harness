@@ -44,7 +44,7 @@ policy version and ruleset hash remain attached so the event is attributable.
 
 ## Read-only projection
 
-Command Core schema `0.60.0` publishes the four ceilings under
+Command Core schema `0.61.0` publishes the four ceilings under
 `resource_limits` and reports `policy_payload_match_preflight: true` in the
 static authority posture. Command Center renders those values. Neither surface
 can change a limit, exempt an action, upload policy, approve, or execute.

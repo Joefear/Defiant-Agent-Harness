@@ -108,6 +108,15 @@ acceptance succeed. A first pinned startup records only sanitized assurance in
 restarts refresh its last-verification time. The state file contains no paths
 or individual artifact digests and must match the active profile hash.
 
+v0.67 captures that state as one detached canonical built-in observation before
+schema and field validation. Public assurance scalars are captured into the
+candidate before locking; conflict comparison and publication consume that
+same owned state. The explicit 64 KiB ceiling applies symmetrically to canonical
+capture, the opened recovery stream, and atomic publication, and the writer
+revalidates a fresh detached projection before replacement. Existing `0.1.0`
+state remains readable and upgrades to `0.2.0` on write. See
+`validated_runtime_artifact_state_snapshot.md`.
+
 ## Planned updates
 
 A legitimate executable or declared support-file update changes the bundle and

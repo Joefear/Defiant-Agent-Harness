@@ -50,6 +50,7 @@ from ..limits import (
     MAX_MCP_MESSAGE_BYTES,
     MAX_OPERATION_JOURNAL_BYTES,
     MAX_OPERATOR_TRUST_STATE_BYTES,
+    MAX_RUNTIME_ARTIFACT_STATE_BYTES,
     MAX_POLICY_GLOB_MATCH_WORK_UNITS,
     MAX_POLICY_KNOWN_TOOLS,
     MAX_POLICY_MATCH_PAYLOAD_CHARACTERS,
@@ -102,7 +103,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.60.0"
+SNAPSHOT_VERSION = "0.61.0"
 
 
 class CommandError(RuntimeError):
@@ -263,6 +264,7 @@ class CommandCore:
                         MAX_AUTHORITY_PROFILE_STATE_BYTES
                     ),
                     "operator_trust_state_bytes": MAX_OPERATOR_TRUST_STATE_BYTES,
+                    "runtime_artifact_state_bytes": MAX_RUNTIME_ARTIFACT_STATE_BYTES,
                     "json_lexical_tokens": MAX_JSON_LEXICAL_TOKENS,
                     "json_nesting_depth": MAX_JSON_NESTING_DEPTH,
                     "json_number_token_characters": MAX_JSON_NUMBER_TOKEN_CHARACTERS,
@@ -355,6 +357,7 @@ class CommandCore:
                     "validated_native_hook_event_snapshot": True,
                     "sealed_authority_continuity_state": True,
                     "bounded_authority_continuity_io": True,
+                    "validated_runtime_artifact_state_snapshot": True,
                     "sealed_native_hook_correlation_state": True,
                     "sealed_approval_record_state": True,
                     "validated_budget_ledger_snapshot": True,
