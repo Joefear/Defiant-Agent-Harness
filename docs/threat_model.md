@@ -850,6 +850,19 @@ read, and atomic write. This does not bound the complete evidence history,
 weaken rollback or divergence refusal, protect against privileged consistent
 replacement of both files, or turn Python into an OS sandbox.
 
+**External-witness policy validation observed caller-owned state.** Through
+v0.64, the durable policy store performed a separate size stat before an
+implicitly broader JSON read, traversed the resulting live mapping and key-ID
+list directly, retained accepted scalar subclasses, and published without its
+256 KiB recovery ceiling. A caller hook or mutation could therefore make the
+profile, required mode, trusted key set, lag limit, timestamp, comparison, and
+publication disagree. v0.65 captures one bounded canonical built-in candidate
+before comparison, retains exact immutable values, and applies the explicit
+256 KiB ceiling to capture, descriptor-backed reads, and atomic writes. This
+does not move external witnesses or keys into state, weaken signature or
+rollback checks, distribute trust, protect against privileged host compromise,
+or turn Python into an OS sandbox.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

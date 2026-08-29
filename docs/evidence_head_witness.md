@@ -103,6 +103,13 @@ existing v0.1 observations as unbounded. A normal owning startup records an
 explicit `not_configured` posture for migration; operator-control paths cannot
 initialize a missing observation.
 
+v0.65 captures that durable policy state once as exact canonical built-ins
+before validation or comparison. Its established 256 KiB allowance now applies
+symmetrically to canonical capture, the descriptor-backed recovery read, and
+atomic publication. A refused candidate leaves the prior policy unchanged.
+The external witness document remains governed by its separate existing input
+and output bound. See `validated_evidence_witness_policy_snapshot.md`.
+
 ## Read-only operations
 
 Doctor, Command Core, and Command Center accept the same global external-input

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.64.
+logs. A full trusted-memory/DKE system is not part of v0.65.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.64 is
+## What v0.65 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -588,6 +588,14 @@ prior checkpoint, and public hash inputs cannot retain caller-defined scalar
 hooks. Forward-only crash recovery, rollback and divergence refusal, and the
 strictly read-only Command Center boundary remain unchanged.
 
+v0.65 applies the same ownership and recoverability contract to the durable
+external-witness policy. Profile binding, required mode, trusted key IDs,
+optional unwitnessed-record lag, and time validate from one detached canonical
+observation; public policy inputs are captured before consistency checks. The
+same explicit 256 KiB ceiling governs capture, recovery reads, and atomic
+publication. Signed witness files remain external, and their cryptographic,
+rollback, divergence, and lag rules do not change.
+
 ## Install
 
 ```bash
@@ -924,7 +932,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.64 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.65 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -993,6 +1001,8 @@ fixed detached and validated budget-ledger snapshots with normalized accounting
 inputs and symmetric capture, recovery-read, and publication limits,
 fixed detached and validated evidence-head checkpoint snapshots with symmetric
 64 KiB capture, recovery-read, and publication limits,
+fixed detached and validated external-witness policy snapshots with symmetric
+256 KiB capture, recovery-read, and publication limits,
 fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
@@ -1004,6 +1014,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/authorization_reconciliation.md`, `docs/operation_journal.md`,
 `docs/validated_budget_ledger_snapshot.md`,
 `docs/validated_evidence_head_snapshot.md`,
+`docs/validated_evidence_witness_policy_snapshot.md`,
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
 `docs/runtime_artifact_integrity.md`,

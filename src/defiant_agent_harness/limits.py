@@ -45,6 +45,11 @@ MAX_BUDGET_STATE_BYTES = MAX_DURABLE_JSON_BYTES
 # publication under the same narrow ceiling.
 MAX_EVIDENCE_HEAD_STATE_BYTES = 64 * 1024
 
+# The durable external-witness policy binds rollback assurance requirements to
+# one authority profile. Keep its canonical snapshot, recovery read, and
+# atomic publication under the same established document ceiling.
+MAX_EVIDENCE_WITNESS_POLICY_STATE_BYTES = 256 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String
