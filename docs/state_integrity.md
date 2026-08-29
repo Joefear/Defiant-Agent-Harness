@@ -33,6 +33,9 @@ sanitized posture or a critical `state_storage_invalid` issue.
 v0.71 audits `authority_publication.json`. A valid active exact-replay intent is
 a visible recovery condition; malformed publication state or disagreement
 with the active authority profile is critical.
+v0.72 independently reconstructs every completed publication manifest from its
+durable dependencies. Missing, invalid, profile-mismatched, added, removed, or
+changed observations are critical without requiring an owning runtime startup.
 
 Run it without initializing or modifying the state directory:
 
@@ -47,7 +50,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.18.0` and exits
+The command emits schema `defiant.state_integrity` version `0.19.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -95,7 +98,8 @@ The auditor verifies:
   hashes, bounded timestamps, pending-rotation binding, optional trusted
   signature, and candidate match when the caller supplies a runtime hash;
 - bounded authority-publication intent/checkpoint structure, exact binding to
-  the active profile generation, and explicit interrupted-publication state;
+  the active profile generation, explicit interrupted-publication state, and
+  completed-manifest agreement with all durable dependent observations;
 - sanitized runtime-artifact assurance structure and exact binding to the
   active authority-profile hash;
 - sanitized launch-envelope structure, bounded counts and hashes, and exact
@@ -135,7 +139,7 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
 above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
-version `0.18.0`. Diagnostics report the boundary and ceiling without echoing
+version `0.19.0`. Diagnostics report the boundary and ceiling without echoing
 record contents or absolute state paths; no read-only surface truncates or
 repairs the offending file.
 

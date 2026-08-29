@@ -593,7 +593,7 @@ def test_required_witness_cannot_be_omitted_from_authority_or_operator_control(
     )
 
 
-def test_missing_policy_observation_blocks_operator_control_but_not_read_only(
+def test_missing_completed_publication_policy_is_read_only_unsafe(
     tmp_path,
 ):
     state = tmp_path / "state"
@@ -603,8 +603,12 @@ def test_missing_policy_observation_blocks_operator_control_but_not_read_only(
     policy_path.unlink()
 
     report = StateIntegrityAuditor(state).audit()
-    assert report.safe_to_execute is True
-    assert report.recovery_required is True
+    assert report.safe_to_execute is False
+    assert report.status == "unsafe"
+    assert any(
+        issue.code == "authority_publication_dependency_invalid"
+        for issue in report.issues
+    )
     assert not policy_path.exists()
     with pytest.raises(EvidenceWitnessError, match="not initialized"):
         build_harness(

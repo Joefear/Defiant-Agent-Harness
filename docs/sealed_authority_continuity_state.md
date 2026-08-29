@@ -42,7 +42,7 @@ existing state remains readable.
 
 ## Read-only projection
 
-Command Core schema `0.65.0` publishes `authority_profile_state_bytes` and
+Command Core schema `0.66.0` publishes `authority_profile_state_bytes` and
 `operator_trust_state_bytes` under `resource_limits` and reports
 `sealed_authority_continuity_state: true` and
 `bounded_authority_continuity_io: true` under `authority_configuration`.

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.71.
+logs. A full trusted-memory/DKE system is not part of v0.72.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.71 is
+## What v0.72 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -654,6 +654,13 @@ dependent-store disagreement is treated as possible tampering and is never
 silently overwritten. Doctor, Command Core, and Command Center expose the
 sanitized recovery state, while Command Center remains strictly read-only.
 
+v0.72 makes that completed publication independently verifiable from read-only
+surfaces. Doctor and Command Core reconstruct the same bounded manifest from
+the durable dependent stores, require every observation to bind the checkpoint
+profile, and report missing, invalid, added, removed, or changed authority state
+as critical. Command Center displays only the sanitized verification result and
+gains no replay, acceptance, repair, or mutation path.
+
 ## Install
 
 ```bash
@@ -990,7 +997,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.71 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.72 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -998,6 +1005,7 @@ known-result completion recovery, deterministic local operation recovery,
 cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
 crash-safe exact-replay publication of profile-bound authority observations,
+read-only reconstruction and verification of completed authority manifests,
 content-addressed local runtime artifact assurance with opt-in closed declared
 dependency roots,
 restricted and authority-bound local process launch envelopes,
@@ -1086,6 +1094,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/known_result_recovery.md`, `docs/authority_lock.md`,
 `docs/authority_profile.md`,
 `docs/authority_publication_recovery.md`,
+`docs/authority_publication_manifest_verification.md`,
 `docs/runtime_artifact_integrity.md`,
 `docs/validated_runtime_artifact_state_snapshot.md`,
 `docs/launch_envelope_integrity.md`,

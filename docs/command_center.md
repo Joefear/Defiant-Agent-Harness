@@ -106,7 +106,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.65.0`. The browser cannot raise, disable, or replace them and never receives
+`0.66.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -176,6 +176,11 @@ independent 64 KiB state and manifest ceilings, and static crash-safe/snapshot
 posture. The browser receives no raw manifest, store contents, paths, prepared
 authority inputs, or prepare, replay, complete, accept, repair, rotation,
 approval, execution, or other mutation endpoint.
+
+v0.72 adds only the independently reconstructed completed-manifest verification
+status and static verification posture. The dashboard still receives no raw
+manifest or dependent state and cannot acknowledge, replay, complete, repair,
+or accept a mismatch.
 
 ## Read-only boundary
 

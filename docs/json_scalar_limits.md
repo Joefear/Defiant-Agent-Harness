@@ -45,7 +45,7 @@ documents, signed evidence exports, and external evidence witnesses.
 
 ## Read-only projection
 
-Command Core schema `0.65.0` exposes `strict_json_v3`, both scalar ceilings,
+Command Core schema `0.66.0` exposes `strict_json_v3`, both scalar ceilings,
 scalar-preflight posture, and the existing structural and representation
 controls. Command Center renders the static values with the other fixed limits.
 Neither surface accepts JSON, changes a ceiling, retries rejected input,
