@@ -231,6 +231,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"crash_safe_authority_publication" in javascript
     assert b"validated_authority_publication_snapshot" in javascript
     assert b"verified_authority_publication_manifest" in javascript
+    assert b"verified_active_authority_publication_phase" in javascript
+    assert b"prepared, applying, or ready to complete" in javascript
     assert b"authority continuity recovery and publication" in javascript
     assert b"runtime_artifact_state_bytes" in javascript
     assert b"validated_runtime_artifact_state_snapshot" in javascript

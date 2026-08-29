@@ -225,6 +225,9 @@ function renderResourceLimits(limits, configuration) {
     const authorityPublicationManifest = configuration.verified_authority_publication_manifest
       ? "completed authority publication manifests are recomputed from durable dependent state"
       : "authority publication manifest verification unavailable";
+    const activeAuthorityPublication = configuration.verified_active_authority_publication_phase
+      ? "active authority publication recovery is classified as prepared, applying, or ready to complete from durable state"
+      : "active authority publication phase verification unavailable";
     const runtimeArtifactState = configuration.validated_runtime_artifact_state_snapshot
       ? "runtime artifact assurance validation and publication use one detached bounded state snapshot with symmetric I/O limits"
       : "runtime artifact state snapshot integrity unverified";
@@ -256,7 +259,7 @@ function renderResourceLimits(limits, configuration) {
       ? "evidence-witness policy validation and publication use one detached bounded canonical state snapshot with symmetric I/O limits"
       : "evidence-witness policy snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationManifest}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationManifest}; ${activeAuthorityPublication}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
@@ -315,7 +318,7 @@ function renderStateIntegrity(integrity) {
   const publication = integrity.stores.authority_publication;
   elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
     ? publication && publication.state === "recovery_required"
-      ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay. This dashboard remains read-only.`
+      ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay (${label(publication.verification)}). This dashboard remains read-only.`
       : journal && journal.active
       ? `Prepared ${label(journal.kind)} operation ${shortId(journal.operation_id)} requires authority recovery. This dashboard remains read-only.`
       : `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`

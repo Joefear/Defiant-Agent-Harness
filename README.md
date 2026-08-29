@@ -661,6 +661,14 @@ profile, and report missing, invalid, added, removed, or changed authority state
 as critical. Command Center displays only the sanitized verification result and
 gains no replay, acceptance, repair, or mutation path.
 
+v0.73 verifies the active side of the crash protocol. Read-only diagnostics
+classify an exact intent as `prepared`, `applying`, or `ready_to_complete` from
+the durable profile transition, prior checkpoint, dependency profile bindings,
+and final reconstructed manifest. Expected mixed generations during a proven
+partial rotation remain recoverable; unrelated profiles, missing prior stores,
+or a final manifest contradiction are critical. Command Center exposes only the
+sanitized phase and remains unable to replay or complete publication.
+
 ## Install
 
 ```bash

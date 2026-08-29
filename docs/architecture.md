@@ -938,6 +938,19 @@ critical before another owning runtime starts. Active partial publication
 remains a recovery state that read-only and operator-control paths cannot
 complete. See `authority_publication_manifest_verification.md`.
 
+## v0.73 active-publication phase verification
+
+Read-only diagnostics now reconcile an active publication against the durable
+profile state machine and dependent-store generation bindings. A target that
+has not activated is `prepared`; an activated target whose evidence head still
+binds the prior generation is `applying`; and a target whose final reconstructed
+manifest matches is `ready_to_complete`. During a proven partial rotation,
+exact prior-generation dependencies are recovery state instead of false
+tampering alarms. A missing prior dependency, unrelated profile, invalid staged
+transition, or final manifest mismatch is critical. Only the owning runtime can
+replay or complete the intent. See
+`active_authority_publication_verification.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
