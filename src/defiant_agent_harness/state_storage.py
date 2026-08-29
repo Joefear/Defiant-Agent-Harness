@@ -50,6 +50,7 @@ _MAX_STATE_BYTES = MAX_STATE_STORAGE_STATE_BYTES
 KNOWN_STATE_FILENAMES = (
     "approvals.json",
     "authority.lock",
+    "authority_publication.json",
     "authority_profile.json",
     "budget.json",
     "control_plane_isolation.json",

@@ -17,6 +17,8 @@ from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
+    MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES,
+    MAX_AUTHORITY_PUBLICATION_STATE_BYTES,
     MAX_AUTHORITY_PROFILE_STATE_BYTES,
     MAX_POLICY_CONTEXT_CHARACTERS,
     MAX_POLICY_CONTEXT_ENTRIES,
@@ -107,7 +109,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.64.0"
+SNAPSHOT_VERSION = "0.65.0"
 
 
 class CommandError(RuntimeError):
@@ -186,6 +188,9 @@ class CommandCore:
                 "state_integrity": audit_payload,
                 "operator_trust": audit_payload["stores"]["operator_trust"],
                 "authority_profile": audit_payload["stores"]["authority_profile"],
+                "authority_publication": audit_payload["stores"][
+                    "authority_publication"
+                ],
                 "state_storage": audit_payload["stores"]["state_storage"],
                 "control_plane_isolation": audit_payload["stores"][
                     "control_plane_isolation"
@@ -266,6 +271,12 @@ class CommandCore:
                     "operation_journal_bytes": MAX_OPERATION_JOURNAL_BYTES,
                     "authority_profile_state_bytes": (
                         MAX_AUTHORITY_PROFILE_STATE_BYTES
+                    ),
+                    "authority_publication_state_bytes": (
+                        MAX_AUTHORITY_PUBLICATION_STATE_BYTES
+                    ),
+                    "authority_publication_manifest_bytes": (
+                        MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES
                     ),
                     "operator_trust_state_bytes": MAX_OPERATOR_TRUST_STATE_BYTES,
                     "runtime_artifact_state_bytes": MAX_RUNTIME_ARTIFACT_STATE_BYTES,
@@ -369,6 +380,8 @@ class CommandCore:
                     "validated_native_hook_event_snapshot": True,
                     "sealed_authority_continuity_state": True,
                     "bounded_authority_continuity_io": True,
+                    "crash_safe_authority_publication": True,
+                    "validated_authority_publication_snapshot": True,
                     "validated_runtime_artifact_state_snapshot": True,
                     "validated_launch_envelope_state_snapshot": True,
                     "validated_state_storage_state_snapshot": True,

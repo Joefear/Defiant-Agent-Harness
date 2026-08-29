@@ -71,6 +71,12 @@ MAX_STATE_STORAGE_STATE_BYTES = 64 * 1024
 MAX_CONTROL_PLANE_ISOLATION_STATE_BYTES = 64 * 1024
 MAX_WORKSPACE_INTEGRITY_STATE_BYTES = 64 * 1024
 
+# Authority-profile activation publishes a coordinated set of dependent
+# assurance observations. Bound the write-ahead intent, completed checkpoint,
+# and exact candidate manifest under one compact recovery contract.
+MAX_AUTHORITY_PUBLICATION_STATE_BYTES = 64 * 1024
+MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES = 64 * 1024
+
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
 # value/container/string starts; punctuation inside strings is ignored. String

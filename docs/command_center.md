@@ -106,7 +106,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.64.0`. The browser cannot raise, disable, or replace them and never receives
+`0.65.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -170,6 +170,12 @@ cards remain sanitized to hashes, modes, counts, relationship, profile binding,
 and verification time. The browser receives no workspace or protected-root
 paths, identity tuples, raw state, containment rules, profile rotation,
 relocation, repair, or other mutation endpoint.
+
+v0.71 adds only the sanitized authority-publication recovery projection, its
+independent 64 KiB state and manifest ceilings, and static crash-safe/snapshot
+posture. The browser receives no raw manifest, store contents, paths, prepared
+authority inputs, or prepare, replay, complete, accept, repair, rotation,
+approval, execution, or other mutation endpoint.
 
 ## Read-only boundary
 

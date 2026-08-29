@@ -77,6 +77,32 @@ def test_first_startup_enrolls_complete_profile_and_exact_restart_matches(tmp_pa
     assert enrolled.pending_rotation is None
 
 
+def test_profile_preview_is_nonmutating_for_enrollment_and_rotation(tmp_path):
+    store = AuthorityProfileStore(tmp_path / "state" / "authority_profile.json")
+    first_hash = _hash("one")
+    first = store.preview_for_authority(first_hash, None)
+
+    assert first.profile_hash == first_hash
+    assert first.generation == 1
+    assert not store.path.exists()
+
+    store.resolve_for_authority(first_hash, None)
+    second_hash = _hash("two")
+    store.request_rotation(
+        second_hash,
+        operator="release-operator",
+        note="tested rollout",
+        operator_trust=None,
+    )
+    before = store.path.read_bytes()
+    second = store.preview_for_authority(second_hash, None)
+
+    assert second.profile_hash == second_hash
+    assert second.generation == 2
+    assert second.pending_rotation is None
+    assert store.path.read_bytes() == before
+
+
 def test_profile_state_owns_hostile_snapshot_and_defensive_projections(tmp_path):
     class HostileDict(dict):
         def __deepcopy__(self, memo):

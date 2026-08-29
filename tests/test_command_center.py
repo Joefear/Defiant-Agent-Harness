@@ -140,6 +140,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"evidence_head_state_bytes" in javascript
     assert b"evidence_witness_policy_state_bytes" in javascript
     assert b"authority_profile_state_bytes" in javascript
+    assert b"authority_publication_state_bytes" in javascript
+    assert b"authority_publication_manifest_bytes" in javascript
     assert b"operator_trust_state_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
     assert b"mcp_dependency_file_pins" in javascript
@@ -226,6 +228,8 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"native hook retry identity" in javascript
     assert b"sealed_authority_continuity_state" in javascript
     assert b"bounded_authority_continuity_io" in javascript
+    assert b"crash_safe_authority_publication" in javascript
+    assert b"validated_authority_publication_snapshot" in javascript
     assert b"authority continuity recovery and publication" in javascript
     assert b"runtime_artifact_state_bytes" in javascript
     assert b"validated_runtime_artifact_state_snapshot" in javascript

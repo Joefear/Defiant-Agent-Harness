@@ -30,6 +30,9 @@ witness and reports a distinct critical `evidence_witness_lag_exceeded` issue.
 v0.25 derives any durable strict Windows state ACL mode, rechecks the root and
 every known state file through the native read-only ACL inspector, and reports
 sanitized posture or a critical `state_storage_invalid` issue.
+v0.71 audits `authority_publication.json`. A valid active exact-replay intent is
+a visible recovery condition; malformed publication state or disagreement
+with the active authority profile is critical.
 
 Run it without initializing or modifying the state directory:
 
@@ -44,7 +47,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.17.0` and exits
+The command emits schema `defiant.state_integrity` version `0.18.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -66,6 +69,11 @@ otherwise use the v0.6 operator reconciliation procedure where an approval id
 exists, or the v0.12 authorization procedure where only sealed authorization
 evidence exists.
 
+An active authority-publication intent is also a recovery condition. Only the
+owning authority runtime with the exact profile generation and complete
+manifest may replay it. Read-only surfaces and operator-control entry points do
+not complete or bypass the publication.
+
 ## Critical invariants
 
 The auditor verifies:
@@ -86,6 +94,8 @@ The auditor verifies:
 - durable authority-profile enrollment, contiguous old/new generations and
   hashes, bounded timestamps, pending-rotation binding, optional trusted
   signature, and candidate match when the caller supplies a runtime hash;
+- bounded authority-publication intent/checkpoint structure, exact binding to
+  the active profile generation, and explicit interrupted-publication state;
 - sanitized runtime-artifact assurance structure and exact binding to the
   active authority-profile hash;
 - sanitized launch-envelope structure, bounded counts and hashes, and exact
@@ -125,7 +135,7 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
 above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
-version `0.17.0`. Diagnostics report the boundary and ceiling without echoing
+version `0.18.0`. Diagnostics report the boundary and ceiling without echoing
 record contents or absolute state paths; no read-only surface truncates or
 repairs the offending file.
 

@@ -342,45 +342,71 @@ class AuthorityProfileStore:
         prepare_storage_root(self.path.parent)
         with exclusive_file_lock(self.path):
             state = self.get()
-            if state is None:
-                state = AuthorityProfileState.enrolled(profile_hash)
-                _write_state(self.path, state)
-                return state
-            state.verify(operator_trust)
-            if hmac.compare_digest(state.profile_hash, profile_hash):
-                return state
-            pending = state.pending_rotation
-            if pending is not None and hmac.compare_digest(
-                pending["to_profile_hash"], profile_hash
-            ):
-                if operator_trust is not None and pending["attestation"] is None:
-                    raise AuthorityProfileError(
-                        "signed operator trust is enrolled; pending authority profile "
-                        "rotation must have a trusted signature"
-                    )
-                updated = AuthorityProfileState.from_dict(
-                    {
-                        **state.to_dict(),
-                        "generation": state.generation + 1,
-                        "updated_at": pending["requested_at"],
-                        "profile_hash": pending["to_profile_hash"],
-                        "transitions": [*state.transitions, pending],
-                        "pending_rotation": None,
-                    }
+            resolved = self._candidate_for_authority(
+                profile_hash,
+                operator_trust,
+                state,
+            )
+            if state is None or resolved is not state:
+                _write_state(self.path, resolved)
+            return resolved
+
+    def preview_for_authority(
+        self,
+        profile_hash: str,
+        operator_trust: OperatorTrustPolicy | None,
+    ) -> AuthorityProfileState:
+        """Validate and project enrollment/activation without writing state."""
+        profile_hash = _hash(profile_hash, "configured profile_hash")
+        self._require_enrolled_trust(operator_trust)
+        return self._candidate_for_authority(
+            profile_hash,
+            operator_trust,
+            self.get(),
+        )
+
+    def _candidate_for_authority(
+        self,
+        profile_hash: str,
+        operator_trust: OperatorTrustPolicy | None,
+        state: AuthorityProfileState | None,
+    ) -> AuthorityProfileState:
+        if state is None:
+            return AuthorityProfileState.enrolled(profile_hash)
+        state.verify(operator_trust)
+        if hmac.compare_digest(state.profile_hash, profile_hash):
+            return state
+        pending = state.pending_rotation
+        if pending is not None and hmac.compare_digest(
+            pending["to_profile_hash"], profile_hash
+        ):
+            if operator_trust is not None and pending["attestation"] is None:
+                raise AuthorityProfileError(
+                    "signed operator trust is enrolled; pending authority profile "
+                    "rotation must have a trusted signature"
                 )
-                updated.verify(operator_trust)
-                _write_state(self.path, updated)
-                return updated
-            pending_detail = (
-                f"; approved pending profile is {pending['to_profile_hash']}"
-                if pending is not None
-                else ""
+            updated = AuthorityProfileState.from_dict(
+                {
+                    **state.to_dict(),
+                    "generation": state.generation + 1,
+                    "updated_at": pending["requested_at"],
+                    "profile_hash": pending["to_profile_hash"],
+                    "transitions": [*state.transitions, pending],
+                    "pending_rotation": None,
+                }
             )
-            raise AuthorityProfileError(
-                "configured authority profile does not match durable enrollment: "
-                f"configured {profile_hash}, enrolled {state.profile_hash}"
-                f"{pending_detail}; authorize an explicit authority-profile rotation"
-            )
+            updated.verify(operator_trust)
+            return updated
+        pending_detail = (
+            f"; approved pending profile is {pending['to_profile_hash']}"
+            if pending is not None
+            else ""
+        )
+        raise AuthorityProfileError(
+            "configured authority profile does not match durable enrollment: "
+            f"configured {profile_hash}, enrolled {state.profile_hash}"
+            f"{pending_detail}; authorize an explicit authority-profile rotation"
+        )
 
     def request_rotation(
         self,

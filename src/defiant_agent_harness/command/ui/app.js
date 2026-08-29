@@ -153,6 +153,8 @@ function renderResourceLimits(limits, configuration) {
     `evidence witness policy state ${bytes(limits.evidence_witness_policy_state_bytes)}`,
     `operation journal ${bytes(limits.operation_journal_bytes)}`,
     `authority profile state ${bytes(limits.authority_profile_state_bytes)}`,
+    `authority publication state ${bytes(limits.authority_publication_state_bytes)}`,
+    `authority publication manifest ${bytes(limits.authority_publication_manifest_bytes)}`,
     `operator trust state ${bytes(limits.operator_trust_state_bytes)}`,
     `runtime artifact state ${bytes(limits.runtime_artifact_state_bytes)}`,
     `launch envelope state ${bytes(limits.launch_envelope_state_bytes)}`,
@@ -214,6 +216,12 @@ function renderResourceLimits(limits, configuration) {
     const authorityContinuityIo = configuration.bounded_authority_continuity_io
       ? "authority continuity recovery and publication use the same fixed byte ceilings over detached validated state"
       : "authority continuity I/O bounds unverified";
+    const authorityPublication = configuration.crash_safe_authority_publication
+      ? "profile-bound authority publication uses a durable exact-replay intent and completed checkpoint"
+      : "authority publication recovery unverified";
+    const authorityPublicationState = configuration.validated_authority_publication_snapshot
+      ? "authority publication state is bounded, detached, and schema validated"
+      : "authority publication state snapshot unverified";
     const runtimeArtifactState = configuration.validated_runtime_artifact_state_snapshot
       ? "runtime artifact assurance validation and publication use one detached bounded state snapshot with symmetric I/O limits"
       : "runtime artifact state snapshot integrity unverified";
@@ -245,7 +253,7 @@ function renderResourceLimits(limits, configuration) {
       ? "evidence-witness policy validation and publication use one detached bounded canonical state snapshot with symmetric I/O limits"
       : "evidence-witness policy snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
@@ -301,8 +309,11 @@ function renderStateIntegrity(integrity) {
     ? "State recovery required."
     : "State integrity alert.";
   const journal = integrity.stores.operation_journal;
+  const publication = integrity.stores.authority_publication;
   elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
-    ? journal && journal.active
+    ? publication && publication.state === "recovery_required"
+      ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay. This dashboard remains read-only.`
+      : journal && journal.active
       ? `Prepared ${label(journal.kind)} operation ${shortId(journal.operation_id)} requires authority recovery. This dashboard remains read-only.`
       : `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`
     : `${integer.format(critical)} critical ${critical === 1 ? "inconsistency" : "inconsistencies"} detected. Authority-bearing operations are blocked.`;
@@ -492,6 +503,7 @@ function renderBudget(budget) {
 
 function renderAuthorityProfile(
   profile,
+  publication,
   artifacts,
   launchEnvelope,
   stateStorage,
@@ -510,6 +522,9 @@ function renderAuthorityProfile(
   const profileDetail = profile.rotation_required
     ? `Rotation required · ${label(profile.pending_assurance)} · ${shortId(profile.pending_profile_hash)}`
     : `${label(profile.verification)} · ${hash}`;
+  const publicationDetail = publication
+    ? `${label(publication.state)} · ${label(publication.verification)} · ${shortId(publication.manifest_hash)}`
+    : "Not recorded";
   const artifactDetail = artifacts && artifacts.state === "closed"
     ? `${integer.format(artifacts.dependency_file_count)} dependency files in ${integer.format(artifacts.dependency_root_count)} closed roots · ${shortId(artifacts.bundle_hash)}`
     : artifacts && artifacts.state === "pinned"
@@ -541,7 +556,7 @@ function renderAuthorityProfile(
   const evidenceWitnessDetail = evidenceWitness
     ? `${label(evidenceWitness.state)} · ${label(evidenceWitness.verification)} · ${integer.format(evidenceWitness.witnessed_record_count || 0)} records · ${evidenceWitnessLag}`
     : "Not configured";
-  elements.profileDetail.textContent = `${profileDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
+  elements.profileDetail.textContent = `${profileDetail} · Publication ${publicationDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }
 
 function renderActivity(activity) {
@@ -585,6 +600,7 @@ function renderSnapshot(snapshot) {
   renderResourceLimits(snapshot.resource_limits, snapshot.authority_configuration);
   renderAuthorityProfile(
     snapshot.authority_profile,
+    snapshot.authority_publication,
     snapshot.runtime_artifacts,
     snapshot.launch_envelope,
     snapshot.state_storage,
