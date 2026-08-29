@@ -14,7 +14,11 @@ from .operator_identity import (
     OperatorIdentityError,
     OperatorTrustPolicy,
 )
-from .limits import MAX_OPERATOR_TRUST_STATE_BYTES, MAX_TRUSTED_PUBLIC_KEYS
+from .limits import (
+    MAX_APPROVAL_STATE_BYTES,
+    MAX_OPERATOR_TRUST_STATE_BYTES,
+    MAX_TRUSTED_PUBLIC_KEYS,
+)
 from .persistence import (
     atomic_write_json,
     exclusive_file_lock,
@@ -341,9 +345,9 @@ class OperatorTrustStateStore:
         if not self.path.exists():
             return None
         try:
-            if self.path.stat().st_size > _MAX_STATE_BYTES:
-                raise OperatorTrustStateError("operator trust state is too large")
-            return OperatorTrustState.from_dict(read_json(self.path))
+            return OperatorTrustState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except OperatorTrustStateError:
             raise
         except (OSError, RuntimeError) as exc:
@@ -407,7 +411,10 @@ class OperatorTrustStateStore:
         if not approvals_path.exists():
             return False
         try:
-            approvals = read_json(approvals_path)
+            approvals = read_json(
+                approvals_path,
+                max_bytes=MAX_APPROVAL_STATE_BYTES,
+            )
         except RuntimeError as exc:
             raise OperatorTrustStateError(str(exc)) from exc
         return any(
@@ -536,7 +543,8 @@ def _trust_state_snapshot(value: Any) -> dict[str, Any]:
 
 def _write_state(path: Path, state: OperatorTrustState) -> None:
     try:
-        atomic_write_json(path, state.to_dict(), max_bytes=_MAX_STATE_BYTES)
+        candidate = OperatorTrustState.from_dict(state.to_dict()).to_dict()
+        atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
     except RuntimeError as exc:
         raise OperatorTrustStateError(str(exc)) from exc
 

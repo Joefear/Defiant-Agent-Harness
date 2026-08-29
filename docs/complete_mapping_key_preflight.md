@@ -43,7 +43,7 @@ deterministically because the key-controlled surface is completed first.
 
 ## Read-only projection
 
-Command Core schema `0.59.0` reports
+Command Core schema `0.60.0` reports
 `complete_mapping_key_preflight: true` alongside the existing key-family,
 mapping-size, sort-work, canonical-value, string, and number posture. Command
 Center renders only static posture. It cannot submit input, alter limits,

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.65.
+logs. A full trusted-memory/DKE system is not part of v0.66.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.65 is
+## What v0.66 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -547,8 +547,8 @@ v0.60 seals the nested state retained by the durable authority profile and
 operator-trust roots. Each loaded state is validated from one bounded canonical
 snapshot, internal transition, binding, and attestation trees are recursively
 frozen, and public access returns fresh built-in projections. The existing
-1 MiB read ceilings now also govern canonical capture and atomic writes, so a
-successful rotation cannot strand the next restart with unreadable state.
+1 MiB file allowances also govern canonical capture and atomic writes, so a
+successful rotation cannot exceed the documented recovery contract.
 Command Center remains strictly read-only.
 
 v0.61 seals durable native-hook authorization/completion correlation state.
@@ -595,6 +595,15 @@ observation; public policy inputs are captured before consistency checks. The
 same explicit 256 KiB ceiling governs capture, recovery reads, and atomic
 publication. Signed witness files remain external, and their cryptographic,
 rollback, divergence, and lag rules do not change.
+
+v0.66 closes the remaining size-check/read race in the durable authority
+profile and operator-trust roots. Recovery now bounds the bytes read from the
+opened state descriptor under each root's exact 1 MiB publication ceiling,
+and the legacy signed-approval migration probe uses the approval store's fixed
+64 MiB ceiling. Publication recaptures and revalidates a detached state
+projection immediately before atomic replacement. Durable schemas, rotation
+semantics, signer requirements, and the read-only Command Center boundary do
+not change.
 
 ## Install
 
@@ -932,7 +941,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.65 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.66 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -992,7 +1001,8 @@ fixed bounded and sealed operation-journal snapshots with symmetric I/O limits,
 fixed bounded exact native-hook events shared by retry identity, authorization,
 targeting, payload, and completion,
 fixed bounded and sealed authority-profile and operator-trust continuity state
-with defensive projections and symmetric I/O limits,
+with defensive projections, descriptor-backed recovery reads, detached
+publication revalidation, and symmetric I/O limits,
 fixed bounded and sealed native-hook authorization/completion correlation state
 with defensive projections and copy-on-write transitions,
 fixed bounded and sealed approval records and held authority snapshots with
@@ -1049,6 +1059,7 @@ hook-timeout behavior, still require OS/network isolation. See
 `docs/validated_operation_journal_snapshot.md`,
 `docs/validated_native_hook_event_snapshot.md`,
 `docs/sealed_authority_continuity_state.md`,
+`docs/bounded_authority_continuity_io.md`,
 `docs/sealed_native_hook_correlation_state.md`,
 `docs/canonical_mapping_sort_work.md`,
 `docs/canonical_mapping_limits.md`,

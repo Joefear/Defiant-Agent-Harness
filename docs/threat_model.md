@@ -863,6 +863,19 @@ does not move external witnesses or keys into state, weaken signature or
 rollback checks, distribute trust, protect against privileged host compromise,
 or turn Python into an OS sandbox.
 
+**Authority-continuity size checks and recovery reads were separate.** Through
+v0.65, `authority_profile.json` and `operator_trust.json` were rejected when a
+pre-read path stat exceeded 1 MiB, but parsing then used the broader default
+durable-JSON read. A file replacement between those operations could therefore
+make recovery consume a different, larger object than the checked one. The
+legacy signed-approval migration probe also used the default ceiling
+implicitly. v0.66 bounds each opened continuity descriptor at its exact 1 MiB
+capture/publication ceiling, bounds the migration probe at the approval store's
+64 MiB ceiling, and revalidates a detached state candidate immediately before
+atomic publication. This does not protect against a privileged host that can
+replace state consistently, make trusted process code untrusted, change signer
+or rotation requirements, or grant Command Center authority.
+
 **Ambiguous authority YAML.** YAML normally permits aliases and many loaders
 silently accept duplicate keys using last-key-wins semantics. A malicious or
 mistaken pack could therefore show a reviewer one apparent policy while the

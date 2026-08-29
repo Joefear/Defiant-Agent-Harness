@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.59.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.60.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -102,6 +102,7 @@ contains:
   validated-operation-journal-snapshot,
   validated-native-hook-event-snapshot,
   sealed-authority-continuity-state,
+  bounded-authority-continuity-I/O,
   sealed-native-hook-correlation-state,
   sealed-approval-record-state,
   validated-budget-ledger-snapshot,

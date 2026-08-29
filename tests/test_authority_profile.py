@@ -165,24 +165,69 @@ def test_profile_rotation_refuses_unrecoverable_state_size(tmp_path, monkeypatch
     assert store.get().generation == 1
 
 
-def test_profile_publication_uses_recovery_read_ceiling(tmp_path, monkeypatch):
-    observed = []
+def test_profile_recovery_and_publication_share_exact_ceiling(tmp_path, monkeypatch):
+    observed_reads = []
+    observed_writes = []
+    original_read = authority_profile_module.read_json
     original_write = authority_profile_module.atomic_write_json
 
+    def recording_read(path, *, max_bytes=None):
+        observed_reads.append(max_bytes)
+        return original_read(path, max_bytes=max_bytes)
+
     def recording_write(path, data, *, max_bytes=None):
-        observed.append(max_bytes)
+        observed_writes.append(max_bytes)
         return original_write(path, data, max_bytes=max_bytes)
 
+    monkeypatch.setattr(authority_profile_module, "read_json", recording_read)
     monkeypatch.setattr(
         authority_profile_module,
         "atomic_write_json",
         recording_write,
     )
-    AuthorityProfileStore(
-        tmp_path / "state" / "authority_profile.json"
-    ).resolve_for_authority(_hash("one"), None)
+    store = AuthorityProfileStore(tmp_path / "state" / "authority_profile.json")
+    store.resolve_for_authority(_hash("one"), None)
+    assert store.get() is not None
 
-    assert observed == [authority_profile_module._MAX_STATE_BYTES]
+    assert observed_reads == [authority_profile_module._MAX_STATE_BYTES]
+    assert observed_writes == [authority_profile_module._MAX_STATE_BYTES]
+
+
+def test_profile_publication_recaptures_hostile_projection(tmp_path):
+    class HostileDict(dict):
+        def __iter__(self):
+            raise AssertionError("publication invoked hostile iteration")
+
+        def get(self, key, default=None):
+            raise AssertionError("publication invoked hostile lookup")
+
+        def items(self):
+            raise AssertionError("publication invoked hostile items")
+
+        def keys(self):
+            raise AssertionError("publication invoked hostile keys")
+
+    path = tmp_path / "state" / "authority_profile.json"
+    store = AuthorityProfileStore(path)
+    expected = store.resolve_for_authority(_hash("one"), None).to_dict()
+
+    class HostileState:
+        def to_dict(self):
+            return HostileDict(expected)
+
+    authority_profile_module._write_state(path, HostileState())
+
+    assert store.get().to_dict() == expected
+
+
+def test_oversized_profile_state_fails_at_opened_stream_ceiling(tmp_path):
+    path = tmp_path / "state" / "authority_profile.json"
+    path.parent.mkdir(mode=0o700)
+    path.write_bytes(b" " * (authority_profile_module._MAX_STATE_BYTES + 1))
+    path.chmod(0o600)
+
+    with pytest.raises(AuthorityProfileError, match="exceeds 1048576 bytes"):
+        AuthorityProfileStore(path).get()
 
 
 def test_unapproved_profile_drift_fails_before_other_state_changes(tmp_path):

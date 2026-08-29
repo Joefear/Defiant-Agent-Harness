@@ -102,7 +102,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.59.0"
+SNAPSHOT_VERSION = "0.60.0"
 
 
 class CommandError(RuntimeError):
@@ -354,6 +354,7 @@ class CommandCore:
                     "validated_operation_journal_snapshot": True,
                     "validated_native_hook_event_snapshot": True,
                     "sealed_authority_continuity_state": True,
+                    "bounded_authority_continuity_io": True,
                     "sealed_native_hook_correlation_state": True,
                     "sealed_approval_record_state": True,
                     "validated_budget_ledger_snapshot": True,

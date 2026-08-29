@@ -157,25 +157,86 @@ def test_trust_rotation_refuses_unrecoverable_state_size(tmp_path, monkeypatch):
     assert store.get().generation == 1
 
 
-def test_trust_publication_uses_recovery_read_ceiling(tmp_path, monkeypatch):
+def test_trust_recovery_and_publication_share_exact_ceiling(tmp_path, monkeypatch):
     _, spec = _key(tmp_path, "old")
-    observed = []
+    observed_reads = []
+    observed_writes = []
+    original_read = operator_trust_state_module.read_json
     original_write = operator_trust_state_module.atomic_write_json
 
+    def recording_read(path, *, max_bytes=None):
+        observed_reads.append(max_bytes)
+        return original_read(path, max_bytes=max_bytes)
+
     def recording_write(path, data, *, max_bytes=None):
-        observed.append(max_bytes)
+        observed_writes.append(max_bytes)
         return original_write(path, data, max_bytes=max_bytes)
 
+    monkeypatch.setattr(operator_trust_state_module, "read_json", recording_read)
     monkeypatch.setattr(
         operator_trust_state_module,
         "atomic_write_json",
         recording_write,
     )
-    OperatorTrustStateStore(
-        tmp_path / "state" / "operator_trust.json"
-    ).resolve_for_authority([spec])
+    store = OperatorTrustStateStore(tmp_path / "state" / "operator_trust.json")
+    store.resolve_for_authority([spec])
+    assert store.get() is not None
 
-    assert observed == [operator_trust_state_module._MAX_STATE_BYTES]
+    assert observed_reads == [operator_trust_state_module._MAX_STATE_BYTES]
+    assert observed_writes == [operator_trust_state_module._MAX_STATE_BYTES]
+
+
+def test_trust_publication_recaptures_hostile_projection(tmp_path):
+    class HostileDict(dict):
+        def __iter__(self):
+            raise AssertionError("publication invoked hostile iteration")
+
+        def get(self, key, default=None):
+            raise AssertionError("publication invoked hostile lookup")
+
+        def items(self):
+            raise AssertionError("publication invoked hostile items")
+
+        def keys(self):
+            raise AssertionError("publication invoked hostile keys")
+
+    _, spec = _key(tmp_path, "old")
+    path = tmp_path / "state" / "operator_trust.json"
+    store = OperatorTrustStateStore(path)
+    store.resolve_for_authority([spec])
+    expected = store.get().to_dict()
+
+    class HostileState:
+        def to_dict(self):
+            return HostileDict(expected)
+
+    operator_trust_state_module._write_state(path, HostileState())
+
+    assert store.get().to_dict() == expected
+
+
+def test_legacy_signed_approval_scan_uses_approval_store_ceiling(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    approvals = state / "approvals.json"
+    approvals.write_text("{}", encoding="utf-8")
+    approvals.chmod(0o600)
+    observed = []
+    original_read = operator_trust_state_module.read_json
+
+    def recording_read(path, *, max_bytes=None):
+        observed.append((path.name, max_bytes))
+        return original_read(path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(operator_trust_state_module, "read_json", recording_read)
+
+    assert (
+        OperatorTrustStateStore(state / "operator_trust.json").preview_for_authority([])
+        is None
+    )
+    assert observed == [
+        ("approvals.json", operator_trust_state_module.MAX_APPROVAL_STATE_BYTES)
+    ]
 
 
 def test_changed_mapping_requires_explicit_rotation(tmp_path):
@@ -421,7 +482,7 @@ def test_oversized_trust_state_fails_closed_without_json_parsing(tmp_path):
 
     assert not report.safe_to_execute
     assert any(issue.code == "operator_trust_invalid" for issue in report.issues)
-    assert "too large" in report.issues[0].detail
+    assert "exceeds 1048576 bytes" in report.issues[0].detail
 
 
 def test_rotation_cli_requires_explicit_identity_note_and_old_signer(tmp_path, capsys):
