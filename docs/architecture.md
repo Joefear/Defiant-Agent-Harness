@@ -856,6 +856,16 @@ preserves the prior policy, v0.1 observations remain readable, and the external
 signed witness itself remains outside harness state under its existing
 verification contract. See `validated_evidence_witness_policy_snapshot.md`.
 
+v0.66 closes the recovery I/O race in the two authority-continuity roots.
+`authority_profile.json` and `operator_trust.json` no longer use a separate
+file-size observation followed by a broader JSON read: `read_json()` bounds the
+opened descriptor at the same 1 MiB ceiling used for canonical capture and
+atomic publication. The legacy signed-approval migration probe is likewise
+bounded at the approval store's 64 MiB ceiling. Before replacement, each writer
+recaptures and revalidates a detached state projection. State schemas,
+generation and signature rules, rotation behavior, and Command Center's
+read-only boundary remain unchanged. See `bounded_authority_continuity_io.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

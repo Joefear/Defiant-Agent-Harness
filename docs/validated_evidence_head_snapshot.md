@@ -47,7 +47,7 @@ shorter chain remains rollback, and a same-length or longer nonmatching chain
 remains divergence. Neither condition is inferred, repaired, or accepted by
 Command Center.
 
-Command Core schema `0.59.0` publishes only the static
+Command Core schema `0.60.0` publishes only the static
 `evidence_head_state_bytes` ceiling and
 `validated_evidence_head_snapshot: true` posture. The dashboard remains
 strictly read-only and receives no checkpoint mutation, repair, acceptance,

@@ -323,9 +323,9 @@ class AuthorityProfileStore:
         if not self.path.exists():
             return None
         try:
-            if self.path.stat().st_size > _MAX_STATE_BYTES:
-                raise AuthorityProfileError("authority profile state is too large")
-            return AuthorityProfileState.from_dict(read_json(self.path))
+            return AuthorityProfileState.from_dict(
+                read_json(self.path, max_bytes=_MAX_STATE_BYTES)
+            )
         except AuthorityProfileError:
             raise
         except (OSError, RuntimeError) as exc:
@@ -557,7 +557,8 @@ def _authority_state_snapshot(value: Any) -> dict[str, Any]:
 
 def _write_state(path: Path, state: AuthorityProfileState) -> None:
     try:
-        atomic_write_json(path, state.to_dict(), max_bytes=_MAX_STATE_BYTES)
+        candidate = AuthorityProfileState.from_dict(state.to_dict()).to_dict()
+        atomic_write_json(path, candidate, max_bytes=_MAX_STATE_BYTES)
     except RuntimeError as exc:
         raise AuthorityProfileError(str(exc)) from exc
 
