@@ -67,6 +67,7 @@ def test_publication_store_bounds_the_opened_state_stream(tmp_path):
     path.write_bytes(
         b"{" + b"x" * publication_module.MAX_AUTHORITY_PUBLICATION_STATE_BYTES + b"}"
     )
+    path.chmod(0o600)
 
     with pytest.raises(AuthorityPublicationError, match="exceeds"):
         AuthorityPublicationStore(path).get()
