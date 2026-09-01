@@ -9,6 +9,10 @@ v0.74 adds exact per-store target commitments so an already-written
 target-generation dependency is also checked for value substitution during the
 `applying` phase. See `active_authority_publication_commitments.md`.
 
+v0.75 retains exact commitments in completed checkpoints so dependencies still
+bound to the prior checkpoint profile are checked during the same phase. See
+`active_authority_publication_checkpoint_commitments.md`.
+
 ## Recovery phases
 
 An active intent has one of three valid read-only phases:

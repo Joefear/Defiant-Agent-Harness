@@ -21,8 +21,14 @@ from .persistence import (
 )
 
 AUTHORITY_PUBLICATION_SCHEMA = "defiant.authority_publication"
-AUTHORITY_PUBLICATION_VERSION = "0.2.0"
+AUTHORITY_PUBLICATION_VERSION = "0.3.0"
 LEGACY_AUTHORITY_PUBLICATION_VERSION = "0.1.0"
+TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION = "0.2.0"
+_SUPPORTED_AUTHORITY_PUBLICATION_VERSIONS = {
+    LEGACY_AUTHORITY_PUBLICATION_VERSION,
+    TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
+    AUTHORITY_PUBLICATION_VERSION,
+}
 _STATE_FIELDS = {"schema_name", "schema_version", "active", "completed"}
 _LEGACY_INTENT_FIELDS = {
     "profile_hash",
@@ -44,12 +50,13 @@ _OPTIONAL_AUTHORITY_PUBLICATION_STORES = {
     "runtime_artifacts",
     "launch_envelope",
 }
-_CHECKPOINT_FIELDS = {
+_LEGACY_CHECKPOINT_FIELDS = {
     "profile_hash",
     "generation",
     "manifest_hash",
     "completed_at",
 }
+_CHECKPOINT_FIELDS = {*_LEGACY_CHECKPOINT_FIELDS, "store_hashes"}
 
 
 class AuthorityPublicationError(RuntimeError):
@@ -122,6 +129,16 @@ class AuthorityPublicationIntent:
             result["store_hashes"] = dict(self.store_hashes)
         return result
 
+    def with_store_hashes(self, store_hashes: Any) -> "AuthorityPublicationIntent":
+        """Upgrade a matching legacy replay intent for its completed checkpoint."""
+        return AuthorityPublicationIntent(
+            self.profile_hash,
+            self.generation,
+            self.manifest_hash,
+            self.prepared_at,
+            _store_hashes(store_hashes),
+        )
+
 
 @dataclass(frozen=True)
 class AuthorityPublicationCheckpoint:
@@ -129,11 +146,22 @@ class AuthorityPublicationCheckpoint:
     generation: int
     manifest_hash: str
     completed_at: str
+    store_hashes: tuple[tuple[str, str | None], ...] | None = None
 
     @classmethod
-    def from_dict(cls, raw: Any) -> "AuthorityPublicationCheckpoint":
+    def from_dict(
+        cls,
+        raw: Any,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> "AuthorityPublicationCheckpoint":
         snapshot = _snapshot(raw, "authority publication checkpoint")
-        if set(snapshot) != _CHECKPOINT_FIELDS:
+        expected_fields = (
+            _CHECKPOINT_FIELDS
+            if schema_version == AUTHORITY_PUBLICATION_VERSION
+            else _LEGACY_CHECKPOINT_FIELDS
+        )
+        if set(snapshot) != expected_fields:
             raise AuthorityPublicationError(
                 "authority publication checkpoint fields do not match schema"
             )
@@ -142,6 +170,11 @@ class AuthorityPublicationCheckpoint:
             _generation(snapshot.get("generation")),
             _hash(snapshot.get("manifest_hash"), "manifest_hash"),
             _timestamp(snapshot.get("completed_at"), "completed_at"),
+            (
+                _checkpoint_store_hashes(snapshot.get("store_hashes"))
+                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                else None
+            ),
         )
 
     def matches(self, profile_hash: str, generation: int, manifest_hash: str) -> bool:
@@ -151,13 +184,22 @@ class AuthorityPublicationCheckpoint:
             and self.manifest_hash == manifest_hash
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
+    def to_dict(
+        self,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> dict[str, Any]:
+        result = {
             "profile_hash": self.profile_hash,
             "generation": self.generation,
             "manifest_hash": self.manifest_hash,
             "completed_at": self.completed_at,
         }
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            result["store_hashes"] = (
+                None if self.store_hashes is None else dict(self.store_hashes)
+            )
+        return result
 
 
 @dataclass(frozen=True)
@@ -176,10 +218,7 @@ class AuthorityPublicationState:
         if snapshot.get("schema_name") != AUTHORITY_PUBLICATION_SCHEMA:
             raise AuthorityPublicationError("unsupported authority publication schema")
         schema_version = snapshot.get("schema_version")
-        if schema_version not in {
-            LEGACY_AUTHORITY_PUBLICATION_VERSION,
-            AUTHORITY_PUBLICATION_VERSION,
-        }:
+        if schema_version not in _SUPPORTED_AUTHORITY_PUBLICATION_VERSIONS:
             raise AuthorityPublicationError("unsupported authority publication version")
         active_raw = snapshot.get("active")
         completed_raw = snapshot.get("completed")
@@ -194,11 +233,23 @@ class AuthorityPublicationState:
         completed = (
             None
             if completed_raw is None
-            else AuthorityPublicationCheckpoint.from_dict(completed_raw)
+            else AuthorityPublicationCheckpoint.from_dict(
+                completed_raw,
+                schema_version=schema_version,
+            )
         )
         if active is None and completed is None:
             raise AuthorityPublicationError(
                 "authority publication state requires an active or completed record"
+            )
+        if (
+            schema_version == AUTHORITY_PUBLICATION_VERSION
+            and active is None
+            and completed is not None
+            and completed.store_hashes is None
+        ):
+            raise AuthorityPublicationError(
+                "completed authority publication requires store commitments"
             )
         if active is not None and completed is not None:
             if active.generation not in {
@@ -212,6 +263,7 @@ class AuthorityPublicationState:
                 completed.profile_hash,
                 completed.generation,
                 completed.manifest_hash,
+                completed.store_hashes,
             ):
                 raise AuthorityPublicationError(
                     "same-generation authority publication records disagree"
@@ -224,7 +276,9 @@ class AuthorityPublicationState:
             "schema_version": self.schema_version,
             "active": self.active.to_dict() if self.active is not None else None,
             "completed": (
-                self.completed.to_dict() if self.completed is not None else None
+                self.completed.to_dict(schema_version=self.schema_version)
+                if self.completed is not None
+                else None
             ),
         }
 
@@ -243,6 +297,15 @@ class AuthorityPublicationState:
                     "legacy_unavailable"
                     if self.active is not None
                     else "not_applicable"
+                )
+            ),
+            "checkpoint_store_commitments": (
+                "not_applicable"
+                if self.completed is None
+                else (
+                    "recorded"
+                    if self.completed.store_hashes is not None
+                    else "legacy_unavailable"
                 )
             ),
             "prepared_at": (
@@ -337,15 +400,29 @@ class AuthorityPublicationStore:
                     raise AuthorityPublicationError(
                         "no active authority publication to complete"
                     )
-                if state.active != expected:
+                if (
+                    state.active.profile_hash != expected.profile_hash
+                    or state.active.generation != expected.generation
+                    or state.active.manifest_hash != expected.manifest_hash
+                    or state.active.prepared_at != expected.prepared_at
+                    or (
+                        state.active.store_hashes is not None
+                        and state.active.store_hashes != expected.store_hashes
+                    )
+                ):
                     raise AuthorityPublicationError(
                         "authority publication completion does not match intent"
+                    )
+                if expected.store_hashes is None:
+                    raise AuthorityPublicationError(
+                        "authority publication completion requires store commitments"
                     )
                 checkpoint = AuthorityPublicationCheckpoint(
                     expected.profile_hash,
                     expected.generation,
                     expected.manifest_hash,
                     utc_now(),
+                    expected.store_hashes,
                 )
                 completed = AuthorityPublicationState(
                     None,
@@ -506,6 +583,14 @@ def _store_hashes(value: Any) -> tuple[tuple[str, str | None], ...]:
         else:
             result.append((name, _hash(store_hash, f"store_hashes.{name}")))
     return tuple(result)
+
+
+def _checkpoint_store_hashes(
+    value: Any,
+) -> tuple[tuple[str, str | None], ...] | None:
+    if value is None:
+        return None
+    return _store_hashes(value)
 
 
 def _generation(value: Any) -> int:

@@ -69,7 +69,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.21.0"
+AUDIT_VERSION = "0.22.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -710,6 +710,30 @@ class StateIntegrityAuditor:
                 )
                 return
 
+        if completed is not None and completed.store_hashes is not None:
+            try:
+                mismatched_store = self._checkpoint_store_mismatch(report, completed)
+            except RuntimeError:
+                projection["verification"] = "dependency_invalid"
+                self._issue(
+                    report,
+                    "authority_publication_active_dependency_invalid",
+                    "critical",
+                    "authority_publication.json",
+                    "active authority publication checkpoint commitment could not be verified",
+                )
+                return
+            if mismatched_store is not None:
+                projection["verification"] = "checkpoint_store_commitment_mismatch"
+                self._issue(
+                    report,
+                    "authority_publication_active_checkpoint_store_mismatch",
+                    "critical",
+                    "authority_publication.json",
+                    f"active authority publication checkpoint store '{mismatched_store}' does not match its completed commitment",
+                )
+                return
+
         evidence_head = report.stores.get("evidence_head", {})
         evidence_head_profile = evidence_head.get("profile_hash")
         if evidence_head_profile is None:
@@ -770,6 +794,28 @@ class StateIntegrityAuditor:
             if (
                 report.stores.get(report_name, {}).get("profile_hash")
                 != active.profile_hash
+            ):
+                continue
+            observed = self._authority_store_observation(name)
+            observed_hash = None if observed is None else sha256_of(observed)
+            if observed_hash != expected[name]:
+                return name
+        return None
+
+    def _checkpoint_store_mismatch(
+        self,
+        report: StateIntegrityReport,
+        completed: AuthorityPublicationCheckpoint,
+    ) -> str | None:
+        expected = dict(completed.store_hashes or ())
+        report_names = {
+            "evidence_witness_policy": "evidence_witness",
+        }
+        for name in AUTHORITY_PUBLICATION_STORE_NAMES:
+            report_name = report_names.get(name, name)
+            if (
+                report.stores.get(report_name, {}).get("profile_hash")
+                != completed.profile_hash
             ):
                 continue
             observed = self._authority_store_observation(name)
