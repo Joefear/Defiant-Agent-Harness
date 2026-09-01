@@ -20,7 +20,7 @@ boundary.
 
 The constants live in `defiant_agent_harness.limits`. They are implementation
 contracts, not environment variables or operator-tunable policy. Command Core
-schema `0.66.0` projects them under `resource_limits`, and Command Center only
+schema `0.67.0` projects them under `resource_limits`, and Command Center only
 renders that projection.
 
 v0.40 applies the same fail-closed discipline to governed request construction.

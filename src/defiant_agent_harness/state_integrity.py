@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from .approvals.store import PendingApproval
-from .authority_profile import AuthorityProfileStore
+from .authority_profile import AuthorityProfileState, AuthorityProfileStore
 from .authority_publication import (
     AuthorityPublicationError,
+    AuthorityPublicationCheckpoint,
+    AuthorityPublicationIntent,
+    AuthorityPublicationState,
     AuthorityPublicationStore,
     authority_manifest_hash_for,
 )
@@ -65,7 +68,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.19.0"
+AUDIT_VERSION = "0.20.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -209,7 +212,6 @@ class StateIntegrityAuditor:
         protected_root_count = self._audit_control_plane_isolation(report)
         artifact_count = self._audit_runtime_artifacts(report)
         launch_variable_count = self._audit_launch_envelope(report)
-        self._audit_authority_publication(report)
         journal_operation = self._audit_operation_journal(report)
 
         evidence, evidence_trusted = self._load_evidence(report)
@@ -223,6 +225,7 @@ class StateIntegrityAuditor:
             evidence,
             evidence_trusted=evidence_trusted,
         )
+        self._audit_authority_publication(report)
         approvals = self._load_approvals(report, journal_operation)
         self._audit_legacy_signed_migration(report, approvals)
         budget = self._load_budget(report)
@@ -445,6 +448,12 @@ class StateIntegrityAuditor:
                 self.workdir / "authority_profile.json"
             ).get()
             if state.active is not None:
+                self._verify_active_authority_publication(
+                    report,
+                    projection,
+                    state,
+                    profile,
+                )
                 self._issue(
                     report,
                     "authority_publication_recovery_required",
@@ -520,6 +529,234 @@ class StateIntegrityAuditor:
                 "authority_publication.json",
                 str(exc),
             )
+
+    def _verify_active_authority_publication(
+        self,
+        report: StateIntegrityReport,
+        projection: dict[str, Any],
+        state: AuthorityPublicationState,
+        profile: AuthorityProfileState | None,
+    ) -> None:
+        """Classify one active exact-replay intent from read-only durable state."""
+        active = state.active
+        completed = state.completed
+        if active is None:
+            raise AuthorityPublicationError("active authority publication is missing")
+
+        if profile is None:
+            if completed is None and active.generation == 1:
+                projection["verification"] = "prepared"
+                return
+            projection["verification"] = "profile_mismatch"
+            self._issue(
+                report,
+                "authority_publication_active_profile_mismatch",
+                "critical",
+                "authority_publication.json",
+                "active authority publication cannot be reconciled with durable profile state",
+            )
+            return
+
+        if (
+            profile.profile_hash == active.profile_hash
+            and profile.generation == active.generation
+        ):
+            self._verify_active_target_dependencies(
+                report, projection, active, completed
+            )
+            return
+
+        if (
+            completed is not None
+            and profile.profile_hash == completed.profile_hash
+            and profile.generation == completed.generation
+        ):
+            pending = profile.pending_rotation
+            if (
+                active.generation != completed.generation + 1
+                or pending is None
+                or pending["to_generation"] != active.generation
+                or pending["to_profile_hash"] != active.profile_hash
+            ):
+                projection["verification"] = "profile_mismatch"
+                self._issue(
+                    report,
+                    "authority_publication_active_profile_mismatch",
+                    "critical",
+                    "authority_publication.json",
+                    "active authority publication does not match the staged profile transition",
+                )
+                return
+            try:
+                observed = self._completed_authority_manifest_hash(
+                    completed.profile_hash,
+                    completed.generation,
+                )
+            except AuthorityPublicationError as exc:
+                projection["verification"] = "dependency_invalid"
+                self._issue(
+                    report,
+                    "authority_publication_active_dependency_invalid",
+                    "critical",
+                    "authority_publication.json",
+                    str(exc),
+                )
+            else:
+                if observed != completed.manifest_hash:
+                    projection["verification"] = "manifest_mismatch"
+                    self._issue(
+                        report,
+                        "authority_publication_active_manifest_mismatch",
+                        "critical",
+                        "authority_publication.json",
+                        "prepared authority publication does not retain an intact prior checkpoint",
+                    )
+                else:
+                    projection["verification"] = "prepared"
+            return
+
+        projection["verification"] = "profile_mismatch"
+        self._issue(
+            report,
+            "authority_publication_active_profile_mismatch",
+            "critical",
+            "authority_publication.json",
+            "active authority publication is not bound to the current or prior profile generation",
+        )
+
+    def _verify_active_target_dependencies(
+        self,
+        report: StateIntegrityReport,
+        projection: dict[str, Any],
+        active: AuthorityPublicationIntent,
+        completed: AuthorityPublicationCheckpoint | None,
+    ) -> None:
+        allowed_profiles = {active.profile_hash}
+        if completed is not None:
+            allowed_profiles.add(completed.profile_hash)
+        required = (
+            "state_storage",
+            "control_plane_isolation",
+            "workspace_integrity",
+            "evidence_witness",
+            "evidence_head",
+        )
+        optional = ("runtime_artifacts", "launch_envelope")
+        invalid = next(
+            (
+                name
+                for name in (*required, *optional)
+                if report.stores.get(name, {}).get("state") == "invalid"
+            ),
+            None,
+        )
+        missing = next(
+            (
+                name
+                for name in required
+                if report.stores.get(name, {}).get("state") == "not_recorded"
+            ),
+            None,
+        )
+        unexpected = next(
+            (
+                name
+                for name in (*required, *optional)
+                if report.stores.get(name, {}).get("profile_hash") is not None
+                and report.stores[name]["profile_hash"] not in allowed_profiles
+            ),
+            None,
+        )
+        if (
+            invalid is not None
+            or unexpected is not None
+            or (completed is not None and missing is not None)
+        ):
+            name = invalid or unexpected or missing
+            projection["verification"] = "dependency_invalid"
+            self._issue(
+                report,
+                "authority_publication_active_dependency_invalid",
+                "critical",
+                "authority_publication.json",
+                f"active authority publication dependency '{name}' is not replay-compatible",
+            )
+            return
+
+        evidence_head = report.stores.get("evidence_head", {})
+        evidence_head_profile = evidence_head.get("profile_hash")
+        if evidence_head_profile is None:
+            projection["verification"] = "applying"
+            return
+        if evidence_head_profile != active.profile_hash:
+            if (
+                completed is not None
+                and evidence_head_profile == completed.profile_hash
+            ):
+                projection["verification"] = "applying"
+                self._downgrade_expected_publication_profile_mismatches(
+                    report,
+                    completed.profile_hash,
+                )
+                return
+
+        try:
+            observed = self._completed_authority_manifest_hash(
+                active.profile_hash,
+                active.generation,
+            )
+        except AuthorityPublicationError as exc:
+            projection["verification"] = "dependency_invalid"
+            self._issue(
+                report,
+                "authority_publication_active_dependency_invalid",
+                "critical",
+                "authority_publication.json",
+                str(exc).replace(
+                    "completed authority publication", "active authority publication"
+                ),
+            )
+        else:
+            if observed != active.manifest_hash:
+                projection["verification"] = "manifest_mismatch"
+                self._issue(
+                    report,
+                    "authority_publication_active_manifest_mismatch",
+                    "critical",
+                    "authority_publication.json",
+                    "active authority publication reached its final dependency with a different manifest",
+                )
+            else:
+                projection["verification"] = "ready_to_complete"
+
+    @staticmethod
+    def _downgrade_expected_publication_profile_mismatches(
+        report: StateIntegrityReport,
+        prior_profile_hash: str,
+    ) -> None:
+        expected = {
+            "state_storage": "state_storage_profile_mismatch",
+            "control_plane_isolation": "control_plane_isolation_profile_mismatch",
+            "workspace_integrity": "workspace_integrity_profile_mismatch",
+            "runtime_artifacts": "runtime_artifact_profile_mismatch",
+            "launch_envelope": "launch_envelope_profile_mismatch",
+            "evidence_head": "evidence_head_profile_mismatch",
+            "evidence_witness": "evidence_witness_profile_mismatch",
+        }
+        downgraded_codes = set()
+        for store_name, issue_code in expected.items():
+            store = report.stores.get(store_name)
+            if (
+                store is not None
+                and store.get("profile_hash") == prior_profile_hash
+                and store.get("verification") == "profile_mismatch"
+            ):
+                store["verification"] = "publication_recovery"
+                downgraded_codes.add(issue_code)
+        if downgraded_codes:
+            report.issues[:] = [
+                issue for issue in report.issues if issue.code not in downgraded_codes
+            ]
 
     def _completed_authority_manifest_hash(
         self,

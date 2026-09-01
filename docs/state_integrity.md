@@ -36,6 +36,10 @@ with the active authority profile is critical.
 v0.72 independently reconstructs every completed publication manifest from its
 durable dependencies. Missing, invalid, profile-mismatched, added, removed, or
 changed observations are critical without requiring an owning runtime startup.
+v0.73 classifies active publication recovery as `prepared`, `applying`, or
+`ready_to_complete`, verifies its current/prior profile relationship and staged
+transition, and distinguishes exact partial-rotation bindings from unrelated
+or final-manifest contradictions.
 
 Run it without initializing or modifying the state directory:
 
@@ -50,7 +54,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.19.0` and exits
+The command emits schema `defiant.state_integrity` version `0.20.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -75,7 +79,9 @@ evidence exists.
 An active authority-publication intent is also a recovery condition. Only the
 owning authority runtime with the exact profile generation and complete
 manifest may replay it. Read-only surfaces and operator-control entry points do
-not complete or bypass the publication.
+not complete or bypass the publication. The sanitized verification value shows
+whether the exact intent is prepared, applying, or ready to complete; any
+unrelated profile or final-manifest contradiction makes the report unsafe.
 
 ## Critical invariants
 
@@ -139,7 +145,7 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
 above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
-version `0.19.0`. Diagnostics report the boundary and ceiling without echoing
+version `0.20.0`. Diagnostics report the boundary and ceiling without echoing
 record contents or absolute state paths; no read-only surface truncates or
 repairs the offending file.
 

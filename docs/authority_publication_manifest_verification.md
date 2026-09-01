@@ -30,10 +30,10 @@ store, produces `authority_publication_manifest_mismatch`. Both are critical
 and make the snapshot non-authoritative. No raw manifest, path, environment,
 artifact filename, witness signature, or state body is projected.
 
-An active publication remains `recovery_required`: partially published stores
-are expected in that state, and only the owning runtime can prove the exact
-candidate and finish it. Operator-control and read-only paths cannot replay or
-complete the intent.
+An active publication remains `recovery_required`. v0.73 further verifies its
+`prepared`, `applying`, or `ready_to_complete` phase from durable state. Only
+the owning runtime can prove the configured candidate and finish it.
+Operator-control and read-only paths cannot replay or complete the intent.
 
 ## Read-only guarantee
 

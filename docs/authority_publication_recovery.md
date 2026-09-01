@@ -59,6 +59,11 @@ v0.72 additionally recomputes a completed checkpoint's manifest from the
 current durable dependent observations. See
 `authority_publication_manifest_verification.md`.
 
+v0.73 verifies the active recovery phase as `prepared`, `applying`, or
+`ready_to_complete`, including the staged transition, prior checkpoint,
+dependency generation bindings, and final manifest. See
+`active_authority_publication_verification.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or

@@ -261,6 +261,17 @@ Doctor and Command Core and treats missing, invalid, profile-mismatched, added,
 removed, or changed authority observations as critical. Consistent rollback of
 the checkpoint and every dependency remains an external-witness problem.
 
+Through v0.72, every well-formed active intent appeared as a generic recovery
+warning. Diagnostics did not prove whether profile activation had started,
+whether a mixed-generation store set belonged to the exact prior and target
+generations, or whether the final dependency set actually matched the intent.
+v0.73 derives `prepared`, `applying`, and `ready_to_complete` phases from the
+staged profile transition, prior checkpoint, dependency profile bindings, and
+reconstructed final manifest. Expected exact partial rotation state remains
+recoverable; unrelated profiles, missing prior dependencies, and final hash
+contradictions are critical. This remains local point-in-time verification, not
+an external rollback witness or authority for read-only surfaces to recover.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

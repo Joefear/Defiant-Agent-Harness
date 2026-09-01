@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -13,7 +14,10 @@ from defiant_agent_harness.authority_publication import (
     authority_manifest_hash,
     authority_manifest_hash_for,
 )
-from defiant_agent_harness.authority_profile import AuthorityProfileStore
+from defiant_agent_harness.authority_profile import (
+    AuthorityProfileError,
+    AuthorityProfileStore,
+)
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.control_plane_isolation import (
     ControlPlaneIsolationStateStore,
@@ -265,6 +269,7 @@ def test_restart_recovers_after_evidence_head_before_completion(tmp_path, monkey
 
     snapshot = CommandCore(state, workspace_root=workspace).snapshot()
     assert snapshot["authority_publication"]["state"] == "recovery_required"
+    assert snapshot["authority_publication"]["verification"] == "ready_to_complete"
     assert snapshot["state_integrity"]["status"] == "recovery_required"
     assert snapshot["state_integrity"]["safe_to_execute"] is True
 
@@ -301,6 +306,7 @@ def test_restart_recovers_when_crash_precedes_profile_activation(tmp_path, monke
     assert report.status == "recovery_required"
     assert report.stores["authority_profile"]["state"] == "not_enrolled"
     assert report.stores["authority_publication"]["state"] == "recovery_required"
+    assert report.stores["authority_publication"]["verification"] == "prepared"
 
     build_harness(state, MockAgentAdapter())
     assert (
@@ -309,6 +315,209 @@ def test_restart_recovers_when_crash_precedes_profile_activation(tmp_path, monke
         .projection()["state"]
         == "complete"
     )
+
+
+def test_read_only_audit_classifies_active_publication_while_applying(
+    tmp_path,
+    monkeypatch,
+):
+    original = StateStorageStateStore.record
+
+    def crash_after_first_dependency(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        raise RuntimeError("simulated dependency crash")
+
+    monkeypatch.setattr(
+        StateStorageStateStore,
+        "record",
+        crash_after_first_dependency,
+    )
+    state = tmp_path / "state"
+    with pytest.raises(RuntimeError, match="simulated dependency crash"):
+        build_harness(state, MockAgentAdapter())
+
+    before = {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    }
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.status == "recovery_required"
+    assert report.safe_to_execute is True
+    assert report.stores["authority_publication"]["verification"] == "applying"
+    assert snapshot["authority_publication"]["verification"] == "applying"
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
+
+
+def test_read_only_audit_accepts_exact_partial_profile_rotation(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    current = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    store = AuthorityProfileStore(state / "authority_profile.json")
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            dry_run=True,
+        )
+    match = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert match is not None
+    store.request_rotation(
+        match.group(1),
+        operator="release-operator",
+        note="exercise crash-safe rotation",
+        operator_trust=None,
+    )
+
+    original = ControlPlaneIsolationStateStore.record
+
+    def crash_during_rotation(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        raise RuntimeError("simulated rotation crash")
+
+    monkeypatch.setattr(
+        ControlPlaneIsolationStateStore,
+        "record",
+        crash_during_rotation,
+    )
+    with pytest.raises(RuntimeError, match="simulated rotation crash"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            dry_run=True,
+        )
+
+    report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+
+    assert current.policy.ruleset_hash != match.group(1)
+    assert report.status == "recovery_required"
+    assert report.safe_to_execute is True
+    assert report.stores["authority_publication"]["verification"] == "applying"
+    assert report.stores["workspace_integrity"]["verification"] == (
+        "publication_recovery"
+    )
+    assert not any(issue.code.endswith("_profile_mismatch") for issue in report.issues)
+
+    (state / "workspace_integrity.json").unlink()
+    unsafe = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+    assert unsafe.safe_to_execute is False
+    assert unsafe.stores["authority_publication"]["verification"] == (
+        "dependency_invalid"
+    )
+    assert any(
+        issue.code == "authority_publication_active_dependency_invalid"
+        for issue in unsafe.issues
+    )
+
+
+def test_read_only_audit_verifies_pre_activation_rotation_checkpoint(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    store = AuthorityProfileStore(state / "authority_profile.json")
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            dry_run=True,
+        )
+    match = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert match is not None
+    store.request_rotation(
+        match.group(1),
+        operator="release-operator",
+        note="verify prepared rotation",
+        operator_trust=None,
+    )
+
+    def crash_before_activation(self, *args, **kwargs):
+        raise RuntimeError("simulated activation crash")
+
+    monkeypatch.setattr(
+        AuthorityProfileStore,
+        "resolve_for_authority",
+        crash_before_activation,
+    )
+    with pytest.raises(RuntimeError, match="simulated activation crash"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            dry_run=True,
+        )
+
+    report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+
+    assert report.status == "recovery_required"
+    assert report.safe_to_execute is True
+    assert report.stores["authority_publication"]["verification"] == "prepared"
+
+
+def test_active_publication_profile_contradiction_is_critical(tmp_path, monkeypatch):
+    def crash_before_complete(self, intent):
+        raise RuntimeError("simulated completion crash")
+
+    monkeypatch.setattr(AuthorityPublicationStore, "complete", crash_before_complete)
+    state = tmp_path / "state"
+    with pytest.raises(RuntimeError, match="simulated completion crash"):
+        build_harness(state, MockAgentAdapter())
+    path = state / "authority_publication.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["active"]["profile_hash"] = "sha256:" + "6" * 64
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "profile_mismatch"
+    )
+    assert any(
+        issue.code == "authority_publication_active_profile_mismatch"
+        for issue in report.issues
+    )
+
+
+def test_active_publication_final_manifest_contradiction_is_critical(
+    tmp_path,
+    monkeypatch,
+):
+    def crash_before_complete(self, intent):
+        raise RuntimeError("simulated completion crash")
+
+    monkeypatch.setattr(AuthorityPublicationStore, "complete", crash_before_complete)
+    state = tmp_path / "state"
+    with pytest.raises(RuntimeError, match="simulated completion crash"):
+        build_harness(state, MockAgentAdapter())
+    workspace_path = state / "workspace_integrity.json"
+    raw = json.loads(workspace_path.read_text(encoding="utf-8"))
+    raw["root_hash"] = "sha256:" + "5" * 64
+    workspace_path.write_text(json.dumps(raw), encoding="utf-8")
+    before = {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    }
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "manifest_mismatch"
+    )
+    assert any(
+        issue.code == "authority_publication_active_manifest_mismatch"
+        for issue in report.issues
+    )
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
 
 
 def test_active_publication_refuses_a_different_manifest(tmp_path, monkeypatch):
