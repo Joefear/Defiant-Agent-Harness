@@ -36,7 +36,7 @@ requirements, generation continuity, and downgrade refusal are unchanged.
 
 ## Read-only observability
 
-Command Core schema `0.68.0` reports
+Command Core schema `0.69.0` reports
 `bounded_authority_continuity_io: true` under `authority_configuration` while
 retaining the existing fixed byte ceilings. Command Center renders only that
 static posture and the already-sanitized continuity summaries. It receives no

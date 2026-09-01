@@ -69,6 +69,12 @@ every target-bound partial-replay observation against them. Legacy v0.73 active
 intents remain recoverable by the matching owning runtime. See
 `active_authority_publication_commitments.md`.
 
+v0.75 retains those commitments in completed checkpoints and verifies every
+dependency that remains bound to the checkpoint profile during mixed-generation
+replay. Legacy `0.1.0` and `0.2.0` state remains readable and migrates only on a
+successful matching owning-runtime startup. See
+`active_authority_publication_checkpoint_commitments.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or

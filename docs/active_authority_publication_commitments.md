@@ -34,6 +34,10 @@ until the evidence head advances or the complete manifest can be reconstructed.
 Prior-generation dependencies remain valid only where the v0.73 phase rules
 permit exact mixed-generation recovery.
 
+v0.75 also retains completed per-store commitments and verifies dependencies
+that remain on the checkpoint profile. See
+`active_authority_publication_checkpoint_commitments.md`.
+
 The projection exposes only `recorded`, `legacy_unavailable`, `not_applicable`,
 or `invalid` commitment posture. It does not expose individual store hashes or
 raw authority values. Command Center renders that posture and remains strictly

@@ -964,6 +964,20 @@ committed explicitly, individual hashes are never projected, and v0.73 schema
 posture and has no recovery authority. See
 `active_authority_publication_commitments.md`.
 
+## v0.75 completed-checkpoint store commitments
+
+Each successful publication now retains the prepared per-store commitments in
+its completed checkpoint. During a mixed-generation replay, read-only
+diagnostics verify target-profile stores against the active intent and stores
+still bound to the checkpoint profile against the completed commitments. This
+detects a structurally valid same-prior-profile substitution before enough
+stores remain to reconstruct the prior aggregate manifest. Schema `0.3.0`
+represents unavailable legacy checkpoint commitments explicitly; `0.1.0` and
+`0.2.0` documents remain readable and migrate only after a successful matching
+owning-runtime startup. Command Center receives only sanitized posture and has
+no replay or migration authority. See
+`active_authority_publication_checkpoint_commitments.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

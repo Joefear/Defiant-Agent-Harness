@@ -1869,9 +1869,14 @@ def build_harness(
                 runtime_artifact_assurance=runtime_artifact_assurance,
                 launch_envelope_assurance=launch_envelope_assurance,
             )
+            completion_intent = publication_intent
+            if completion_intent.store_hashes is None:
+                completion_intent = completion_intent.with_store_hashes(
+                    manifest_store_hashes
+                )
             AuthorityPublicationStore(
                 state_root / "authority_publication.json"
-            ).complete(publication_intent)
+            ).complete(completion_intent)
     return harness
 
 

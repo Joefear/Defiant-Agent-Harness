@@ -282,6 +282,16 @@ remain local unsigned state; consistent privileged replacement of the intent,
 profile transition, harness, and all dependencies still requires deployment or
 external-witness controls.
 
+Through v0.74, exact commitments existed only on the active target intent. Once
+some dependencies advanced, the remaining prior-profile stores could no longer
+be checked by reconstructing the prior aggregate manifest, so a structurally
+valid same-prior-profile substitution was not isolated by the publication
+protocol. v0.75 retains per-store commitments in completed checkpoints and
+checks every still-prior dependency during mixed-generation recovery. A
+mismatch is critical and read-only inspection remains non-mutating. Legacy
+checkpoint posture is explicit until a successful owning-runtime startup
+migrates it; the local unsigned-state and privileged-replacement limits remain.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

@@ -231,6 +231,9 @@ function renderResourceLimits(limits, configuration) {
     const activeAuthorityPublicationCommitments = configuration.verified_active_authority_publication_store_commitments
       ? "active authority publication target stores are checked against exact prepared commitments during partial replay"
       : "active authority publication target-store commitment verification unavailable";
+    const activeAuthorityPublicationCheckpointCommitments = configuration.verified_active_authority_publication_checkpoint_store_commitments
+      ? "active authority publication checkpoint stores are checked against exact completed commitments during mixed-generation replay"
+      : "active authority publication checkpoint-store commitment verification unavailable";
     const runtimeArtifactState = configuration.validated_runtime_artifact_state_snapshot
       ? "runtime artifact assurance validation and publication use one detached bounded state snapshot with symmetric I/O limits"
       : "runtime artifact state snapshot integrity unverified";
@@ -262,7 +265,7 @@ function renderResourceLimits(limits, configuration) {
       ? "evidence-witness policy validation and publication use one detached bounded canonical state snapshot with symmetric I/O limits"
       : "evidence-witness policy snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationManifest}; ${activeAuthorityPublication}; ${activeAuthorityPublicationCommitments}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationManifest}; ${activeAuthorityPublication}; ${activeAuthorityPublicationCommitments}; ${activeAuthorityPublicationCheckpointCommitments}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
@@ -321,7 +324,7 @@ function renderStateIntegrity(integrity) {
   const publication = integrity.stores.authority_publication;
   elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
     ? publication && publication.state === "recovery_required"
-      ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay (${label(publication.verification)}; target commitments ${label(publication.store_commitments)}). This dashboard remains read-only.`
+      ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay (${label(publication.verification)}; target commitments ${label(publication.store_commitments)}; checkpoint commitments ${label(publication.checkpoint_store_commitments)}). This dashboard remains read-only.`
       : journal && journal.active
       ? `Prepared ${label(journal.kind)} operation ${shortId(journal.operation_id)} requires authority recovery. This dashboard remains read-only.`
       : `${integer.format(warnings)} recovery condition${warnings === 1 ? "" : "s"} detected. Inspect the read-only doctor report.`
@@ -532,7 +535,7 @@ function renderAuthorityProfile(
     ? `Rotation required · ${label(profile.pending_assurance)} · ${shortId(profile.pending_profile_hash)}`
     : `${label(profile.verification)} · ${hash}`;
   const publicationDetail = publication
-    ? `${label(publication.state)} · ${label(publication.verification)} · Commitments ${label(publication.store_commitments)} · ${shortId(publication.manifest_hash)}`
+    ? `${label(publication.state)} · ${label(publication.verification)} · Target commitments ${label(publication.store_commitments)} · Checkpoint commitments ${label(publication.checkpoint_store_commitments)} · ${shortId(publication.manifest_hash)}`
     : "Not recorded";
   const artifactDetail = artifacts && artifacts.state === "closed"
     ? `${integer.format(artifacts.dependency_file_count)} dependency files in ${integer.format(artifacts.dependency_root_count)} closed roots · ${shortId(artifacts.bundle_hash)}`

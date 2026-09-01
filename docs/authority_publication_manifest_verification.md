@@ -37,6 +37,9 @@ Operator-control and read-only paths cannot replay or complete the intent.
 v0.74 also commits each target store separately so partial replay can detect a
 same-profile value substitution before final manifest reconstruction. See
 `active_authority_publication_commitments.md`.
+v0.75 retains those commitments in completed checkpoints so the remaining
+checkpoint-profile side of a mixed-generation replay is independently checked.
+See `active_authority_publication_checkpoint_commitments.md`.
 
 ## Read-only guarantee
 
