@@ -951,6 +951,19 @@ transition, or final manifest mismatch is critical. Only the owning runtime can
 replay or complete the intent. See
 `active_authority_publication_verification.md`.
 
+## v0.74 active-publication store commitments
+
+Before profile activation, the owning runtime now records exact hashes for all
+seven sanitized target-store projections alongside the complete manifest hash.
+During `applying`, read-only diagnostics verify every already-written target
+store against its prepared commitment, so a structurally valid same-profile
+substitution is critical before evidence-head advancement. Optional absence is
+committed explicitly, individual hashes are never projected, and v0.73 schema
+`0.1.0` crash intents remain exact-replay compatible before migration to
+`0.2.0` on completion. Command Center receives only sanitized commitment
+posture and has no recovery authority. See
+`active_authority_publication_commitments.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

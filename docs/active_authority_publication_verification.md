@@ -5,6 +5,10 @@ of treating every syntactically valid intent as the same recovery condition.
 Doctor and Command Core perform this classification without replaying or
 changing the publication.
 
+v0.74 adds exact per-store target commitments so an already-written
+target-generation dependency is also checked for value substitution during the
+`applying` phase. See `active_authority_publication_commitments.md`.
+
 ## Recovery phases
 
 An active intent has one of three valid read-only phases:

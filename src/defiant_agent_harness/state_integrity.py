@@ -10,6 +10,7 @@ from typing import Any
 from .approvals.store import PendingApproval
 from .authority_profile import AuthorityProfileState, AuthorityProfileStore
 from .authority_publication import (
+    AUTHORITY_PUBLICATION_STORE_NAMES,
     AuthorityPublicationError,
     AuthorityPublicationCheckpoint,
     AuthorityPublicationIntent,
@@ -68,7 +69,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.20.0"
+AUDIT_VERSION = "0.21.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -427,6 +428,7 @@ class StateIntegrityAuditor:
                     "profile_hash": None,
                     "generation": 0,
                     "manifest_hash": None,
+                    "store_commitments": "not_applicable",
                     "prepared_at": None,
                     "completed_at": None,
                 }
@@ -519,6 +521,7 @@ class StateIntegrityAuditor:
                 "profile_hash": None,
                 "generation": 0,
                 "manifest_hash": None,
+                "store_commitments": "invalid",
                 "prepared_at": None,
                 "completed_at": None,
             }
@@ -683,6 +686,30 @@ class StateIntegrityAuditor:
             )
             return
 
+        if active.store_hashes is not None:
+            try:
+                mismatched_store = self._active_target_store_mismatch(report, active)
+            except RuntimeError:
+                projection["verification"] = "dependency_invalid"
+                self._issue(
+                    report,
+                    "authority_publication_active_dependency_invalid",
+                    "critical",
+                    "authority_publication.json",
+                    "active authority publication target commitment could not be verified",
+                )
+                return
+            if mismatched_store is not None:
+                projection["verification"] = "store_commitment_mismatch"
+                self._issue(
+                    report,
+                    "authority_publication_active_store_mismatch",
+                    "critical",
+                    "authority_publication.json",
+                    f"active authority publication target store '{mismatched_store}' does not match its prepared commitment",
+                )
+                return
+
         evidence_head = report.stores.get("evidence_head", {})
         evidence_head_profile = evidence_head.get("profile_hash")
         if evidence_head_profile is None:
@@ -728,6 +755,71 @@ class StateIntegrityAuditor:
                 )
             else:
                 projection["verification"] = "ready_to_complete"
+
+    def _active_target_store_mismatch(
+        self,
+        report: StateIntegrityReport,
+        active: AuthorityPublicationIntent,
+    ) -> str | None:
+        expected = dict(active.store_hashes or ())
+        report_names = {
+            "evidence_witness_policy": "evidence_witness",
+        }
+        for name in AUTHORITY_PUBLICATION_STORE_NAMES:
+            report_name = report_names.get(name, name)
+            if (
+                report.stores.get(report_name, {}).get("profile_hash")
+                != active.profile_hash
+            ):
+                continue
+            observed = self._authority_store_observation(name)
+            observed_hash = None if observed is None else sha256_of(observed)
+            if observed_hash != expected[name]:
+                return name
+        return None
+
+    def _authority_store_observation(self, name: str) -> dict[str, Any] | None:
+        if name == "state_storage":
+            state = StateStorageStateStore(self.workdir / "state_storage.json").get()
+            return None if state is None else state.authority_dict()
+        if name == "control_plane_isolation":
+            state = ControlPlaneIsolationStateStore(
+                self.workdir / "control_plane_isolation.json"
+            ).get()
+            return None if state is None else state.authority_dict()
+        if name == "workspace_integrity":
+            state = WorkspaceIntegrityStateStore(
+                self.workdir / "workspace_integrity.json"
+            ).get()
+            return None if state is None else state.authority_dict()
+        if name == "evidence_witness_policy":
+            state = EvidenceWitnessPolicyStore(
+                self.workdir / "evidence_witness_policy.json"
+            ).get()
+            if state is None:
+                return None
+            result = {
+                "mode": state.mode,
+                "schema_version": WITNESS_VERSION,
+                "trusted_key_ids": list(state.trusted_key_ids),
+            }
+            if state.max_unwitnessed_records is not None:
+                result["max_unwitnessed_records"] = state.max_unwitnessed_records
+            return result
+        if name == "runtime_artifacts":
+            state = RuntimeArtifactStateStore(
+                self.workdir / "runtime_artifacts.json"
+            ).get()
+            return None if state is None else state.authority_dict()
+        if name == "launch_envelope":
+            state = LaunchEnvelopeStateStore(
+                self.workdir / "launch_envelope.json"
+            ).get()
+            return None if state is None else state.authority_dict()
+        if name == "evidence_head":
+            state = EvidenceHeadStateStore(self.workdir / "evidence_head.json").get()
+            return None if state is None else evidence_head_authority()
+        raise RuntimeError("unsupported authority publication store commitment")
 
     @staticmethod
     def _downgrade_expected_publication_profile_mismatches(

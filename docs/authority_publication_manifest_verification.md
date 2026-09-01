@@ -34,6 +34,9 @@ An active publication remains `recovery_required`. v0.73 further verifies its
 `prepared`, `applying`, or `ready_to_complete` phase from durable state. Only
 the owning runtime can prove the configured candidate and finish it.
 Operator-control and read-only paths cannot replay or complete the intent.
+v0.74 also commits each target store separately so partial replay can detect a
+same-profile value substitution before final manifest reconstruction. See
+`active_authority_publication_commitments.md`.
 
 ## Read-only guarantee
 

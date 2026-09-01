@@ -64,6 +64,11 @@ v0.73 verifies the active recovery phase as `prepared`, `applying`, or
 dependency generation bindings, and final manifest. See
 `active_authority_publication_verification.md`.
 
+v0.74 records exact per-store target commitments before activation and verifies
+every target-bound partial-replay observation against them. Legacy v0.73 active
+intents remain recoverable by the matching owning runtime. See
+`active_authority_publication_commitments.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or

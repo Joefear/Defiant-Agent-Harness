@@ -14,7 +14,7 @@ from ..authority_publication import (
     AuthorityPublicationError,
     AuthorityPublicationIntent,
     AuthorityPublicationStore,
-    authority_manifest_hash_for,
+    authority_manifest_commitments_for,
 )
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
@@ -1699,7 +1699,7 @@ def build_harness(
                 policy.ruleset_hash,
                 operator_trust,
             )
-            manifest_hash = authority_manifest_hash_for(
+            manifest_hash, manifest_store_hashes = authority_manifest_commitments_for(
                 profile_hash=policy.ruleset_hash,
                 generation=preview_profile.generation,
                 state_storage=state_storage.authority_dict(),
@@ -1737,6 +1737,7 @@ def build_harness(
                     policy.ruleset_hash,
                     preview_profile.generation,
                     manifest_hash,
+                    manifest_store_hashes,
                 )
             )
             if publication_state is not None and publication_state.active is not None:
@@ -1776,6 +1777,7 @@ def build_harness(
                 policy.ruleset_hash,
                 preview_profile.generation,
                 manifest_hash,
+                manifest_store_hashes,
             )
             resolved_profile = profile_store.resolve_for_authority(
                 policy.ruleset_hash,

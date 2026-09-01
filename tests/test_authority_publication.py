@@ -40,29 +40,45 @@ from defiant_agent_harness.workspace_integrity import WorkspaceIntegrityStateSto
 
 PROFILE = "sha256:" + "1" * 64
 MANIFEST = "sha256:" + "2" * 64
+STORE_HASHES = {
+    "state_storage": "sha256:" + "3" * 64,
+    "control_plane_isolation": "sha256:" + "4" * 64,
+    "workspace_integrity": "sha256:" + "5" * 64,
+    "evidence_witness_policy": "sha256:" + "6" * 64,
+    "runtime_artifacts": None,
+    "launch_envelope": None,
+    "evidence_head": "sha256:" + "7" * 64,
+}
 
 
 def test_publication_store_prepares_idempotently_and_completes(tmp_path):
     store = AuthorityPublicationStore(tmp_path / "authority_publication.json")
 
-    first = store.prepare(PROFILE, 1, MANIFEST)
-    assert store.prepare(PROFILE, 1, MANIFEST) == first
+    first = store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
+    assert store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES) == first
     assert store.get().projection()["state"] == "recovery_required"
+    assert store.get().projection()["store_commitments"] == "recorded"
 
     completed = store.complete(first)
     assert completed.active is None
     assert completed.completed is not None
     assert completed.completed.profile_hash == PROFILE
     assert completed.projection()["verification"] == "verified"
+    assert completed.projection()["store_commitments"] == "not_applicable"
 
 
 def test_publication_store_refuses_a_different_active_candidate(tmp_path):
     store = AuthorityPublicationStore(tmp_path / "authority_publication.json")
-    store.prepare(PROFILE, 1, MANIFEST)
+    store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
     before = store.path.read_bytes()
 
     with pytest.raises(AuthorityPublicationError, match="different"):
-        store.prepare(PROFILE, 1, "sha256:" + "3" * 64)
+        store.prepare(PROFILE, 1, "sha256:" + "8" * 64, STORE_HASHES)
+
+    changed_store_hashes = dict(STORE_HASHES)
+    changed_store_hashes["evidence_head"] = "sha256:" + "9" * 64
+    with pytest.raises(AuthorityPublicationError, match="different"):
+        store.prepare(PROFILE, 1, MANIFEST, changed_store_hashes)
 
     assert store.path.read_bytes() == before
 
@@ -83,7 +99,7 @@ def test_oversized_publication_preserves_the_completed_checkpoint(
     monkeypatch,
 ):
     store = AuthorityPublicationStore(tmp_path / "authority_publication.json")
-    intent = store.prepare(PROFILE, 1, MANIFEST)
+    intent = store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
     store.complete(intent)
     before = store.path.read_bytes()
     completed = store.get()
@@ -95,7 +111,7 @@ def test_oversized_publication_preserves_the_completed_checkpoint(
     )
 
     with pytest.raises(AuthorityPublicationError, match="exceeds"):
-        store.prepare(PROFILE, 1, MANIFEST)
+        store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
 
     assert store.path.read_bytes() == before
 
@@ -122,7 +138,7 @@ def test_publication_state_owns_hostile_bounded_snapshot(tmp_path, monkeypatch):
             raise AssertionError("publication snapshot rendered hostile scalar")
 
     store = AuthorityPublicationStore(tmp_path / "authority_publication.json")
-    store.prepare(PROFILE, 1, MANIFEST)
+    store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
     raw = json.loads(store.path.read_text(encoding="utf-8"))
 
     def hostile(value):
@@ -351,6 +367,89 @@ def test_read_only_audit_classifies_active_publication_while_applying(
     } == before
 
 
+def test_active_publication_rejects_partial_target_store_substitution(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    build_harness(
+        state,
+        MockAgentAdapter(),
+        workspace_root=workspace,
+        launch_envelope_assurance=remote_launch_envelope(),
+    )
+    profile_store = AuthorityProfileStore(state / "authority_profile.json")
+    with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            launch_envelope_assurance=remote_launch_envelope(),
+            dry_run=True,
+        )
+    match = re.search(r"configured (sha256:[0-9a-f]{64})", str(mismatch.value))
+    assert match is not None
+    profile_store.request_rotation(
+        match.group(1),
+        operator="release-operator",
+        note="verify partial target commitments",
+        operator_trust=None,
+    )
+
+    original = LaunchEnvelopeStateStore.record
+
+    def crash_after_target_store(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        raise RuntimeError("simulated partial replay crash")
+
+    monkeypatch.setattr(LaunchEnvelopeStateStore, "record", crash_after_target_store)
+    with pytest.raises(RuntimeError, match="simulated partial replay crash"):
+        build_harness(
+            state,
+            MockAgentAdapter(),
+            workspace_root=workspace,
+            launch_envelope_assurance=remote_launch_envelope(),
+            dry_run=True,
+        )
+
+    launch_path = state / "launch_envelope.json"
+    launch = json.loads(launch_path.read_text(encoding="utf-8"))
+    launch.update(
+        {
+            "mode": "inherited_unrestricted",
+            "environment_hash": None,
+            "variable_count": 0,
+            "secret_count": 0,
+            "unsafe_count": 0,
+            "cwd_hash": "sha256:" + "9" * 64,
+        }
+    )
+    launch_path.write_text(json.dumps(launch), encoding="utf-8")
+    before = {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    }
+
+    report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+    snapshot = CommandCore(state, workspace_root=workspace).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "store_commitment_mismatch"
+    )
+    assert report.stores["authority_publication"]["store_commitments"] == "recorded"
+    assert any(
+        issue.code == "authority_publication_active_store_mismatch"
+        for issue in report.issues
+    )
+    assert snapshot["authority_publication"]["verification"] == (
+        "store_commitment_mismatch"
+    )
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
+
+
 def test_read_only_audit_accepts_exact_partial_profile_rotation(tmp_path, monkeypatch):
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
@@ -509,10 +608,10 @@ def test_active_publication_final_manifest_contradiction_is_critical(
 
     assert report.safe_to_execute is False
     assert report.stores["authority_publication"]["verification"] == (
-        "manifest_mismatch"
+        "store_commitment_mismatch"
     )
     assert any(
-        issue.code == "authority_publication_active_manifest_mismatch"
+        issue.code == "authority_publication_active_store_mismatch"
         for issue in report.issues
     )
     assert {
@@ -667,6 +766,41 @@ def test_operator_control_cannot_bypass_active_publication(tmp_path, monkeypatch
 
     with pytest.raises(AuthorityPublicationError, match="owning runtime"):
         build_harness(state, MockAgentAdapter(), _operator_control=True)
+
+
+def test_legacy_active_publication_remains_recoverable(tmp_path, monkeypatch):
+    original = AuthorityPublicationStore.complete
+
+    def crash_before_complete(self, intent):
+        raise RuntimeError("simulated legacy completion crash")
+
+    monkeypatch.setattr(AuthorityPublicationStore, "complete", crash_before_complete)
+    state = tmp_path / "state"
+    with pytest.raises(RuntimeError, match="simulated legacy completion crash"):
+        build_harness(state, MockAgentAdapter())
+
+    path = state / "authority_publication.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["schema_version"] = "0.1.0"
+    raw["active"].pop("store_hashes")
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    before = path.read_bytes()
+
+    loaded = AuthorityPublicationStore(path).get()
+    assert loaded is not None
+    assert loaded.active is not None
+    assert loaded.active.store_hashes is None
+    assert loaded.projection()["store_commitments"] == "legacy_unavailable"
+    report = StateIntegrityAuditor(state).audit()
+    assert report.status == "recovery_required"
+    assert report.safe_to_execute is True
+    assert path.read_bytes() == before
+
+    monkeypatch.setattr(AuthorityPublicationStore, "complete", original)
+    build_harness(state, MockAgentAdapter())
+    migrated = json.loads(path.read_text(encoding="utf-8"))
+    assert migrated["schema_version"] == "0.2.0"
+    assert migrated["active"] is None
 
 
 def test_publication_state_rejects_unknown_fields():

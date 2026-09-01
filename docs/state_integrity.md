@@ -40,6 +40,12 @@ v0.73 classifies active publication recovery as `prepared`, `applying`, or
 `ready_to_complete`, verifies its current/prior profile relationship and staged
 transition, and distinguishes exact partial-rotation bindings from unrelated
 or final-manifest contradictions.
+v0.74 additionally verifies every already-written target-generation dependency
+against the per-store commitment prepared before profile activation. A
+same-profile value substitution reports the critical
+`authority_publication_active_store_mismatch` issue immediately. Legacy v0.73
+active state remains visible as `legacy_unavailable` and recoverable only by the
+matching owning runtime.
 
 Run it without initializing or modifying the state directory:
 
@@ -54,7 +60,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.20.0` and exits
+The command emits schema `defiant.state_integrity` version `0.21.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -145,7 +151,7 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
 above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
-version `0.20.0`. Diagnostics report the boundary and ceiling without echoing
+version `0.21.0`. Diagnostics report the boundary and ceiling without echoing
 record contents or absolute state paths; no read-only surface truncates or
 repairs the offending file.
 
