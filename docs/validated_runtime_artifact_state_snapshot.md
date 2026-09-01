@@ -42,7 +42,7 @@ Executable pins and dependency manifests remain authenticated configuration;
 the harness still verifies their bytes before authority-profile acceptance and
 again immediately before local process creation.
 
-Command Core schema `0.67.0` reports the fixed
+Command Core schema `0.68.0` reports the fixed
 `runtime_artifact_state_bytes` ceiling and
 `validated_runtime_artifact_state_snapshot: true`. Command Center renders only
 that static posture and its existing sanitized artifact projection. It gains no

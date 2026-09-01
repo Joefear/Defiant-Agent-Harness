@@ -272,6 +272,16 @@ recoverable; unrelated profiles, missing prior dependencies, and final hash
 contradictions are critical. This remains local point-in-time verification, not
 an external rollback witness or authority for read-only surfaces to recover.
 
+Through v0.73, an active intent committed only the complete manifest hash.
+Before the evidence head reached the target generation, diagnostics could prove
+which profile owned a dependency but could not prove that its sanitized value
+was the one prepared by the runtime. v0.74 records one exact commitment per
+target store and checks every target-bound observation during partial replay.
+A same-profile substitution is therefore critical immediately. The commitments
+remain local unsigned state; consistent privileged replacement of the intent,
+profile transition, harness, and all dependencies still requires deployment or
+external-witness controls.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix
