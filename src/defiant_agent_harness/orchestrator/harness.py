@@ -12,9 +12,11 @@ from ..approvals.store import ApprovalError, ApprovalStore, PendingApproval
 from ..authority_profile import AuthorityProfileStore
 from ..authority_publication import (
     AuthorityPublicationError,
+    AuthorityPublicationCheckpoint,
     AuthorityPublicationIntent,
     AuthorityPublicationStore,
     authority_manifest_commitments_for,
+    authority_manifest_commitments_from_state,
 )
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
@@ -1750,6 +1752,10 @@ def build_harness(
                 and publication_state.completed is not None
             ):
                 completed = publication_state.completed
+                _require_authority_publication_checkpoint_intact(
+                    state_root,
+                    completed,
+                )
                 if completed.matches(
                     policy.ruleset_hash,
                     preview_profile.generation,
@@ -1878,6 +1884,37 @@ def build_harness(
                 state_root / "authority_publication.json"
             ).complete(completion_intent)
     return harness
+
+
+def _require_authority_publication_checkpoint_intact(
+    state_root: Path,
+    checkpoint: AuthorityPublicationCheckpoint,
+) -> None:
+    observed_manifest_hash, observed_store_hashes = (
+        authority_manifest_commitments_from_state(
+            state_root,
+            profile_hash=checkpoint.profile_hash,
+            generation=checkpoint.generation,
+        )
+    )
+    if checkpoint.store_hashes is not None:
+        expected_store_hashes = dict(checkpoint.store_hashes)
+        mismatched_store = next(
+            (
+                name
+                for name, observed_hash in observed_store_hashes.items()
+                if expected_store_hashes[name] != observed_hash
+            ),
+            None,
+        )
+        if mismatched_store is not None:
+            raise AuthorityPublicationError(
+                f"completed authority publication store '{mismatched_store}' does not match its retained commitment"
+            )
+    if observed_manifest_hash != checkpoint.manifest_hash:
+        raise AuthorityPublicationError(
+            "completed authority publication manifest does not match durable state"
+        )
 
 
 def _require_completed_authority_publication_intact(

@@ -292,6 +292,14 @@ mismatch is critical and read-only inspection remains non-mutating. Legacy
 checkpoint posture is explicit until a successful owning-runtime startup
 migrates it; the local unsigned-state and privileged-replacement limits remain.
 
+Through v0.75, completed commitments were checked only after a rotation became
+active. A structurally valid commitment-field substitution could therefore sit
+latent beside an otherwise valid completed manifest and affect the next mixed-
+generation comparison. v0.76 reconstructs every stable checkpoint commitment
+from durable state, reports a sanitized critical mismatch, and refuses owning-
+runtime reuse before another intent is prepared. Legacy and consistent
+privileged-replacement limits remain unchanged.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

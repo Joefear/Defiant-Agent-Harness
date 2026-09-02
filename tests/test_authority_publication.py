@@ -777,6 +777,55 @@ def test_read_only_audit_detects_completed_manifest_tampering(tmp_path):
     } == before
 
 
+@pytest.mark.parametrize(
+    "store_name",
+    ["workspace_integrity", "runtime_artifacts"],
+)
+def test_completed_checkpoint_commitment_poisoning_is_critical_and_refused(
+    tmp_path,
+    store_name,
+):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    publication_path = state / "authority_publication.json"
+    publication = json.loads(publication_path.read_text(encoding="utf-8"))
+    publication["completed"]["store_hashes"][store_name] = "sha256:" + "9" * 64
+    publication_path.write_text(json.dumps(publication), encoding="utf-8")
+    before = {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    }
+
+    report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
+    snapshot = CommandCore(state, workspace_root=workspace).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["verification"] == (
+        "checkpoint_store_commitment_mismatch"
+    )
+    issue = next(
+        issue
+        for issue in report.issues
+        if issue.code == "authority_publication_checkpoint_store_mismatch"
+    )
+    assert store_name in issue.detail
+    assert snapshot["authoritative"] is False
+    assert snapshot["authority_publication"]["verification"] == (
+        "checkpoint_store_commitment_mismatch"
+    )
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
+
+    with pytest.raises(AuthorityPublicationError, match=store_name):
+        build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+
+    assert AuthorityPublicationStore(publication_path).get().active is None
+    assert {
+        path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
+    } == before
+
+
 def test_read_only_audit_requires_every_completed_manifest_dependency(tmp_path):
     state = tmp_path / "state"
     build_harness(state, MockAgentAdapter())

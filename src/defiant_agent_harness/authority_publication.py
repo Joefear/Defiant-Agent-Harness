@@ -538,6 +538,97 @@ def authority_manifest_commitments_for(
     return manifest_hash, dict(_store_hashes(store_hashes))
 
 
+def authority_manifest_commitments_from_state(
+    state_root: str | Path,
+    *,
+    profile_hash: str,
+    generation: int,
+) -> tuple[str, dict[str, str | None]]:
+    """Reconstruct exact publication commitments from durable dependencies."""
+    from .control_plane_isolation import ControlPlaneIsolationStateStore
+    from .evidence_head import (
+        EvidenceHeadStateStore,
+        evidence_head_authority,
+    )
+    from .evidence_witness import EvidenceWitnessPolicyStore, WITNESS_VERSION
+    from .launch_envelope import LaunchEnvelopeStateStore
+    from .runtime_artifacts import RuntimeArtifactStateStore
+    from .state_storage import StateStorageStateStore
+    from .workspace_integrity import WorkspaceIntegrityStateStore
+
+    root = Path(state_root)
+    try:
+        storage = StateStorageStateStore(root / "state_storage.json").get()
+        isolation = ControlPlaneIsolationStateStore(
+            root / "control_plane_isolation.json"
+        ).get()
+        workspace = WorkspaceIntegrityStateStore(
+            root / "workspace_integrity.json"
+        ).get()
+        witness = EvidenceWitnessPolicyStore(
+            root / "evidence_witness_policy.json"
+        ).get()
+        runtime = RuntimeArtifactStateStore(root / "runtime_artifacts.json").get()
+        launch = LaunchEnvelopeStateStore(root / "launch_envelope.json").get()
+        evidence_head = EvidenceHeadStateStore(root / "evidence_head.json").get()
+    except RuntimeError as exc:
+        raise AuthorityPublicationError(
+            "a completed authority publication dependency is invalid"
+        ) from exc
+
+    required = {
+        "state_storage": storage,
+        "control_plane_isolation": isolation,
+        "workspace_integrity": workspace,
+        "evidence_witness_policy": witness,
+        "evidence_head": evidence_head,
+    }
+    missing = next(
+        (name for name, value in required.items() if value is None),
+        None,
+    )
+    if missing is not None:
+        raise AuthorityPublicationError(
+            f"completed authority publication dependency '{missing}' is missing"
+        )
+    bound = {
+        **required,
+        "runtime_artifacts": runtime,
+        "launch_envelope": launch,
+    }
+    mismatched = next(
+        (
+            name
+            for name, value in bound.items()
+            if value is not None and value.profile_hash != profile_hash
+        ),
+        None,
+    )
+    if mismatched is not None:
+        raise AuthorityPublicationError(
+            f"completed authority publication dependency '{mismatched}' has a profile mismatch"
+        )
+
+    witness_authority = {
+        "mode": witness.mode,
+        "schema_version": WITNESS_VERSION,
+        "trusted_key_ids": list(witness.trusted_key_ids),
+    }
+    if witness.max_unwitnessed_records is not None:
+        witness_authority["max_unwitnessed_records"] = witness.max_unwitnessed_records
+    return authority_manifest_commitments_for(
+        profile_hash=profile_hash,
+        generation=generation,
+        state_storage=storage.authority_dict(),
+        control_plane_isolation=isolation.authority_dict(),
+        workspace_integrity=workspace.authority_dict(),
+        evidence_witness_policy=witness_authority,
+        runtime_artifacts=(runtime.authority_dict() if runtime is not None else None),
+        launch_envelope=(launch.authority_dict() if launch is not None else None),
+        evidence_head=evidence_head_authority(),
+    )
+
+
 def _snapshot(value: Any, field: str) -> dict[str, Any]:
     try:
         snapshot, _ = authority_snapshot_and_sha256_of(
