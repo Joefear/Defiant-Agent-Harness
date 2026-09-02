@@ -56,17 +56,121 @@ def test_publication_store_prepares_idempotently_and_completes(tmp_path):
 
     first = store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES)
     assert store.prepare(PROFILE, 1, MANIFEST, STORE_HASHES) == first
+    assert first.record_hash is not None
     assert store.get().projection()["state"] == "recovery_required"
     assert store.get().projection()["store_commitments"] == "recorded"
+    assert store.get().projection()["intent_record_seal"] == "verified"
 
     completed = store.complete(first)
     assert completed.active is None
     assert completed.completed is not None
     assert completed.completed.profile_hash == PROFILE
     assert dict(completed.completed.store_hashes) == STORE_HASHES
+    assert completed.completed.record_hash is not None
     assert completed.projection()["verification"] == "verified"
     assert completed.projection()["store_commitments"] == "not_applicable"
     assert completed.projection()["checkpoint_store_commitments"] == "recorded"
+    assert completed.projection()["checkpoint_record_seal"] == "verified"
+
+
+def test_prepared_publication_record_substitution_is_critical_and_refused(
+    tmp_path,
+    monkeypatch,
+):
+    original = AuthorityProfileStore.resolve_for_authority
+    calls = 0
+
+    def crash_before_activation(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("simulated activation crash")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        AuthorityProfileStore,
+        "resolve_for_authority",
+        crash_before_activation,
+    )
+    state = tmp_path / "state"
+    with pytest.raises(RuntimeError, match="simulated activation crash"):
+        build_harness(state, MockAgentAdapter())
+
+    path = state / "authority_publication.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["active"]["store_hashes"]["state_storage"] = "sha256:" + "9" * 64
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    before = {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    }
+
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        AuthorityPublicationStore(path).get()
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["state"] == "invalid"
+    assert any(issue.code == "authority_publication_invalid" for issue in report.issues)
+    assert snapshot["authoritative"] is False
+    assert "record_hash" not in json.dumps(snapshot)
+    assert {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    } == before
+
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        build_harness(state, MockAgentAdapter())
+
+    assert {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    } == before
+
+
+def test_completed_publication_record_substitution_is_critical_and_refused(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    path = state / "authority_publication.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["completed"]["completed_at"] = "2026-09-02T00:00:00Z"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    before = {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    }
+
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        AuthorityPublicationStore(path).get()
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["checkpoint_record_seal"] == (
+        "invalid"
+    )
+    assert any(issue.code == "authority_publication_invalid" for issue in report.issues)
+    assert snapshot["authoritative"] is False
+    assert "record_hash" not in json.dumps(snapshot)
+    assert {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    } == before
+
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        build_harness(state, MockAgentAdapter())
+
+    assert {
+        candidate.name: candidate.read_bytes()
+        for candidate in state.iterdir()
+        if candidate.is_file()
+    } == before
 
 
 def test_publication_store_refuses_a_different_active_candidate(tmp_path):
@@ -660,13 +764,8 @@ def test_active_publication_profile_contradiction_is_critical(tmp_path, monkeypa
     report = StateIntegrityAuditor(state).audit()
 
     assert report.safe_to_execute is False
-    assert report.stores["authority_publication"]["verification"] == (
-        "profile_mismatch"
-    )
-    assert any(
-        issue.code == "authority_publication_active_profile_mismatch"
-        for issue in report.issues
-    )
+    assert report.stores["authority_publication"]["verification"] == "invalid"
+    assert any(issue.code == "authority_publication_invalid" for issue in report.issues)
 
 
 def test_active_publication_final_manifest_contradiction_is_critical(
@@ -800,27 +899,24 @@ def test_completed_checkpoint_commitment_poisoning_is_critical_and_refused(
     snapshot = CommandCore(state, workspace_root=workspace).snapshot()
 
     assert report.safe_to_execute is False
-    assert report.stores["authority_publication"]["verification"] == (
-        "checkpoint_store_commitment_mismatch"
-    )
+    assert report.stores["authority_publication"]["verification"] == "invalid"
     issue = next(
         issue
         for issue in report.issues
-        if issue.code == "authority_publication_checkpoint_store_mismatch"
+        if issue.code == "authority_publication_invalid"
     )
-    assert store_name in issue.detail
+    assert "record hash" in issue.detail
     assert snapshot["authoritative"] is False
-    assert snapshot["authority_publication"]["verification"] == (
-        "checkpoint_store_commitment_mismatch"
-    )
+    assert snapshot["authority_publication"]["verification"] == "invalid"
     assert {
         path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
     } == before
 
-    with pytest.raises(AuthorityPublicationError, match=store_name):
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
         build_harness(state, MockAgentAdapter(), workspace_root=workspace)
 
-    assert AuthorityPublicationStore(publication_path).get().active is None
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        AuthorityPublicationStore(publication_path).get()
     assert {
         path.name: path.read_bytes() for path in state.iterdir() if path.is_file()
     } == before
@@ -916,6 +1012,7 @@ def test_legacy_active_publication_remains_recoverable(tmp_path, monkeypatch):
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.1.0"
     raw["active"].pop("store_hashes")
+    raw["active"].pop("record_hash")
     path.write_text(json.dumps(raw), encoding="utf-8")
     before = path.read_bytes()
 
@@ -932,9 +1029,10 @@ def test_legacy_active_publication_remains_recoverable(tmp_path, monkeypatch):
     monkeypatch.setattr(AuthorityPublicationStore, "complete", original)
     build_harness(state, MockAgentAdapter())
     migrated = json.loads(path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.3.0"
+    assert migrated["schema_version"] == "0.4.0"
     assert migrated["active"] is None
     assert set(migrated["completed"]["store_hashes"]) == set(STORE_HASHES)
+    assert migrated["completed"]["record_hash"].startswith("sha256:")
 
 
 def test_legacy_v02_checkpoint_is_readable_and_migrates_on_successful_startup(
@@ -946,6 +1044,7 @@ def test_legacy_v02_checkpoint_is_readable_and_migrates_on_successful_startup(
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.2.0"
     raw["completed"].pop("store_hashes")
+    raw["completed"].pop("record_hash")
     path.write_text(json.dumps(raw), encoding="utf-8")
     before = path.read_bytes()
 
@@ -965,8 +1064,9 @@ def test_legacy_v02_checkpoint_is_readable_and_migrates_on_successful_startup(
 
     build_harness(state, MockAgentAdapter())
     migrated = json.loads(path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.3.0"
+    assert migrated["schema_version"] == "0.4.0"
     assert migrated["completed"]["store_hashes"] is not None
+    assert migrated["completed"]["record_hash"].startswith("sha256:")
 
 
 def test_legacy_v02_checkpoint_remains_recoverable_during_partial_rotation(
@@ -980,6 +1080,7 @@ def test_legacy_v02_checkpoint_remains_recoverable_during_partial_rotation(
     publication = json.loads(publication_path.read_text(encoding="utf-8"))
     publication["schema_version"] = "0.2.0"
     publication["completed"].pop("store_hashes")
+    publication["completed"].pop("record_hash")
     publication_path.write_text(json.dumps(publication), encoding="utf-8")
 
     profile_store = AuthorityProfileStore(state / "authority_profile.json")
@@ -1041,8 +1142,42 @@ def test_legacy_v02_checkpoint_remains_recoverable_during_partial_rotation(
         dry_run=True,
     )
     migrated = json.loads(publication_path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.3.0"
+    assert migrated["schema_version"] == "0.4.0"
     assert migrated["completed"]["store_hashes"] is not None
+    assert migrated["completed"]["record_hash"].startswith("sha256:")
+
+
+def test_legacy_v03_checkpoint_is_readable_and_migrates_with_a_record_seal(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    path = state / "authority_publication.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["schema_version"] = "0.3.0"
+    raw["completed"].pop("record_hash")
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    before = path.read_bytes()
+
+    loaded = AuthorityPublicationStore(path).get()
+    assert loaded is not None
+    assert loaded.completed is not None
+    assert loaded.completed.store_hashes is not None
+    assert loaded.completed.record_hash is None
+    assert loaded.projection()["checkpoint_record_seal"] == "legacy_unavailable"
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+    assert report.status == "healthy"
+    assert report.safe_to_execute is True
+    assert snapshot["authority_publication"]["checkpoint_record_seal"] == (
+        "legacy_unavailable"
+    )
+    assert path.read_bytes() == before
+
+    build_harness(state, MockAgentAdapter())
+    migrated = json.loads(path.read_text(encoding="utf-8"))
+    assert migrated["schema_version"] == "0.4.0"
+    assert migrated["completed"]["record_hash"].startswith("sha256:")
 
 
 def test_publication_state_rejects_unknown_fields():

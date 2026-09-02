@@ -49,7 +49,7 @@ target containment. Cross-store integrity continues to bind both observations
 to the same enrolled authority profile and fail closed on absence, mismatch, or
 tampering.
 
-Command Core schema `0.70.0` reports independent
+Command Core schema `0.71.0` reports independent
 `control_plane_isolation_state_bytes` and `workspace_integrity_state_bytes`
 ceilings plus `validated_control_plane_isolation_state_snapshot: true` and
 `validated_workspace_integrity_state_snapshot: true`. Command Center renders
