@@ -36,7 +36,7 @@ sealed values.
 
 ## Read-only projection
 
-Command Core schema `0.70.0` reports `sealed_policy_runtime_state: true` under
+Command Core schema `0.71.0` reports `sealed_policy_runtime_state: true` under
 `authority_configuration`. Command Center renders only that static posture in
 its fixed-limit summary. It receives no policy contents and has no route or
 control for rule mutation, policy replacement, approval, reconciliation, or

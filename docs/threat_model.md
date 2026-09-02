@@ -300,6 +300,15 @@ from durable state, reports a sanitized critical mismatch, and refuses owning-
 runtime reuse before another intent is prepared. Legacy and consistent
 privileged-replacement limits remain unchanged.
 
+Through v0.76, individual publication-record fields were validated and durable
+stores were compared, but the fields were not bound together by a record-level
+seal. A structurally valid substitution could therefore be classified before
+a later comparison exposed it. v0.77 hashes the full semantic intent or
+checkpoint and rejects any unmatched substitution at parse time. The hash is
+local and unsigned: a privileged actor able to replace both the record and its
+hash, code, and dependent state consistently is still outside this control and
+requires immutable deployment or an external witness.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

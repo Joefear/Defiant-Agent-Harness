@@ -990,6 +990,21 @@ aggregate-verified and explicitly unavailable for per-store comparison until a
 successful matching startup migrates them. See
 `completed_authority_publication_checkpoint_verification.md`.
 
+## v0.77 sealed authority-publication records
+
+Every new schema `0.4.0` intent and checkpoint carries a canonical SHA-256
+record hash over its record type, profile hash, generation, manifest hash,
+timestamp, and exact per-store commitments. Parsing validates that seal before
+the publication can be classified, compared, reused, or completed. This makes
+a single-field substitution invalid immediately instead of allowing it to
+masquerade as a recoverable prepared or completed record.
+
+Schemas `0.1.0` through `0.3.0` remain readable for exact owning-runtime
+migration and project `legacy_unavailable` seal posture. State Integrity,
+Command Core, and Command Center expose only the posture; raw record hashes are
+not projected, and Command Center remains read-only. See
+`sealed_authority_publication_records.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

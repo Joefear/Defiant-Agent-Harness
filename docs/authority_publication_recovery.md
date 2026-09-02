@@ -15,6 +15,8 @@ sanitized manifest of every dependent authority observation and writes
 
 - the exact target profile hash and generation;
 - a SHA-256 hash of the complete bounded manifest;
+- exact per-store commitments and a semantic record hash covering the entire
+  intent;
 - the preparation time; and
 - the last completed checkpoint, when one exists.
 
@@ -79,6 +81,13 @@ v0.76 also verifies retained commitments while a completed checkpoint is
 stable and refuses the owning runtime before checkpoint reuse or next-
 generation preparation when one differs from the reconstructed store value.
 See `completed_authority_publication_checkpoint_verification.md`.
+
+v0.77 schema `0.4.0` seals the semantic fields of every new intent and
+checkpoint, including its timestamp and per-store commitments. A record-hash
+mismatch is invalid rather than recoverable. Legacy schemas `0.1.0` through
+`0.3.0` remain readable with explicit unavailable seal posture and migrate only
+after successful matching owning-runtime startup. See
+`sealed_authority_publication_records.md`.
 
 ## Limits
 

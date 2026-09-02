@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.70.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.71.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -62,8 +62,9 @@ contains:
 - sanitized authority-publication state, exact target generation, manifest
   hash, independently reconstructed completed-manifest verification, active
   recovery phase, target and completed-checkpoint commitment posture, stable
-  checkpoint-commitment verification, and timestamps without raw manifests,
-  individual commitment hashes, or state paths;
+  checkpoint-commitment verification, semantic intent/checkpoint seal posture,
+  and timestamps without raw record hashes, raw manifests, individual
+  commitment hashes, or state paths;
 - sanitized runtime-artifact mode, bundle hash, count, executable-pin posture,
   last verification time, and binding to the active authority profile, without
   artifact paths or individual file digests;
@@ -112,6 +113,7 @@ contains:
   bounded-authority-continuity-I/O,
   crash-safe-authority-publication,
   validated-authority-publication-snapshot,
+  validated-authority-publication-record-seals,
   verified-authority-publication-manifest,
   verified-active-authority-publication-phase,
   verified-active-authority-publication-store-commitments,

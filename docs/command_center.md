@@ -106,7 +106,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.70.0`. The browser cannot raise, disable, or replace them and never receives
+`0.71.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -204,6 +204,12 @@ v0.76 adds stable completed-checkpoint commitment verification and one static
 posture flag. The dashboard can display the sanitized critical mismatch already
 produced by State Integrity, but receives no individual hashes or repair,
 acceptance, reuse, preparation, rotation, or migration control.
+
+v0.77 adds only sanitized intent/checkpoint record-seal posture and one static
+validation flag. The dashboard can distinguish `verified`,
+`legacy_unavailable`, `not_applicable`, and `invalid`, but receives no raw
+record hash or field values and gains no sealing, migration, recovery, repair,
+acceptance, replay, completion, or other mutation control.
 
 ## Read-only boundary
 

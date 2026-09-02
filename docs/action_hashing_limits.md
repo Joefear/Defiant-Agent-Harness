@@ -55,7 +55,7 @@ the streaming counter remains a second check.
 
 ## Read-only projection
 
-Command Core schema `0.70.0` publishes the fixed ceilings under
+Command Core schema `0.71.0` publishes the fixed ceilings under
 `resource_limits` and reports `action_hash_preflight: true`. Command Center
 renders the posture. Neither surface can change a ceiling, accept an exception,
 submit an action, approve, or execute.

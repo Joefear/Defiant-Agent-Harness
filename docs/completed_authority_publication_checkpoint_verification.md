@@ -9,7 +9,8 @@ durable stores, then influence a later mixed-generation recovery comparison.
 
 Doctor and Command Core reconstruct the complete bounded manifest and all seven
 per-store commitments from the same validated durable observations. When a
-completed `0.3.0` checkpoint has retained commitments, each value must match:
+completed `0.3.0` or `0.4.0` checkpoint has retained commitments, each value
+must match:
 
 - state-storage assurance;
 - control-plane isolation;
@@ -36,6 +37,11 @@ Legacy `0.1.0` and `0.2.0` checkpoints have no per-store commitments. They
 remain explicitly `legacy_unavailable`, continue to require aggregate-manifest
 verification, and receive commitments only after a successful matching
 owning-runtime startup. Read-only inspection never performs that migration.
+
+Schema `0.4.0` additionally seals the checkpoint's complete semantic record;
+see `sealed_authority_publication_records.md`. A legacy `0.3.0` checkpoint has
+commitments but reports its record seal as `legacy_unavailable` until a
+successful matching startup migrates it.
 
 ## Read-only boundary and limits
 

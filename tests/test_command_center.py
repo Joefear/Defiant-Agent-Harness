@@ -230,6 +230,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"bounded_authority_continuity_io" in javascript
     assert b"crash_safe_authority_publication" in javascript
     assert b"validated_authority_publication_snapshot" in javascript
+    assert b"validated_authority_publication_record_seals" in javascript
+    assert b"intent_record_seal" in javascript
+    assert b"checkpoint_record_seal" in javascript
     assert b"verified_authority_publication_manifest" in javascript
     assert b"verified_active_authority_publication_phase" in javascript
     assert b"verified_active_authority_publication_store_commitments" in javascript
