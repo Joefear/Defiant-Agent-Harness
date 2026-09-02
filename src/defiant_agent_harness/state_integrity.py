@@ -16,7 +16,7 @@ from .authority_publication import (
     AuthorityPublicationIntent,
     AuthorityPublicationState,
     AuthorityPublicationStore,
-    authority_manifest_hash_for,
+    authority_manifest_commitments_from_state,
 )
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
@@ -69,7 +69,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.22.0"
+AUDIT_VERSION = "0.23.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -487,11 +487,12 @@ class StateIntegrityAuditor:
                     )
                 else:
                     try:
-                        observed_manifest_hash = (
-                            self._completed_authority_manifest_hash(
-                                state.completed.profile_hash,
-                                state.completed.generation,
-                            )
+                        (
+                            observed_manifest_hash,
+                            observed_store_hashes,
+                        ) = self._completed_authority_manifest_commitments(
+                            state.completed.profile_hash,
+                            state.completed.generation,
                         )
                     except AuthorityPublicationError as exc:
                         projection["verification"] = "dependency_invalid"
@@ -512,6 +513,28 @@ class StateIntegrityAuditor:
                                 "authority_publication.json",
                                 "completed authority publication does not match durable dependent state",
                             )
+                        elif state.completed.store_hashes is not None:
+                            expected_store_hashes = dict(state.completed.store_hashes)
+                            mismatched_store = next(
+                                (
+                                    name
+                                    for name in AUTHORITY_PUBLICATION_STORE_NAMES
+                                    if expected_store_hashes[name]
+                                    != observed_store_hashes[name]
+                                ),
+                                None,
+                            )
+                            if mismatched_store is not None:
+                                projection["verification"] = (
+                                    "checkpoint_store_commitment_mismatch"
+                                )
+                                self._issue(
+                                    report,
+                                    "authority_publication_checkpoint_store_mismatch",
+                                    "critical",
+                                    "authority_publication.json",
+                                    f"completed authority publication store '{mismatched_store}' does not match its retained commitment",
+                                )
             report.stores["authority_publication"] = projection
         except (AuthorityPublicationError, RuntimeError) as exc:
             report.stores["authority_publication"] = {
@@ -591,7 +614,7 @@ class StateIntegrityAuditor:
                 )
                 return
             try:
-                observed = self._completed_authority_manifest_hash(
+                observed, _ = self._completed_authority_manifest_commitments(
                     completed.profile_hash,
                     completed.generation,
                 )
@@ -752,7 +775,7 @@ class StateIntegrityAuditor:
                 return
 
         try:
-            observed = self._completed_authority_manifest_hash(
+            observed, _ = self._completed_authority_manifest_commitments(
                 active.profile_hash,
                 active.generation,
             )
@@ -896,89 +919,15 @@ class StateIntegrityAuditor:
                 issue for issue in report.issues if issue.code not in downgraded_codes
             ]
 
-    def _completed_authority_manifest_hash(
+    def _completed_authority_manifest_commitments(
         self,
         profile_hash: str,
         generation: int,
-    ) -> str:
-        try:
-            storage = StateStorageStateStore(self.workdir / "state_storage.json").get()
-            isolation = ControlPlaneIsolationStateStore(
-                self.workdir / "control_plane_isolation.json"
-            ).get()
-            workspace = WorkspaceIntegrityStateStore(
-                self.workdir / "workspace_integrity.json"
-            ).get()
-            witness = EvidenceWitnessPolicyStore(
-                self.workdir / "evidence_witness_policy.json"
-            ).get()
-            runtime = RuntimeArtifactStateStore(
-                self.workdir / "runtime_artifacts.json"
-            ).get()
-            launch = LaunchEnvelopeStateStore(
-                self.workdir / "launch_envelope.json"
-            ).get()
-            evidence_head = EvidenceHeadStateStore(
-                self.workdir / "evidence_head.json"
-            ).get()
-        except RuntimeError as exc:
-            raise AuthorityPublicationError(
-                "a completed authority publication dependency is invalid"
-            ) from exc
-
-        required = {
-            "state_storage": storage,
-            "control_plane_isolation": isolation,
-            "workspace_integrity": workspace,
-            "evidence_witness_policy": witness,
-            "evidence_head": evidence_head,
-        }
-        missing = next(
-            (name for name, value in required.items() if value is None), None
-        )
-        if missing is not None:
-            raise AuthorityPublicationError(
-                f"completed authority publication dependency '{missing}' is missing"
-            )
-        bound = {
-            **required,
-            "runtime_artifacts": runtime,
-            "launch_envelope": launch,
-        }
-        mismatched = next(
-            (
-                name
-                for name, value in bound.items()
-                if value is not None and value.profile_hash != profile_hash
-            ),
-            None,
-        )
-        if mismatched is not None:
-            raise AuthorityPublicationError(
-                f"completed authority publication dependency '{mismatched}' has a profile mismatch"
-            )
-
-        witness_authority = {
-            "mode": witness.mode,
-            "schema_version": WITNESS_VERSION,
-            "trusted_key_ids": list(witness.trusted_key_ids),
-        }
-        if witness.max_unwitnessed_records is not None:
-            witness_authority["max_unwitnessed_records"] = (
-                witness.max_unwitnessed_records
-            )
-        return authority_manifest_hash_for(
+    ) -> tuple[str, dict[str, str | None]]:
+        return authority_manifest_commitments_from_state(
+            self.workdir,
             profile_hash=profile_hash,
             generation=generation,
-            state_storage=storage.authority_dict(),
-            control_plane_isolation=isolation.authority_dict(),
-            workspace_integrity=workspace.authority_dict(),
-            evidence_witness_policy=witness_authority,
-            runtime_artifacts=(
-                runtime.authority_dict() if runtime is not None else None
-            ),
-            launch_envelope=(launch.authority_dict() if launch is not None else None),
-            evidence_head=evidence_head_authority(),
         )
 
     def _audit_control_plane_isolation(self, report: StateIntegrityReport) -> int:

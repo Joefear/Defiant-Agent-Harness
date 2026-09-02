@@ -41,7 +41,7 @@ strictest-wins and default-deny behavior.
 
 ## Read-only projection
 
-Command Core schema `0.69.0` reports the static parser profile, both refusal
+Command Core schema `0.70.0` reports the static parser profile, both refusal
 flags, and the policy-pack byte ceiling. Command Center renders this metadata
 read-only. Neither surface receives configuration source, uploads a pack,
 changes a limit, accepts a parser exception, rotates a profile, or launches an

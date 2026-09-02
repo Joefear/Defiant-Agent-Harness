@@ -978,6 +978,18 @@ owning-runtime startup. Command Center receives only sanitized posture and has
 no replay or migration authority. See
 `active_authority_publication_checkpoint_commitments.md`.
 
+## v0.76 stable completed-checkpoint verification
+
+Read-only diagnostics now reconstruct both the completed manifest and all seven
+per-store commitments from the same durable observations. A retained
+commitment that differs from its stable store is critical even when the
+aggregate manifest hash remains valid. The owning runtime applies the same gate
+before reusing the checkpoint or preparing a later generation, so latent
+commitment poisoning cannot become recovery input. Legacy checkpoints remain
+aggregate-verified and explicitly unavailable for per-store comparison until a
+successful matching startup migrates them. See
+`completed_authority_publication_checkpoint_verification.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

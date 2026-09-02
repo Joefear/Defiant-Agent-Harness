@@ -237,11 +237,16 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
         b"verified_active_authority_publication_checkpoint_store_commitments"
         in javascript
     )
+    assert (
+        b"verified_completed_authority_publication_checkpoint_store_commitments"
+        in javascript
+    )
     assert b"target stores are checked against exact prepared commitments" in javascript
     assert (
         b"checkpoint stores are checked against exact completed commitments"
         in javascript
     )
+    assert b"checked against exact retained store commitments" in javascript
     assert b"prepared, applying, or ready to complete" in javascript
     assert b"authority continuity recovery and publication" in javascript
     assert b"runtime_artifact_state_bytes" in javascript

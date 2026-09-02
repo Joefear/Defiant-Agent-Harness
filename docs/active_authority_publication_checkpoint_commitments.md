@@ -47,6 +47,10 @@ reconstructed and verified. A successful matching owning-runtime startup writes
 a new `0.3.0` checkpoint with exact commitments. An active legacy `0.1.0` intent
 is likewise upgraded only after exact replay and final manifest verification.
 
+v0.76 additionally verifies these commitments while the completed checkpoint
+is stable and before the owning runtime may reuse it. See
+`completed_authority_publication_checkpoint_verification.md`.
+
 ## Limits
 
 These are local unsigned commitments. They detect inconsistent local

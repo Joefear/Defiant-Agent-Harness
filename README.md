@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.75.
+logs. A full trusted-memory/DKE system is not part of v0.76.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.75 is
+## What v0.76 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -686,6 +686,13 @@ Same-profile substitution on either side is critical, legacy `0.1.0` and
 migrates them to `0.3.0`. Command Center exposes only sanitized checkpoint-
 commitment posture and remains strictly read-only.
 
+v0.76 verifies every retained commitment while its completed checkpoint is
+stable, not only after a later rotation becomes active. A poisoned commitment
+is critical even when the aggregate manifest still matches, the owning runtime
+refuses it before preparing another publication, and legacy checkpoints remain
+aggregate-verified until successful migration. Command Center receives only
+the sanitized mismatch posture and remains strictly read-only.
+
 ## Install
 
 ```bash
@@ -1022,7 +1029,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.75 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.76 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -1031,8 +1038,8 @@ cross-store integrity gating, cross-process authority serialization,
 durable full-authority-profile continuity and explicit staged rotation,
 crash-safe exact-replay publication of profile-bound authority observations,
 read-only reconstruction and verification of completed authority manifests,
-read-only active-publication phase plus target and completed-checkpoint store
-commitment verification,
+read-only active-publication phase plus target, mixed-generation checkpoint,
+and stable completed-checkpoint store commitment verification,
 content-addressed local runtime artifact assurance with opt-in closed declared
 dependency roots,
 restricted and authority-bound local process launch envelopes,

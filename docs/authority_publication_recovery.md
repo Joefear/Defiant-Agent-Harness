@@ -75,6 +75,11 @@ replay. Legacy `0.1.0` and `0.2.0` state remains readable and migrates only on a
 successful matching owning-runtime startup. See
 `active_authority_publication_checkpoint_commitments.md`.
 
+v0.76 also verifies retained commitments while a completed checkpoint is
+stable and refuses the owning runtime before checkpoint reuse or next-
+generation preparation when one differs from the reconstructed store value.
+See `completed_authority_publication_checkpoint_verification.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or
