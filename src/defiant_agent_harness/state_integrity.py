@@ -69,7 +69,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.24.0"
+AUDIT_VERSION = "0.25.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -432,6 +432,8 @@ class StateIntegrityAuditor:
                     "checkpoint_store_commitments": "not_applicable",
                     "intent_record_seal": "not_applicable",
                     "checkpoint_record_seal": "not_applicable",
+                    "intent_checkpoint_link": "not_applicable",
+                    "checkpoint_intent_link": "not_applicable",
                     "prepared_at": None,
                     "completed_at": None,
                 }
@@ -551,6 +553,8 @@ class StateIntegrityAuditor:
                 "checkpoint_store_commitments": "invalid",
                 "intent_record_seal": "invalid",
                 "checkpoint_record_seal": "invalid",
+                "intent_checkpoint_link": "invalid",
+                "checkpoint_intent_link": "invalid",
                 "prepared_at": None,
                 "completed_at": None,
             }

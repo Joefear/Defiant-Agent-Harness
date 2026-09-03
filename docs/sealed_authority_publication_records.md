@@ -43,6 +43,10 @@ or migration endpoint.
 
 ## Security boundary
 
+v0.78 extends the record seal across publication transitions: intents bind the
+exact prior checkpoint and checkpoints bind their originating intent. See
+`sealed_authority_publication_transitions.md`.
+
 The seal detects inconsistent local corruption and partial substitution. It is
 not a signature or external rollback witness. A privileged actor that can
 replace the record, its hash, the harness, and all dependent state consistently

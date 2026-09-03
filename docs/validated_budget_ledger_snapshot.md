@@ -43,7 +43,7 @@ ledger observation. The cross-store state auditor consumes the ledger's
 validated snapshot instead of validating and then rereading raw JSON. Both
 remain read-only and attempt no repair.
 
-Command Core schema `0.71.0` publishes only the static `budget_state_bytes`
+Command Core schema `0.72.0` publishes only the static `budget_state_bytes`
 ceiling and `validated_budget_ledger_snapshot: true` posture alongside the
 existing sanitized aggregates. Command Center renders those static facts but
 receives no reservation, reconciliation, note, attestation, or mutation

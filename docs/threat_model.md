@@ -309,6 +309,15 @@ local and unsigned: a privileged actor able to replace both the record and its
 hash, code, and dependent state consistently is still outside this control and
 requires immutable deployment or an external witness.
 
+Through v0.77, individually sealed publication records could still be spliced:
+a valid intent could name the right target without identifying the retained
+checkpoint, and a valid checkpoint did not identify the intent that produced
+it. v0.78 binds both directions. New intents commit to `GENESIS` or the exact
+prior checkpoint seal; new checkpoints commit to the exact originating intent.
+Legacy missing links remain explicitly unavailable rather than inferred. These
+links are local unsigned hashes and retain the same privileged-host limit as
+the underlying record seals.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

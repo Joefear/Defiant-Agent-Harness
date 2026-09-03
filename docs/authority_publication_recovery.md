@@ -89,6 +89,14 @@ mismatch is invalid rather than recoverable. Legacy schemas `0.1.0` through
 after successful matching owning-runtime startup. See
 `sealed_authority_publication_records.md`.
 
+v0.78 schema `0.5.0` seals the transition between those records. A new intent
+links to the exact retained completed checkpoint, or to the explicit `GENESIS`
+predecessor for the first publication. A new checkpoint links back to the
+exact intent that produced it. Independently valid records can no longer be
+spliced into a false recovery sequence. Legacy schemas `0.1.0` through `0.4.0`
+remain readable with explicit unavailable-link posture; read-only inspection
+never migrates them. See `sealed_authority_publication_transitions.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or
