@@ -42,7 +42,7 @@ the state root. The live root identity, ownership, permissions, file types,
 link counts, ACLs, temporary files, and replacement resistance remain verified
 through the filesystem boundary before governed execution.
 
-Command Core schema `0.72.0` reports the fixed
+Command Core schema `0.73.0` reports the fixed
 `state_storage_state_bytes` ceiling and
 `validated_state_storage_state_snapshot: true`. Command Center renders only
 that static posture and its existing sanitized state-storage projection. It

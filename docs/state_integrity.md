@@ -65,6 +65,11 @@ current active intent must name `GENESIS` or the retained checkpoint seal, and
 a current completed checkpoint must name the exact intent that produced it.
 Valid but spliced records are critical; legacy schemas remain visible with
 `legacy_unavailable` transition-link posture.
+v0.79 cross-checks publication schema `0.6.0` and its monotonic sequence against
+the separately sealed continuity anchor. A checkpoint-first write gap is a
+warning-level deterministic recovery condition. Publication rollback,
+divergence, an orphan anchor, or missing continuity after initial enrollment is
+critical. Older publication schemas remain explicit `legacy_unavailable` state.
 
 Run it without initializing or modifying the state directory:
 
@@ -79,7 +84,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.25.0` and exits
+The command emits schema `defiant.state_integrity` version `0.26.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.
@@ -133,7 +138,8 @@ The auditor verifies:
   completed-manifest agreement with all durable dependent observations, plus
   exact active-target and completed-checkpoint per-store commitments when
   available, with verified or explicitly legacy semantic record-seal and exact
-  predecessor/originating-intent transition-link posture;
+  predecessor/originating-intent transition-link posture, plus the sanitized
+  monotonic continuity sequence and cross-store verification state;
 - sanitized runtime-artifact assurance structure and exact binding to the
   active authority-profile hash;
 - sanitized launch-envelope structure, bounded counts and hashes, and exact
@@ -173,7 +179,7 @@ snapshot non-authoritative, and withhold projections from an invalid store.
 
 v0.26 treats a durable JSON file above 64 MiB or an individual evidence record
 above 16 MiB as invalid before parsing. The `defiant.state_integrity` schema is
-version `0.25.0`. Diagnostics report the boundary and ceiling without echoing
+version `0.26.0`. Diagnostics report the boundary and ceiling without echoing
 record contents or absolute state paths; no read-only surface truncates or
 repairs the offending file.
 

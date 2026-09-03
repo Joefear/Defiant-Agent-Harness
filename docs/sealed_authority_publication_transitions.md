@@ -54,3 +54,6 @@ an external rollback witness. A privileged actor able to replace the harness,
 all records, links, and dependent state consistently remains outside this local
 control; immutable deployment and off-box signed witnessing are separate
 controls.
+
+v0.79 additionally ratchets completed transition seals across an independently
+atomic compact continuity anchor. See `authority_publication_continuity.md`.

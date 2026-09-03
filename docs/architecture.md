@@ -1024,6 +1024,24 @@ linkage rather than fabricating it. Command Core and Command Center expose only
 sanitized posture, never raw linkage hashes, and Command Center remains
 read-only. See `sealed_authority_publication_transitions.md`.
 
+## v0.79 authority-publication continuity ratchet
+
+Publication schema `0.6.0` adds a non-negative continuity sequence while an
+independently atomic, self-sealed `authority_publication_continuity.json`
+anchors each enrolled completed checkpoint. Normal completion writes the new
+checkpoint first and advances the ratchet second. A crash between those writes
+is recognizable only when the new checkpoint links the current anchor and the
+sequence advances exactly once; owning-runtime startup then advances the anchor
+before preparing more work.
+
+An anchor ahead of publication is rollback. Equal sequences with different
+checkpoint seals, skipped sequences, an orphan anchor, a sequence reset, or a
+missing anchor after sequence one are critical divergence. Legacy publication
+schemas remain readable without an anchor and enroll through a successful
+matching startup. The compact ratchet does not retain an unbounded local event
+log and does not claim to detect matched rollback of the publication file and
+anchor together. See `authority_publication_continuity.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

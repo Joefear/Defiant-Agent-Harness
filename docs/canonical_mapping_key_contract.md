@@ -47,7 +47,7 @@ silently overwriting a value. See `validated_scalar_ownership.md`.
 
 ## Read-only projection
 
-Command Core schema `0.72.0` reports
+Command Core schema `0.73.0` reports
 `canonical_mapping_key_preflight: true` and
 `complete_mapping_key_preflight: true`. Command Center renders only that static
 posture. It cannot submit a mapping, alter the contract, approve, reconcile, or

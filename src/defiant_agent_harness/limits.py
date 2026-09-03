@@ -76,6 +76,7 @@ MAX_WORKSPACE_INTEGRITY_STATE_BYTES = 64 * 1024
 # and exact candidate manifest under one compact recovery contract.
 MAX_AUTHORITY_PUBLICATION_STATE_BYTES = 64 * 1024
 MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES = 64 * 1024
+MAX_AUTHORITY_PUBLICATION_CONTINUITY_STATE_BYTES = 64 * 1024
 
 # The shared strict JSON loader scans structure and scalar lexemes before
 # constructing Python objects. Count container nesting and lexical
