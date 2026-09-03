@@ -16,9 +16,11 @@ from ..budgets.ledger import BudgetError, BudgetLedger
 from ..contracts import Decision, ResultStatus, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
+from ..authority_publication_witness import AuthorityPublicationWitnessError
 from ..limits import (
     MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES,
     MAX_AUTHORITY_PUBLICATION_CONTINUITY_STATE_BYTES,
+    MAX_AUTHORITY_PUBLICATION_WITNESS_POLICY_STATE_BYTES,
     MAX_AUTHORITY_PUBLICATION_STATE_BYTES,
     MAX_AUTHORITY_PROFILE_STATE_BYTES,
     MAX_POLICY_CONTEXT_CHARACTERS,
@@ -110,7 +112,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.73.0"
+SNAPSHOT_VERSION = "0.74.0"
 
 
 class CommandError(RuntimeError):
@@ -127,11 +129,17 @@ class CommandCore:
         workspace_root: str | Path | None = None,
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
+        authority_publication_witness: str | Path | None = None,
+        trusted_authority_publication_witness_keys: list[str] | None = None,
     ):
         self.workdir = Path(workdir)
         self.workspace_root = workspace_root
         self.evidence_head_witness = evidence_head_witness
         self.trusted_evidence_witness_keys = trusted_evidence_witness_keys or []
+        self.authority_publication_witness = authority_publication_witness
+        self.trusted_authority_publication_witness_keys = (
+            trusted_authority_publication_witness_keys or []
+        )
         validate_external_trust_specs(trusted_operator_keys or [], self.workdir)
         self.operator_trust = (
             OperatorTrustPolicy.from_specs(trusted_operator_keys)
@@ -150,6 +158,10 @@ class CommandCore:
                 workspace_root=self.workspace_root,
                 evidence_head_witness=self.evidence_head_witness,
                 trusted_evidence_witness_keys=self.trusted_evidence_witness_keys,
+                authority_publication_witness=self.authority_publication_witness,
+                trusted_authority_publication_witness_keys=(
+                    self.trusted_authority_publication_witness_keys
+                ),
             ).audit()
             audit_payload = audit.to_dict()
             journal_operation = (
@@ -191,6 +203,9 @@ class CommandCore:
                 "authority_profile": audit_payload["stores"]["authority_profile"],
                 "authority_publication": audit_payload["stores"][
                     "authority_publication"
+                ],
+                "authority_publication_witness": audit_payload["stores"][
+                    "authority_publication_witness"
                 ],
                 "state_storage": audit_payload["stores"]["state_storage"],
                 "control_plane_isolation": audit_payload["stores"][
@@ -278,6 +293,9 @@ class CommandCore:
                     ),
                     "authority_publication_continuity_state_bytes": (
                         MAX_AUTHORITY_PUBLICATION_CONTINUITY_STATE_BYTES
+                    ),
+                    "authority_publication_witness_policy_state_bytes": (
+                        MAX_AUTHORITY_PUBLICATION_WITNESS_POLICY_STATE_BYTES
                     ),
                     "authority_publication_manifest_bytes": (
                         MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES
@@ -389,6 +407,7 @@ class CommandCore:
                     "validated_authority_publication_record_seals": True,
                     "validated_authority_publication_transition_links": True,
                     "verified_authority_publication_continuity": True,
+                    "verified_external_authority_publication_witness": True,
                     "verified_authority_publication_manifest": True,
                     "verified_active_authority_publication_phase": True,
                     "verified_active_authority_publication_store_commitments": True,
@@ -434,6 +453,7 @@ class CommandCore:
             BudgetError,
             EvidenceError,
             EvidenceWitnessError,
+            AuthorityPublicationWitnessError,
             PersistenceError,
             OSError,
             OperationJournalError,

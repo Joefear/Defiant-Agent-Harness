@@ -142,6 +142,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"authority_profile_state_bytes" in javascript
     assert b"authority_publication_state_bytes" in javascript
     assert b"authority_publication_continuity_state_bytes" in javascript
+    assert b"authority_publication_witness_policy_state_bytes" in javascript
+    assert b"verified_external_authority_publication_witness" in javascript
+    assert b"authority_publication_witness" in javascript
     assert b"authority_publication_manifest_bytes" in javascript
     assert b"operator_trust_state_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript

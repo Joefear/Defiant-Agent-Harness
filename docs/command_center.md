@@ -40,6 +40,9 @@ Press `Ctrl+C` in the serving terminal to stop it.
 - signed external evidence-head witness posture, witnessed count, current lag,
   optional maximum, and sanitized signer/key/time assurance without paths,
   signature, or note;
+- signed external authority-publication witness posture, witnessed sequence,
+  current lag, and sanitized signer/key/time assurance without the checkpoint
+  hash, signature, payload, note, or external paths;
 - a prominent reconciliation-required alert for approvals stranded in
   `executing`, without exposing the operator note or adding an action control;
 - budget balance, availability, reservations, spend, and estimate drift;
@@ -106,7 +109,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.73.0`. The browser cannot raise, disable, or replace them and never receives
+`0.74.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -223,6 +226,13 @@ the independent continuity-state byte ceiling, and one static verification
 flag. The browser receives no checkpoint, predecessor, continuity, or record
 hash and gains no ratchet advancement, recovery, enrollment, reset, repair,
 acceptance, replay, completion, or other mutation control.
+
+v0.80 adds sanitized external authority-publication witness posture and a
+specific read-only alert when the witness must be refreshed after one
+successful owning-runtime startup. The browser receives no raw checkpoint,
+signature, signed payload, note, witness path, or public-key path and gains no
+witness creation, upload, acceptance, trust-key, profile-rotation, publication,
+recovery, or other mutation control.
 
 ## Read-only boundary
 

@@ -49,6 +49,7 @@ MAX_EVIDENCE_HEAD_STATE_BYTES = 64 * 1024
 # one authority profile. Keep its canonical snapshot, recovery read, and
 # atomic publication under the same established document ceiling.
 MAX_EVIDENCE_WITNESS_POLICY_STATE_BYTES = 256 * 1024
+MAX_AUTHORITY_PUBLICATION_WITNESS_POLICY_STATE_BYTES = 256 * 1024
 
 # Runtime-artifact assurance decides which local executable and dependency
 # bytes belong to one authority profile. Keep its canonical snapshot, recovery

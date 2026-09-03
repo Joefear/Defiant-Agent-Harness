@@ -18,6 +18,16 @@ from .authority_publication import (
     AuthorityPublicationStore,
     authority_manifest_commitments_from_state,
 )
+from .authority_publication_witness import (
+    AuthorityPublicationWitnessError,
+    AuthorityPublicationWitnessPolicy,
+    AuthorityPublicationWitnessPolicyStore,
+    WITNESS_MODE as PUBLICATION_WITNESS_MODE,
+    WITNESS_NOT_CONFIGURED as PUBLICATION_WITNESS_NOT_CONFIGURED,
+    assess_witness as assess_publication_witness,
+    load_witness as load_publication_witness,
+    validate_external_witness_paths as validate_external_publication_witness_paths,
+)
 from .budgets.ledger import BudgetLedger
 from .contracts import EvidenceRecord, ResultStatus, sha256_of, utc_now
 from .control_plane_isolation import (
@@ -69,7 +79,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.26.0"
+AUDIT_VERSION = "0.27.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -170,6 +180,8 @@ class StateIntegrityAuditor:
         workspace_root: str | Path | None = None,
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
+        authority_publication_witness: str | Path | None = None,
+        trusted_authority_publication_witness_keys: list[str] | None = None,
     ):
         self.workdir = Path(workdir)
         self.operator_trust = operator_trust
@@ -189,6 +201,25 @@ class StateIntegrityAuditor:
             self.workdir,
             self.evidence_head_witness,
             self.trusted_evidence_witness_keys,
+        )
+        self.authority_publication_witness = (
+            Path(authority_publication_witness)
+            if authority_publication_witness is not None
+            else None
+        )
+        self.trusted_authority_publication_witness_keys = (
+            trusted_authority_publication_witness_keys or []
+        )
+        if bool(self.authority_publication_witness) != bool(
+            self.trusted_authority_publication_witness_keys
+        ):
+            raise AuthorityPublicationWitnessError(
+                "external publication witness and trusted keys are required together"
+            )
+        validate_external_publication_witness_paths(
+            self.workdir,
+            self.authority_publication_witness,
+            self.trusted_authority_publication_witness_keys,
         )
 
     def require_safe(self) -> StateIntegrityReport:
@@ -226,6 +257,7 @@ class StateIntegrityAuditor:
             evidence,
             evidence_trusted=evidence_trusted,
         )
+        witnessed_publication_sequence = self._audit_publication_witness(report)
         self._audit_authority_publication(report)
         approvals = self._load_approvals(report, journal_operation)
         self._audit_legacy_signed_migration(report, approvals)
@@ -235,6 +267,9 @@ class StateIntegrityAuditor:
             "evidence_records": len(evidence),
             "checkpointed_evidence_records": checkpointed_evidence_count,
             "witnessed_evidence_records": witnessed_evidence_count,
+            "witnessed_authority_publication_sequence": (
+                witnessed_publication_sequence
+            ),
             "approvals": len(approvals),
             "reservations": len(budget.get("reservations", {})),
             "reconciliations": len(budget.get("reconciliations", {})),
@@ -959,6 +994,7 @@ class StateIntegrityAuditor:
             "launch_envelope": "launch_envelope_profile_mismatch",
             "evidence_head": "evidence_head_profile_mismatch",
             "evidence_witness": "evidence_witness_profile_mismatch",
+            "authority_publication_witness": "publication_witness_profile_mismatch",
         }
         downgraded_codes = set()
         for store_name, issue_code in expected.items():
@@ -1924,6 +1960,170 @@ class StateIntegrityAuditor:
                 "evidence_witness_invalid",
                 "critical",
                 "evidence_witness_policy.json",
+                str(exc),
+            )
+            return 0
+
+    def _audit_publication_witness(self, report: StateIntegrityReport) -> int:
+        store = AuthorityPublicationWitnessPolicyStore(
+            self.workdir / "authority_publication_witness_policy.json"
+        )
+        try:
+            state = store.get()
+            if state is None:
+                report.stores["authority_publication_witness"] = {
+                    "state": "not_configured",
+                    "verification": "not_required",
+                    "profile_hash": None,
+                    "trusted_key_count": 0,
+                    "witnessed_continuity_sequence": 0,
+                    "unwitnessed_publication_count": 0,
+                    "witnessed_profile_generation": 0,
+                    "witnessed_profile_hash": None,
+                    "key_id": None,
+                    "signer": None,
+                    "signed_at": None,
+                }
+                if self.authority_publication_witness is not None:
+                    self._issue(
+                        report,
+                        "publication_witness_policy_not_enrolled",
+                        "critical",
+                        "authority_publication_witness_policy.json",
+                        "external publication witness supplied without enrolled policy",
+                    )
+                else:
+                    profile = AuthorityProfileStore(
+                        self.workdir / "authority_profile.json"
+                    ).get()
+                    if profile is not None:
+                        self._issue(
+                            report,
+                            "publication_witness_policy_observation_missing",
+                            "warning",
+                            "authority_publication_witness_policy.json",
+                            "publication witness policy posture has not been recorded",
+                        )
+                return 0
+            profile = AuthorityProfileStore(
+                self.workdir / "authority_profile.json"
+            ).get()
+            if profile is None or profile.profile_hash != state.profile_hash:
+                report.stores["authority_publication_witness"] = state.projection(
+                    verification="profile_mismatch"
+                )
+                self._issue(
+                    report,
+                    "publication_witness_profile_mismatch",
+                    "critical",
+                    "authority_publication_witness_policy.json",
+                    "publication witness policy is not bound to the active profile",
+                )
+                return 0
+            if state.mode == PUBLICATION_WITNESS_NOT_CONFIGURED:
+                report.stores["authority_publication_witness"] = state.projection(
+                    verification="not_required"
+                )
+                if self.authority_publication_witness is not None:
+                    self._issue(
+                        report,
+                        "publication_witness_policy_not_enrolled",
+                        "critical",
+                        "authority_publication_witness_policy.json",
+                        "active profile does not require publication witnessing",
+                    )
+                return 0
+            if state.mode != PUBLICATION_WITNESS_MODE:
+                raise AuthorityPublicationWitnessError(
+                    "unsupported publication witness policy mode"
+                )
+            if self.authority_publication_witness is None:
+                report.stores["authority_publication_witness"] = state.projection(
+                    verification="external_input_required"
+                )
+                self._issue(
+                    report,
+                    "external_publication_witness_required",
+                    "critical",
+                    "authority_publication_witness_policy.json",
+                    "the enrolled authority profile requires its external publication witness and trusted keys",
+                )
+                return 0
+            policy = AuthorityPublicationWitnessPolicy.from_paths(
+                self.trusted_authority_publication_witness_keys
+            )
+            if policy.trusted_key_ids != state.trusted_key_ids:
+                report.stores["authority_publication_witness"] = state.projection(
+                    verification="trust_mismatch"
+                )
+                self._issue(
+                    report,
+                    "publication_witness_trust_mismatch",
+                    "critical",
+                    "authority_publication_witness_policy.json",
+                    "supplied publication witness keys do not match enrolled policy",
+                )
+                return 0
+            storage = StateStorageStateStore(self.workdir / "state_storage.json").get()
+            publication_store = AuthorityPublicationStore(
+                self.workdir / "authority_publication.json"
+            )
+            publication = publication_store.get()
+            continuity = publication_store.get_continuity()
+            if storage is None or publication is None or continuity is None:
+                raise AuthorityPublicationWitnessError(
+                    "publication witness dependencies are not enrolled"
+                )
+            assessment = assess_publication_witness(
+                load_publication_witness(self.authority_publication_witness),
+                policy,
+                deployment_root_hash=storage.root_hash,
+                profile=profile,
+                publication=publication,
+                continuity=continuity,
+            )
+            report.stores["authority_publication_witness"] = state.projection(
+                verification=assessment.verification,
+                assessment=assessment,
+            )
+            if not assessment.ok:
+                self._issue(
+                    report,
+                    "publication_witness_invalid",
+                    "critical",
+                    "external publication witness",
+                    assessment.detail,
+                )
+                return 0
+            if assessment.verification == "forward":
+                self._issue(
+                    report,
+                    "publication_witness_refresh_required",
+                    "warning",
+                    "external publication witness",
+                    "publication witness must be refreshed before the next owning-runtime startup",
+                )
+            return assessment.continuity_sequence
+        except (AuthorityPublicationWitnessError, RuntimeError) as exc:
+            report.stores["authority_publication_witness"] = {
+                "state": "invalid",
+                "verification": "invalid",
+                "detail": str(exc),
+                "profile_hash": None,
+                "trusted_key_count": 0,
+                "witnessed_continuity_sequence": 0,
+                "unwitnessed_publication_count": 0,
+                "witnessed_profile_generation": 0,
+                "witnessed_profile_hash": None,
+                "key_id": None,
+                "signer": None,
+                "signed_at": None,
+            }
+            self._issue(
+                report,
+                "publication_witness_invalid",
+                "critical",
+                "authority_publication_witness_policy.json",
                 str(exc),
             )
             return 0

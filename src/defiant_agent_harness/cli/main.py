@@ -14,6 +14,8 @@ dah operator-keygen       create an encrypted operator identity key pair
 dah operator-trust-rotate authorize an additive operator trust rotation
 dah authority-profile-rotate authorize one exact runtime authority profile
 dah verify-export         verify a signed export against pinned public keys
+dah witness-authority-publication sign the current publication continuity head
+dah verify-authority-publication-witness verify a signed publication witness
 dah budget                show the spend ledger
 dah policy                show the loaded rules and ruleset hash
 dah export <request_id>   emit a Command-ready evidence pack
@@ -34,6 +36,17 @@ from pathlib import Path
 from ..adapters.mock import SCRIPTS, MockAgentAdapter
 from ..approvals.store import ApprovalStore
 from ..authority_profile import AuthorityProfileStore
+from ..authority_publication import AuthorityPublicationStore
+from ..authority_publication_witness import (
+    AuthorityPublicationWitnessError,
+    AuthorityPublicationWitnessPolicy,
+    assess_witness as assess_publication_witness,
+    build_witness_payload as build_publication_witness_payload,
+    load_witness as load_publication_witness,
+    sign_witness as sign_publication_witness,
+    validate_external_witness_paths as validate_external_publication_witness_paths,
+    write_witness as write_publication_witness,
+)
 from ..command.core import CommandCore, CommandError
 from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
 from ..contracts import HarnessRequest, Sensitivity
@@ -137,6 +150,10 @@ def cmd_demo(args) -> int:
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
         max_unwitnessed_records=args.max_unwitnessed_records,
+        authority_publication_witness=args.authority_publication_witness,
+        trusted_authority_publication_witness_keys=(
+            args.trusted_authority_publication_key
+        ),
         require_windows_private_state_acl=args.require_windows_private_state_acl,
     )
     request = HarnessRequest(
@@ -534,6 +551,66 @@ def cmd_verify_evidence_head_witness(args) -> int:
     return 0 if status.ok else 1
 
 
+def cmd_witness_authority_publication(args) -> int:
+    try:
+        _require_external_secret(args.workdir, args.signing_key, "signing key")
+        _require_external_secret(args.workdir, args.passphrase_file, "passphrase file")
+        _require_external_secret(args.workdir, args.output, "publication witness")
+        document = sign_publication_witness(
+            build_publication_witness_payload(args.workdir),
+            args.signing_key,
+            read_passphrase(args.passphrase_file),
+            signer=args.signer,
+            note=args.note,
+        )
+        write_publication_witness(args.output, document)
+    except (EvidenceSigningError, AuthorityPublicationWitnessError) as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    print(f"wrote authority-publication witness {args.output}")
+    return 0
+
+
+def cmd_verify_authority_publication_witness(args) -> int:
+    try:
+        validate_external_publication_witness_paths(
+            args.workdir,
+            args.witness_path,
+            args.trusted_key,
+        )
+        policy = AuthorityPublicationWitnessPolicy.from_paths(args.trusted_key)
+        root = Path(args.workdir)
+        profile = AuthorityProfileStore(root / "authority_profile.json").get()
+        storage = StateStorageStateStore(root / "state_storage.json").get()
+        publication_store = AuthorityPublicationStore(
+            root / "authority_publication.json"
+        )
+        publication = publication_store.get()
+        continuity = publication_store.get_continuity()
+        if (
+            profile is None
+            or storage is None
+            or publication is None
+            or continuity is None
+        ):
+            raise AuthorityPublicationWitnessError(
+                "publication witness dependencies must be enrolled"
+            )
+        status = assess_publication_witness(
+            load_publication_witness(args.witness_path),
+            policy,
+            deployment_root_hash=storage.root_hash,
+            profile=profile,
+            publication=publication,
+            continuity=continuity,
+        )
+    except AuthorityPublicationWitnessError as exc:
+        print(json.dumps({"ok": False, "detail": str(exc)}, indent=2))
+        return 1
+    print(json.dumps(status.to_dict(), indent=2, sort_keys=True))
+    return 0 if status.ok else 1
+
+
 def cmd_command(args) -> int:
     try:
         _validate_trusted_operator_paths(args)
@@ -543,6 +620,10 @@ def cmd_command(args) -> int:
             workspace_root=args.workspace_root,
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
+            authority_publication_witness=args.authority_publication_witness,
+            trusted_authority_publication_witness_keys=(
+                args.trusted_authority_publication_key
+            ),
         ).snapshot(
             limit=args.limit,
             request_id=args.request,
@@ -552,6 +633,7 @@ def cmd_command(args) -> int:
         OperatorIdentityError,
         EvidenceSigningError,
         EvidenceWitnessError,
+        AuthorityPublicationWitnessError,
     ) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
@@ -568,10 +650,19 @@ def cmd_doctor(args) -> int:
             workspace_root=args.workspace_root,
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
+            authority_publication_witness=args.authority_publication_witness,
+            trusted_authority_publication_witness_keys=(
+                args.trusted_authority_publication_key
+            ),
         ).audit()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0 if report.safe_to_execute else 1
-    except (OperatorIdentityError, EvidenceSigningError, EvidenceWitnessError) as exc:
+    except (
+        OperatorIdentityError,
+        EvidenceSigningError,
+        EvidenceWitnessError,
+        AuthorityPublicationWitnessError,
+    ) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
 
@@ -708,12 +799,17 @@ def cmd_command_center(args) -> int:
             workspace_root=args.workspace_root,
             evidence_head_witness=args.evidence_head_witness,
             trusted_evidence_witness_keys=args.trusted_evidence_key,
+            authority_publication_witness=args.authority_publication_witness,
+            trusted_authority_publication_witness_keys=(
+                args.trusted_authority_publication_key
+            ),
         )
     except (
         CommandCenterError,
         OperatorIdentityError,
         EvidenceSigningError,
         EvidenceWitnessError,
+        AuthorityPublicationWitnessError,
         OSError,
     ) as exc:
         print(f"{RED}cannot start Command Center: {exc}{RESET}", file=sys.stderr)
@@ -827,6 +923,10 @@ def _harness(args, *, operator_control: bool = False):
         evidence_head_witness=args.evidence_head_witness,
         trusted_evidence_witness_keys=args.trusted_evidence_key,
         max_unwitnessed_records=args.max_unwitnessed_records,
+        authority_publication_witness=args.authority_publication_witness,
+        trusted_authority_publication_witness_keys=(
+            args.trusted_authority_publication_key
+        ),
         require_windows_private_state_acl=args.require_windows_private_state_acl,
         _operator_control=operator_control,
     )
@@ -977,6 +1077,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-unwitnessed-records",
         type=_non_negative_int,
         help="maximum live evidence records permitted beyond the signed witness",
+    )
+    p.add_argument(
+        "--authority-publication-witness",
+        help="external signed authority-publication continuity witness",
+    )
+    p.add_argument(
+        "--trusted-authority-publication-key",
+        action="append",
+        default=[],
+        help="trusted publication witness public key PEM (repeatable for rotation)",
     )
     p.add_argument(
         "--require-windows-private-state-acl",
@@ -1167,6 +1277,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="trusted Ed25519 witness public key PEM (repeatable for rotation)",
     )
     verify_witness.set_defaults(fn=cmd_verify_evidence_head_witness)
+
+    publication_witness = sub.add_parser(
+        "witness-authority-publication",
+        help="sign the current verified publication continuity head",
+    )
+    publication_witness.add_argument("--signing-key", required=True)
+    publication_witness.add_argument("--passphrase-file", required=True)
+    publication_witness.add_argument("--signer", required=True)
+    publication_witness.add_argument("--note", required=True)
+    publication_witness.add_argument("--output", required=True)
+    publication_witness.set_defaults(fn=cmd_witness_authority_publication)
+
+    verify_publication_witness = sub.add_parser(
+        "verify-authority-publication-witness",
+        help="verify a signed publication witness against live continuity",
+    )
+    verify_publication_witness.add_argument("witness_path")
+    verify_publication_witness.add_argument(
+        "--trusted-key",
+        action="append",
+        required=True,
+        help="trusted Ed25519 publication witness key PEM (repeatable)",
+    )
+    verify_publication_witness.set_defaults(fn=cmd_verify_authority_publication_witness)
 
     doctor = sub.add_parser(
         "doctor",

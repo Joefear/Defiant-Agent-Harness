@@ -327,6 +327,16 @@ as automatic recovery. Restoring both publication and ratchet to the same older
 valid pair remains matched local rollback and requires an off-box witness to
 detect.
 
+v0.80 supplies that optional off-box primitive for the retained publication
+head. An Ed25519 witness binds the deployment root, authority profile,
+checkpoint, and monotonic sequence. Exact current state permits one owning
+startup; its new checkpoint is then a visible one-step refresh condition.
+Restoring publication and continuity behind the external witness, exceeding
+that compact one-step window, changing trust keys without profile rotation,
+tampering, or omitting a required witness blocks authority. This still depends
+on independent retention and key custody: an attacker who can replace both
+local state and the operator's external witness/key channel can defeat it.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

@@ -45,6 +45,8 @@ class CommandCenterServer(ThreadingHTTPServer):
         workspace_root: str | Path | None = None,
         evidence_head_witness: str | Path | None = None,
         trusted_evidence_witness_keys: list[str] | None = None,
+        authority_publication_witness: str | Path | None = None,
+        trusted_authority_publication_witness_keys: list[str] | None = None,
     ):
         if not 0 <= port <= 65535:
             raise CommandCenterError("port must be between 0 and 65535")
@@ -56,6 +58,10 @@ class CommandCenterServer(ThreadingHTTPServer):
             workspace_root=workspace_root,
             evidence_head_witness=evidence_head_witness,
             trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+            authority_publication_witness=authority_publication_witness,
+            trusted_authority_publication_witness_keys=(
+                trusted_authority_publication_witness_keys
+            ),
         )
         self.default_limit = default_limit
         super().__init__((LOOPBACK_HOST, port), CommandCenterRequestHandler)
