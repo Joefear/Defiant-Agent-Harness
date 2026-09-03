@@ -1005,6 +1005,25 @@ Command Core, and Command Center expose only the posture; raw record hashes are
 not projected, and Command Center remains read-only. See
 `sealed_authority_publication_records.md`.
 
+## v0.78 sealed authority-publication transitions
+
+Schema `0.5.0` extends the semantic seals into a chain. Each active intent
+commits to the exact retained checkpoint record hash, or the explicit
+`GENESIS` predecessor for the first publication. Each completed checkpoint
+retains the intent preparation time, prior-checkpoint link, and intent record
+hash, so it can be verified against the exact intent that authorized the
+transition. Substituting an independently valid intent or checkpoint therefore
+fails closed before recovery authority is granted.
+
+Schemas `0.1.0` through `0.4.0` remain readable. Missing historical linkage is
+reported honestly as `legacy_unavailable`; read-only inspection never invents
+or migrates it. A stable legacy checkpoint can be republished by a successful
+matching owning-runtime startup into a fully linked current transition, while
+completion of an already-active legacy intent preserves unavailable origin
+linkage rather than fabricating it. Command Core and Command Center expose only
+sanitized posture, never raw linkage hashes, and Command Center remains
+read-only. See `sealed_authority_publication_transitions.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

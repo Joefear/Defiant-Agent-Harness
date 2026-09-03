@@ -21,14 +21,17 @@ from .persistence import (
 )
 
 AUTHORITY_PUBLICATION_SCHEMA = "defiant.authority_publication"
-AUTHORITY_PUBLICATION_VERSION = "0.4.0"
+AUTHORITY_PUBLICATION_VERSION = "0.5.0"
 LEGACY_AUTHORITY_PUBLICATION_VERSION = "0.1.0"
 TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION = "0.2.0"
 CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION = "0.3.0"
+RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION = "0.4.0"
+AUTHORITY_PUBLICATION_GENESIS = "GENESIS"
 _SUPPORTED_AUTHORITY_PUBLICATION_VERSIONS = {
     LEGACY_AUTHORITY_PUBLICATION_VERSION,
     TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
     CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
+    RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
     AUTHORITY_PUBLICATION_VERSION,
 }
 _STATE_FIELDS = {"schema_name", "schema_version", "active", "completed"}
@@ -39,7 +42,8 @@ _LEGACY_INTENT_FIELDS = {
     "prepared_at",
 }
 _COMMITMENT_INTENT_FIELDS = {*_LEGACY_INTENT_FIELDS, "store_hashes"}
-_INTENT_FIELDS = {*_COMMITMENT_INTENT_FIELDS, "record_hash"}
+_RECORD_SEAL_INTENT_FIELDS = {*_COMMITMENT_INTENT_FIELDS, "record_hash"}
+_INTENT_FIELDS = {*_RECORD_SEAL_INTENT_FIELDS, "prior_checkpoint_hash"}
 AUTHORITY_PUBLICATION_STORE_NAMES = (
     "state_storage",
     "control_plane_isolation",
@@ -60,7 +64,13 @@ _LEGACY_CHECKPOINT_FIELDS = {
     "completed_at",
 }
 _COMMITMENT_CHECKPOINT_FIELDS = {*_LEGACY_CHECKPOINT_FIELDS, "store_hashes"}
-_CHECKPOINT_FIELDS = {*_COMMITMENT_CHECKPOINT_FIELDS, "record_hash"}
+_RECORD_SEAL_CHECKPOINT_FIELDS = {*_COMMITMENT_CHECKPOINT_FIELDS, "record_hash"}
+_CHECKPOINT_FIELDS = {
+    *_RECORD_SEAL_CHECKPOINT_FIELDS,
+    "prepared_at",
+    "prior_checkpoint_hash",
+    "intent_record_hash",
+}
 
 
 class AuthorityPublicationError(RuntimeError):
@@ -74,6 +84,7 @@ class AuthorityPublicationIntent:
     manifest_hash: str
     prepared_at: str
     store_hashes: tuple[tuple[str, str | None], ...] | None = None
+    prior_checkpoint_hash: str | None = None
     record_hash: str | None = None
 
     @classmethod
@@ -88,6 +99,8 @@ class AuthorityPublicationIntent:
             expected_fields = _LEGACY_INTENT_FIELDS
         elif schema_version == AUTHORITY_PUBLICATION_VERSION:
             expected_fields = _INTENT_FIELDS
+        elif schema_version == RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION:
+            expected_fields = _RECORD_SEAL_INTENT_FIELDS
         else:
             expected_fields = _COMMITMENT_INTENT_FIELDS
         if set(snapshot) != expected_fields:
@@ -105,14 +118,24 @@ class AuthorityPublicationIntent:
                 else _store_hashes(snapshot.get("store_hashes"))
             ),
             (
-                _hash(snapshot.get("record_hash"), "record_hash")
+                _checkpoint_link(snapshot.get("prior_checkpoint_hash"))
                 if schema_version == AUTHORITY_PUBLICATION_VERSION
+                else None
+            ),
+            (
+                _hash(snapshot.get("record_hash"), "record_hash")
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+                }
                 else None
             ),
         )
         if (
             intent.record_hash is not None
-            and intent.record_hash != intent.expected_record_hash()
+            and intent.record_hash
+            != intent.expected_record_hash(schema_version=schema_version)
         ):
             raise AuthorityPublicationError(
                 "authority publication intent record hash does not match"
@@ -137,7 +160,11 @@ class AuthorityPublicationIntent:
             store_hashes = dict(store_hashes)
         return self.store_hashes == _store_hashes(store_hashes)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(
+        self,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> dict[str, Any]:
         result = {
             "profile_hash": self.profile_hash,
             "generation": self.generation,
@@ -146,43 +173,64 @@ class AuthorityPublicationIntent:
         }
         if self.store_hashes is not None:
             result["store_hashes"] = dict(self.store_hashes)
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            result["prior_checkpoint_hash"] = self.prior_checkpoint_hash
         if self.record_hash is not None:
             result["record_hash"] = self.record_hash
         return result
 
-    def expected_record_hash(self) -> str:
+    def expected_record_hash(
+        self,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> str:
+        payload = {
+            "profile_hash": self.profile_hash,
+            "generation": self.generation,
+            "manifest_hash": self.manifest_hash,
+            "prepared_at": self.prepared_at,
+            "store_hashes": (
+                None if self.store_hashes is None else dict(self.store_hashes)
+            ),
+        }
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            payload["prior_checkpoint_hash"] = self.prior_checkpoint_hash
         return _publication_record_hash(
             "intent",
-            {
-                "profile_hash": self.profile_hash,
-                "generation": self.generation,
-                "manifest_hash": self.manifest_hash,
-                "prepared_at": self.prepared_at,
-                "store_hashes": (
-                    None if self.store_hashes is None else dict(self.store_hashes)
-                ),
-            },
+            payload,
         )
 
-    def sealed(self) -> "AuthorityPublicationIntent":
+    def sealed(
+        self,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> "AuthorityPublicationIntent":
+        if (
+            schema_version == AUTHORITY_PUBLICATION_VERSION
+            and self.prior_checkpoint_hash is None
+        ):
+            raise AuthorityPublicationError(
+                "authority publication intent requires a prior checkpoint link"
+            )
         return AuthorityPublicationIntent(
-            self.profile_hash,
-            self.generation,
-            self.manifest_hash,
-            self.prepared_at,
-            self.store_hashes,
-            self.expected_record_hash(),
+            profile_hash=self.profile_hash,
+            generation=self.generation,
+            manifest_hash=self.manifest_hash,
+            prepared_at=self.prepared_at,
+            store_hashes=self.store_hashes,
+            prior_checkpoint_hash=self.prior_checkpoint_hash,
+            record_hash=self.expected_record_hash(schema_version=schema_version),
         )
 
     def with_store_hashes(self, store_hashes: Any) -> "AuthorityPublicationIntent":
         """Upgrade a matching legacy replay intent for its completed checkpoint."""
         return AuthorityPublicationIntent(
-            self.profile_hash,
-            self.generation,
-            self.manifest_hash,
-            self.prepared_at,
-            _store_hashes(store_hashes),
-        ).sealed()
+            profile_hash=self.profile_hash,
+            generation=self.generation,
+            manifest_hash=self.manifest_hash,
+            prepared_at=self.prepared_at,
+            store_hashes=_store_hashes(store_hashes),
+        ).sealed(schema_version=RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION)
 
 
 @dataclass(frozen=True)
@@ -192,6 +240,9 @@ class AuthorityPublicationCheckpoint:
     manifest_hash: str
     completed_at: str
     store_hashes: tuple[tuple[str, str | None], ...] | None = None
+    prepared_at: str | None = None
+    prior_checkpoint_hash: str | None = None
+    intent_record_hash: str | None = None
     record_hash: str | None = None
 
     @classmethod
@@ -204,13 +255,15 @@ class AuthorityPublicationCheckpoint:
         snapshot = _snapshot(raw, "authority publication checkpoint")
         if schema_version in {
             AUTHORITY_PUBLICATION_VERSION,
+            RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
             CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
         }:
-            expected_fields = (
-                _CHECKPOINT_FIELDS
-                if schema_version == AUTHORITY_PUBLICATION_VERSION
-                else _COMMITMENT_CHECKPOINT_FIELDS
-            )
+            if schema_version == AUTHORITY_PUBLICATION_VERSION:
+                expected_fields = _CHECKPOINT_FIELDS
+            elif schema_version == RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION:
+                expected_fields = _RECORD_SEAL_CHECKPOINT_FIELDS
+            else:
+                expected_fields = _COMMITMENT_CHECKPOINT_FIELDS
         else:
             expected_fields = _LEGACY_CHECKPOINT_FIELDS
         if set(snapshot) != expected_fields:
@@ -227,22 +280,62 @@ class AuthorityPublicationCheckpoint:
                 if schema_version
                 in {
                     AUTHORITY_PUBLICATION_VERSION,
+                    RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
                     CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
                 }
                 else None
             ),
             (
-                _hash(snapshot.get("record_hash"), "record_hash")
+                _optional_timestamp(snapshot.get("prepared_at"), "prepared_at")
                 if schema_version == AUTHORITY_PUBLICATION_VERSION
                 else None
             ),
+            (
+                _optional_checkpoint_link(snapshot.get("prior_checkpoint_hash"))
+                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                else None
+            ),
+            (
+                _optional_hash(snapshot.get("intent_record_hash"), "intent_record_hash")
+                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                else None
+            ),
+            (
+                _hash(snapshot.get("record_hash"), "record_hash")
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+                }
+                else None
+            ),
         )
+        transition_fields = (
+            checkpoint.prepared_at,
+            checkpoint.prior_checkpoint_hash,
+            checkpoint.intent_record_hash,
+        )
+        if any(value is None for value in transition_fields) and any(
+            value is not None for value in transition_fields
+        ):
+            raise AuthorityPublicationError(
+                "authority publication checkpoint intent link is incomplete"
+            )
         if (
             checkpoint.record_hash is not None
-            and checkpoint.record_hash != checkpoint.expected_record_hash()
+            and checkpoint.record_hash
+            != checkpoint.expected_record_hash(schema_version=schema_version)
         ):
             raise AuthorityPublicationError(
                 "authority publication checkpoint record hash does not match"
+            )
+        if (
+            checkpoint.intent_record_hash is not None
+            and checkpoint.intent_record_hash
+            != checkpoint.expected_intent_record_hash()
+        ):
+            raise AuthorityPublicationError(
+                "authority publication checkpoint originating intent hash does not match"
             )
         return checkpoint
 
@@ -266,37 +359,80 @@ class AuthorityPublicationCheckpoint:
         }
         if schema_version in {
             AUTHORITY_PUBLICATION_VERSION,
+            RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
             CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
         }:
             result["store_hashes"] = (
                 None if self.store_hashes is None else dict(self.store_hashes)
             )
         if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            result["prepared_at"] = self.prepared_at
+            result["prior_checkpoint_hash"] = self.prior_checkpoint_hash
+            result["intent_record_hash"] = self.intent_record_hash
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+        }:
             result["record_hash"] = self.record_hash
         return result
 
-    def expected_record_hash(self) -> str:
+    def expected_intent_record_hash(self) -> str:
+        if (
+            self.prepared_at is None
+            or self.prior_checkpoint_hash is None
+            or self.store_hashes is None
+        ):
+            raise AuthorityPublicationError(
+                "authority publication checkpoint has no originating intent link"
+            )
+        intent = AuthorityPublicationIntent(
+            profile_hash=self.profile_hash,
+            generation=self.generation,
+            manifest_hash=self.manifest_hash,
+            prepared_at=self.prepared_at,
+            store_hashes=self.store_hashes,
+            prior_checkpoint_hash=self.prior_checkpoint_hash,
+        )
+        return intent.expected_record_hash()
+
+    def expected_record_hash(
+        self,
+        *,
+        schema_version: str = AUTHORITY_PUBLICATION_VERSION,
+    ) -> str:
+        payload = {
+            "profile_hash": self.profile_hash,
+            "generation": self.generation,
+            "manifest_hash": self.manifest_hash,
+            "completed_at": self.completed_at,
+            "store_hashes": (
+                None if self.store_hashes is None else dict(self.store_hashes)
+            ),
+        }
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            payload.update(
+                {
+                    "prepared_at": self.prepared_at,
+                    "prior_checkpoint_hash": self.prior_checkpoint_hash,
+                    "intent_record_hash": self.intent_record_hash,
+                }
+            )
         return _publication_record_hash(
             "checkpoint",
-            {
-                "profile_hash": self.profile_hash,
-                "generation": self.generation,
-                "manifest_hash": self.manifest_hash,
-                "completed_at": self.completed_at,
-                "store_hashes": (
-                    None if self.store_hashes is None else dict(self.store_hashes)
-                ),
-            },
+            payload,
         )
 
     def sealed(self) -> "AuthorityPublicationCheckpoint":
         return AuthorityPublicationCheckpoint(
-            self.profile_hash,
-            self.generation,
-            self.manifest_hash,
-            self.completed_at,
-            self.store_hashes,
-            self.expected_record_hash(),
+            profile_hash=self.profile_hash,
+            generation=self.generation,
+            manifest_hash=self.manifest_hash,
+            completed_at=self.completed_at,
+            store_hashes=self.store_hashes,
+            prepared_at=self.prepared_at,
+            prior_checkpoint_hash=self.prior_checkpoint_hash,
+            intent_record_hash=self.intent_record_hash,
+            record_hash=self.expected_record_hash(),
         )
 
 
@@ -344,6 +480,7 @@ class AuthorityPublicationState:
             schema_version
             in {
                 CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
+                RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
                 AUTHORITY_PUBLICATION_VERSION,
             }
             and active is None
@@ -353,7 +490,10 @@ class AuthorityPublicationState:
             raise AuthorityPublicationError(
                 "completed authority publication requires store commitments"
             )
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+            AUTHORITY_PUBLICATION_VERSION,
+        }:
             if active is not None and active.record_hash is None:
                 raise AuthorityPublicationError(
                     "active authority publication requires a record hash"
@@ -361,6 +501,19 @@ class AuthorityPublicationState:
             if completed is not None and completed.record_hash is None:
                 raise AuthorityPublicationError(
                     "completed authority publication requires a record hash"
+                )
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            expected_prior_checkpoint_hash = (
+                AUTHORITY_PUBLICATION_GENESIS
+                if completed is None
+                else completed.record_hash
+            )
+            if (
+                active is not None
+                and active.prior_checkpoint_hash != expected_prior_checkpoint_hash
+            ):
+                raise AuthorityPublicationError(
+                    "active authority publication prior checkpoint link does not match"
                 )
         if active is not None and completed is not None:
             if active.generation not in {
@@ -385,7 +538,11 @@ class AuthorityPublicationState:
         return {
             "schema_name": AUTHORITY_PUBLICATION_SCHEMA,
             "schema_version": self.schema_version,
-            "active": self.active.to_dict() if self.active is not None else None,
+            "active": (
+                self.active.to_dict(schema_version=self.schema_version)
+                if self.active is not None
+                else None
+            ),
             "completed": (
                 self.completed.to_dict(schema_version=self.schema_version)
                 if self.completed is not None
@@ -434,6 +591,24 @@ class AuthorityPublicationState:
                 else (
                     "verified"
                     if self.completed.record_hash is not None
+                    else "legacy_unavailable"
+                )
+            ),
+            "intent_checkpoint_link": (
+                "not_applicable"
+                if self.active is None
+                else (
+                    "verified"
+                    if self.active.prior_checkpoint_hash is not None
+                    else "legacy_unavailable"
+                )
+            ),
+            "checkpoint_intent_link": (
+                "not_applicable"
+                if self.completed is None
+                else (
+                    "verified"
+                    if self.completed.intent_record_hash is not None
                     else "legacy_unavailable"
                 )
             ),
@@ -493,16 +668,22 @@ class AuthorityPublicationStore:
                     raise AuthorityPublicationError(
                         "a different authority publication requires recovery"
                     )
-                intent = AuthorityPublicationIntent(
-                    profile_hash,
-                    generation,
-                    manifest_hash,
-                    utc_now(),
-                    store_hashes,
-                ).sealed()
                 completed = (
                     None if state.completed is None else state.completed.sealed()
                 )
+                prior_checkpoint_hash = (
+                    AUTHORITY_PUBLICATION_GENESIS
+                    if completed is None
+                    else completed.record_hash
+                )
+                intent = AuthorityPublicationIntent(
+                    profile_hash=profile_hash,
+                    generation=generation,
+                    manifest_hash=manifest_hash,
+                    prepared_at=utc_now(),
+                    store_hashes=store_hashes,
+                    prior_checkpoint_hash=prior_checkpoint_hash,
+                ).sealed()
                 self._write(
                     AuthorityPublicationState(
                         intent,
@@ -517,17 +698,22 @@ class AuthorityPublicationStore:
             raise AuthorityPublicationError(str(exc)) from exc
 
     def complete(self, intent: AuthorityPublicationIntent) -> AuthorityPublicationState:
-        expected = AuthorityPublicationIntent.from_dict(
-            intent.to_dict(),
-            schema_version=(
-                AUTHORITY_PUBLICATION_VERSION
+        intent_schema_version = (
+            AUTHORITY_PUBLICATION_VERSION
+            if intent.prior_checkpoint_hash is not None
+            else (
+                RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION
                 if intent.record_hash is not None
                 else (
                     CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION
                     if intent.store_hashes is not None
                     else LEGACY_AUTHORITY_PUBLICATION_VERSION
                 )
-            ),
+            )
+        )
+        expected = AuthorityPublicationIntent.from_dict(
+            intent.to_dict(schema_version=intent_schema_version),
+            schema_version=intent_schema_version,
         )
         try:
             with exclusive_file_lock(self.path):
@@ -549,6 +735,11 @@ class AuthorityPublicationStore:
                         state.active.record_hash is not None
                         and state.active.record_hash != expected.record_hash
                     )
+                    or (
+                        state.active.prior_checkpoint_hash is not None
+                        and state.active.prior_checkpoint_hash
+                        != expected.prior_checkpoint_hash
+                    )
                 ):
                     raise AuthorityPublicationError(
                         "authority publication completion does not match intent"
@@ -558,11 +749,22 @@ class AuthorityPublicationStore:
                         "authority publication completion requires store commitments"
                     )
                 checkpoint = AuthorityPublicationCheckpoint(
-                    expected.profile_hash,
-                    expected.generation,
-                    expected.manifest_hash,
-                    utc_now(),
-                    expected.store_hashes,
+                    profile_hash=expected.profile_hash,
+                    generation=expected.generation,
+                    manifest_hash=expected.manifest_hash,
+                    completed_at=utc_now(),
+                    store_hashes=expected.store_hashes,
+                    prepared_at=(
+                        expected.prepared_at
+                        if expected.prior_checkpoint_hash is not None
+                        else None
+                    ),
+                    prior_checkpoint_hash=expected.prior_checkpoint_hash,
+                    intent_record_hash=(
+                        expected.record_hash
+                        if expected.prior_checkpoint_hash is not None
+                        else None
+                    ),
                 ).sealed()
                 completed = AuthorityPublicationState(
                     None,
@@ -805,6 +1007,24 @@ def _hash(value: Any, field: str) -> str:
     return normalized
 
 
+def _optional_hash(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    return _hash(value, field)
+
+
+def _checkpoint_link(value: Any) -> str:
+    if isinstance(value, str) and str.__str__(value) == AUTHORITY_PUBLICATION_GENESIS:
+        return AUTHORITY_PUBLICATION_GENESIS
+    return _hash(value, "prior_checkpoint_hash")
+
+
+def _optional_checkpoint_link(value: Any) -> str | None:
+    if value is None:
+        return None
+    return _checkpoint_link(value)
+
+
 def _store_hashes(value: Any) -> tuple[tuple[str, str | None], ...]:
     snapshot = _snapshot(value, "authority publication store hashes")
     if set(snapshot) != set(AUTHORITY_PUBLICATION_STORE_NAMES):
@@ -850,3 +1070,9 @@ def _timestamp(value: Any, field: str) -> str:
     if not normalized or parsed.tzinfo is None or parsed.utcoffset() is None:
         raise AuthorityPublicationError(f"{field} must include a timezone")
     return normalized
+
+
+def _optional_timestamp(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    return _timestamp(value, field)
