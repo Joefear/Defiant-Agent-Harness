@@ -318,6 +318,15 @@ Legacy missing links remain explicitly unavailable rather than inferred. These
 links are local unsigned hashes and retain the same privileged-host limit as
 the underlying record seals.
 
+Through v0.78, restoring an older valid publication document could not be
+distinguished from legitimate pre-continuity state. v0.79 adds a separately
+sealed monotonic ratchet: rollback behind its anchor, divergent replacement,
+anchor deletion after sequence one, and continuity reset fail closed. The
+checkpoint-first write order leaves only an exact one-step forward advancement
+as automatic recovery. Restoring both publication and ratchet to the same older
+valid pair remains matched local rollback and requires an off-box witness to
+detect.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix

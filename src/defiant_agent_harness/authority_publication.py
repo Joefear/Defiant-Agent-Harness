@@ -7,6 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .authority_publication_continuity import (
+    AuthorityPublicationContinuityError,
+    AuthorityPublicationContinuityState,
+    AuthorityPublicationContinuityStore,
+)
 from .contracts import authority_snapshot_and_sha256_of, sha256_of, utc_now
 from .limits import (
     MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES,
@@ -21,20 +26,23 @@ from .persistence import (
 )
 
 AUTHORITY_PUBLICATION_SCHEMA = "defiant.authority_publication"
-AUTHORITY_PUBLICATION_VERSION = "0.5.0"
+AUTHORITY_PUBLICATION_VERSION = "0.6.0"
 LEGACY_AUTHORITY_PUBLICATION_VERSION = "0.1.0"
 TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION = "0.2.0"
 CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION = "0.3.0"
 RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION = "0.4.0"
+TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION = "0.5.0"
 AUTHORITY_PUBLICATION_GENESIS = "GENESIS"
 _SUPPORTED_AUTHORITY_PUBLICATION_VERSIONS = {
     LEGACY_AUTHORITY_PUBLICATION_VERSION,
     TARGET_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
     CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
     RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
     AUTHORITY_PUBLICATION_VERSION,
 }
-_STATE_FIELDS = {"schema_name", "schema_version", "active", "completed"}
+_LEGACY_STATE_FIELDS = {"schema_name", "schema_version", "active", "completed"}
+_STATE_FIELDS = {*_LEGACY_STATE_FIELDS, "continuity_sequence"}
 _LEGACY_INTENT_FIELDS = {
     "profile_hash",
     "generation",
@@ -97,7 +105,10 @@ class AuthorityPublicationIntent:
         snapshot = _snapshot(raw, "authority publication intent")
         if schema_version == LEGACY_AUTHORITY_PUBLICATION_VERSION:
             expected_fields = _LEGACY_INTENT_FIELDS
-        elif schema_version == AUTHORITY_PUBLICATION_VERSION:
+        elif schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             expected_fields = _INTENT_FIELDS
         elif schema_version == RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION:
             expected_fields = _RECORD_SEAL_INTENT_FIELDS
@@ -119,7 +130,11 @@ class AuthorityPublicationIntent:
             ),
             (
                 _checkpoint_link(snapshot.get("prior_checkpoint_hash"))
-                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+                }
                 else None
             ),
             (
@@ -127,6 +142,7 @@ class AuthorityPublicationIntent:
                 if schema_version
                 in {
                     AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
                     RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
                 }
                 else None
@@ -173,7 +189,10 @@ class AuthorityPublicationIntent:
         }
         if self.store_hashes is not None:
             result["store_hashes"] = dict(self.store_hashes)
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             result["prior_checkpoint_hash"] = self.prior_checkpoint_hash
         if self.record_hash is not None:
             result["record_hash"] = self.record_hash
@@ -193,7 +212,10 @@ class AuthorityPublicationIntent:
                 None if self.store_hashes is None else dict(self.store_hashes)
             ),
         }
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             payload["prior_checkpoint_hash"] = self.prior_checkpoint_hash
         return _publication_record_hash(
             "intent",
@@ -206,7 +228,11 @@ class AuthorityPublicationIntent:
         schema_version: str = AUTHORITY_PUBLICATION_VERSION,
     ) -> "AuthorityPublicationIntent":
         if (
-            schema_version == AUTHORITY_PUBLICATION_VERSION
+            schema_version
+            in {
+                AUTHORITY_PUBLICATION_VERSION,
+                TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+            }
             and self.prior_checkpoint_hash is None
         ):
             raise AuthorityPublicationError(
@@ -255,10 +281,14 @@ class AuthorityPublicationCheckpoint:
         snapshot = _snapshot(raw, "authority publication checkpoint")
         if schema_version in {
             AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
             RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
             CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
         }:
-            if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            if schema_version in {
+                AUTHORITY_PUBLICATION_VERSION,
+                TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+            }:
                 expected_fields = _CHECKPOINT_FIELDS
             elif schema_version == RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION:
                 expected_fields = _RECORD_SEAL_CHECKPOINT_FIELDS
@@ -280,6 +310,7 @@ class AuthorityPublicationCheckpoint:
                 if schema_version
                 in {
                     AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
                     RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
                     CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
                 }
@@ -287,17 +318,29 @@ class AuthorityPublicationCheckpoint:
             ),
             (
                 _optional_timestamp(snapshot.get("prepared_at"), "prepared_at")
-                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+                }
                 else None
             ),
             (
                 _optional_checkpoint_link(snapshot.get("prior_checkpoint_hash"))
-                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+                }
                 else None
             ),
             (
                 _optional_hash(snapshot.get("intent_record_hash"), "intent_record_hash")
-                if schema_version == AUTHORITY_PUBLICATION_VERSION
+                if schema_version
+                in {
+                    AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+                }
                 else None
             ),
             (
@@ -305,6 +348,7 @@ class AuthorityPublicationCheckpoint:
                 if schema_version
                 in {
                     AUTHORITY_PUBLICATION_VERSION,
+                    TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
                     RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
                 }
                 else None
@@ -359,18 +403,23 @@ class AuthorityPublicationCheckpoint:
         }
         if schema_version in {
             AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
             RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
             CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
         }:
             result["store_hashes"] = (
                 None if self.store_hashes is None else dict(self.store_hashes)
             )
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             result["prepared_at"] = self.prepared_at
             result["prior_checkpoint_hash"] = self.prior_checkpoint_hash
             result["intent_record_hash"] = self.intent_record_hash
         if schema_version in {
             AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
             RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
         }:
             result["record_hash"] = self.record_hash
@@ -409,7 +458,10 @@ class AuthorityPublicationCheckpoint:
                 None if self.store_hashes is None else dict(self.store_hashes)
             ),
         }
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             payload.update(
                 {
                     "prepared_at": self.prepared_at,
@@ -441,19 +493,30 @@ class AuthorityPublicationState:
     active: AuthorityPublicationIntent | None
     completed: AuthorityPublicationCheckpoint | None
     schema_version: str = AUTHORITY_PUBLICATION_VERSION
+    continuity_sequence: int | None = 0
 
     @classmethod
     def from_dict(cls, raw: Any) -> "AuthorityPublicationState":
         snapshot = _snapshot(raw, "authority publication state")
-        if set(snapshot) != _STATE_FIELDS:
-            raise AuthorityPublicationError(
-                "authority publication state fields do not match schema"
-            )
         if snapshot.get("schema_name") != AUTHORITY_PUBLICATION_SCHEMA:
             raise AuthorityPublicationError("unsupported authority publication schema")
         schema_version = snapshot.get("schema_version")
         if schema_version not in _SUPPORTED_AUTHORITY_PUBLICATION_VERSIONS:
             raise AuthorityPublicationError("unsupported authority publication version")
+        expected_state_fields = (
+            _STATE_FIELDS
+            if schema_version == AUTHORITY_PUBLICATION_VERSION
+            else _LEGACY_STATE_FIELDS
+        )
+        if set(snapshot) != expected_state_fields:
+            raise AuthorityPublicationError(
+                "authority publication state fields do not match schema"
+            )
+        continuity_sequence = (
+            _continuity_sequence(snapshot.get("continuity_sequence"))
+            if schema_version == AUTHORITY_PUBLICATION_VERSION
+            else None
+        )
         active_raw = snapshot.get("active")
         completed_raw = snapshot.get("completed")
         active = (
@@ -481,6 +544,7 @@ class AuthorityPublicationState:
             in {
                 CHECKPOINT_COMMITMENT_AUTHORITY_PUBLICATION_VERSION,
                 RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+                TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
                 AUTHORITY_PUBLICATION_VERSION,
             }
             and active is None
@@ -492,6 +556,7 @@ class AuthorityPublicationState:
             )
         if schema_version in {
             RECORD_SEAL_AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
             AUTHORITY_PUBLICATION_VERSION,
         }:
             if active is not None and active.record_hash is None:
@@ -502,7 +567,10 @@ class AuthorityPublicationState:
                 raise AuthorityPublicationError(
                     "completed authority publication requires a record hash"
                 )
-        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+        if schema_version in {
+            AUTHORITY_PUBLICATION_VERSION,
+            TRANSITION_LINK_AUTHORITY_PUBLICATION_VERSION,
+        }:
             expected_prior_checkpoint_hash = (
                 AUTHORITY_PUBLICATION_GENESIS
                 if completed is None
@@ -532,10 +600,23 @@ class AuthorityPublicationState:
                 raise AuthorityPublicationError(
                     "same-generation authority publication records disagree"
                 )
-        return cls(active, completed, schema_version)
+        if schema_version == AUTHORITY_PUBLICATION_VERSION:
+            if continuity_sequence > 0 and completed is None:
+                raise AuthorityPublicationError(
+                    "authority publication continuity requires a completed checkpoint"
+                )
+            if (
+                continuity_sequence == 0
+                and completed is not None
+                and completed.intent_record_hash is not None
+            ):
+                raise AuthorityPublicationError(
+                    "linked authority publication checkpoint requires continuity"
+                )
+        return cls(active, completed, schema_version, continuity_sequence)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "schema_name": AUTHORITY_PUBLICATION_SCHEMA,
             "schema_version": self.schema_version,
             "active": (
@@ -549,6 +630,9 @@ class AuthorityPublicationState:
                 else None
             ),
         }
+        if self.schema_version == AUTHORITY_PUBLICATION_VERSION:
+            result["continuity_sequence"] = self.continuity_sequence
+        return result
 
     def projection(self) -> dict[str, Any]:
         current = self.active or self.completed
@@ -612,6 +696,8 @@ class AuthorityPublicationState:
                     else "legacy_unavailable"
                 )
             ),
+            "publication_continuity": "legacy_unavailable",
+            "continuity_sequence": self.continuity_sequence,
             "prepared_at": (
                 self.active.prepared_at if self.active is not None else None
             ),
@@ -626,6 +712,9 @@ class AuthorityPublicationStore:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        self.continuity_store = AuthorityPublicationContinuityStore(
+            self.path.with_name("authority_publication_continuity.json")
+        )
 
     def get(self) -> AuthorityPublicationState | None:
         if not self.path.exists():
@@ -642,6 +731,22 @@ class AuthorityPublicationStore:
         except (OSError, RuntimeError) as exc:
             raise AuthorityPublicationError(str(exc)) from exc
 
+    def get_continuity(self) -> AuthorityPublicationContinuityState | None:
+        try:
+            return self.continuity_store.get()
+        except AuthorityPublicationContinuityError as exc:
+            raise AuthorityPublicationError(str(exc)) from exc
+
+    def continuity_verification(
+        self,
+        state: AuthorityPublicationState | None = None,
+    ) -> str:
+        state = self.get() if state is None else state
+        return assess_authority_publication_continuity(
+            state,
+            self.get_continuity(),
+        )
+
     def prepare(
         self,
         profile_hash: str,
@@ -657,6 +762,7 @@ class AuthorityPublicationStore:
         try:
             with exclusive_file_lock(self.path):
                 state = self.get() or AuthorityPublicationState(None, None)
+                self._recover_continuity_if_required(state)
                 if state.active is not None:
                     if state.active.matches(
                         profile_hash,
@@ -671,6 +777,18 @@ class AuthorityPublicationStore:
                 completed = (
                     None if state.completed is None else state.completed.sealed()
                 )
+                continuity_sequence = state.continuity_sequence
+                initialize_continuity = False
+                if continuity_sequence is None:
+                    if (
+                        completed is not None
+                        and completed.record_hash is not None
+                        and completed.prior_checkpoint_hash is not None
+                    ):
+                        continuity_sequence = 1
+                        initialize_continuity = True
+                    else:
+                        continuity_sequence = 0
                 prior_checkpoint_hash = (
                     AUTHORITY_PUBLICATION_GENESIS
                     if completed is None
@@ -689,8 +807,11 @@ class AuthorityPublicationStore:
                         intent,
                         completed,
                         AUTHORITY_PUBLICATION_VERSION,
+                        continuity_sequence,
                     )
                 )
+                if initialize_continuity and completed is not None:
+                    self._advance_continuity(completed, continuity_sequence)
                 return intent
         except AuthorityPublicationError:
             raise
@@ -722,6 +843,7 @@ class AuthorityPublicationStore:
                     raise AuthorityPublicationError(
                         "no active authority publication to complete"
                     )
+                self._recover_continuity_if_required(state)
                 if (
                     state.active.profile_hash != expected.profile_hash
                     or state.active.generation != expected.generation
@@ -766,12 +888,20 @@ class AuthorityPublicationStore:
                         else None
                     ),
                 ).sealed()
+                continuity_sequence = (
+                    (state.continuity_sequence or 0) + 1
+                    if checkpoint.prior_checkpoint_hash is not None
+                    else 0
+                )
                 completed = AuthorityPublicationState(
                     None,
                     checkpoint,
                     AUTHORITY_PUBLICATION_VERSION,
+                    continuity_sequence,
                 )
                 self._write(completed)
+                if continuity_sequence > 0:
+                    self._advance_continuity(checkpoint, continuity_sequence)
                 return completed
         except AuthorityPublicationError:
             raise
@@ -785,6 +915,82 @@ class AuthorityPublicationStore:
             candidate,
             max_bytes=MAX_AUTHORITY_PUBLICATION_STATE_BYTES,
         )
+
+    def _recover_continuity_if_required(
+        self,
+        state: AuthorityPublicationState,
+    ) -> None:
+        verification = self.continuity_verification(state)
+        if verification == "forward_recovery":
+            if state.completed is None or state.continuity_sequence is None:
+                raise AuthorityPublicationError(
+                    "authority publication continuity recovery has no checkpoint"
+                )
+            self._advance_continuity(state.completed, state.continuity_sequence)
+            return
+        if verification not in {"verified", "legacy_unavailable"}:
+            raise AuthorityPublicationError(
+                f"authority publication continuity is {verification}"
+            )
+
+    def _advance_continuity(
+        self,
+        checkpoint: AuthorityPublicationCheckpoint,
+        sequence: int,
+    ) -> None:
+        if checkpoint.record_hash is None or checkpoint.prior_checkpoint_hash is None:
+            raise AuthorityPublicationError(
+                "authority publication continuity checkpoint is not linked"
+            )
+        try:
+            self.continuity_store.advance(
+                sequence=sequence,
+                checkpoint_hash=checkpoint.record_hash,
+                prior_checkpoint_hash=checkpoint.prior_checkpoint_hash,
+            )
+        except AuthorityPublicationContinuityError as exc:
+            raise AuthorityPublicationError(str(exc)) from exc
+
+
+def assess_authority_publication_continuity(
+    state: AuthorityPublicationState | None,
+    continuity: AuthorityPublicationContinuityState | None,
+) -> str:
+    if state is None:
+        return "not_recorded" if continuity is None else "diverged"
+    sequence = state.continuity_sequence
+    if sequence is None:
+        return "legacy_unavailable" if continuity is None else "diverged"
+    if sequence == 0:
+        if continuity is not None:
+            return "diverged"
+        return "verified" if state.completed is None else "legacy_unavailable"
+    checkpoint = state.completed
+    if (
+        checkpoint is None
+        or checkpoint.record_hash is None
+        or checkpoint.prior_checkpoint_hash is None
+    ):
+        return "diverged"
+    if continuity is None:
+        return "forward_recovery" if sequence == 1 else "missing"
+    if sequence == continuity.sequence:
+        return (
+            "verified"
+            if (
+                checkpoint.record_hash == continuity.checkpoint_hash
+                and checkpoint.prior_checkpoint_hash == continuity.prior_checkpoint_hash
+            )
+            else "diverged"
+        )
+    if (
+        sequence == continuity.sequence + 1
+        and checkpoint.prior_checkpoint_hash == continuity.checkpoint_hash
+    ):
+        return "forward_recovery"
+    if sequence < continuity.sequence:
+        return "rollback"
+    return "diverged"
 
 
 def authority_manifest_hash(manifest: Any) -> str:
@@ -1056,6 +1262,14 @@ def _checkpoint_store_hashes(
 def _generation(value: Any) -> int:
     if type(value) is not int or value < 1:
         raise AuthorityPublicationError("authority publication generation is invalid")
+    return value
+
+
+def _continuity_sequence(value: Any) -> int:
+    if type(value) is not int or value < 0:
+        raise AuthorityPublicationError(
+            "authority publication continuity sequence is invalid"
+        )
     return value
 
 

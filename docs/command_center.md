@@ -106,7 +106,7 @@ The browser refreshes from Command Core every 15 seconds. Refresh and filtering
 change only the browser view; they do not change Defiant state.
 
 The displayed ceilings and parser posture come from Command Core schema
-`0.72.0`. The browser cannot raise, disable, or replace them and never receives
+`0.73.0`. The browser cannot raise, disable, or replace them and never receives
 rejected input bytes.
 
 v0.61 adds only the static native-hook correlation-state byte ceiling and
@@ -217,6 +217,12 @@ posture plus one static validation flag. The dashboard can distinguish
 no raw linkage hash or authority input and gains no preparation, linking,
 migration, recovery, repair, acceptance, replay, completion, or other mutation
 control.
+
+v0.79 adds the sanitized publication-continuity state and monotonic sequence,
+the independent continuity-state byte ceiling, and one static verification
+flag. The browser receives no checkpoint, predecessor, continuity, or record
+hash and gains no ratchet advancement, recovery, enrollment, reset, repair,
+acceptance, replay, completion, or other mutation control.
 
 ## Read-only boundary
 

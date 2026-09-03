@@ -6,6 +6,7 @@ import re
 import pytest
 
 import defiant_agent_harness.authority_publication as publication_module
+import defiant_agent_harness.authority_publication_continuity as continuity_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_publication import (
     AuthorityPublicationCheckpoint,
@@ -15,6 +16,11 @@ from defiant_agent_harness.authority_publication import (
     AuthorityPublicationStore,
     authority_manifest_hash,
     authority_manifest_hash_for,
+)
+from defiant_agent_harness.authority_publication_continuity import (
+    AuthorityPublicationContinuityError,
+    AuthorityPublicationContinuityState,
+    AuthorityPublicationContinuityStore,
 )
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
@@ -79,6 +85,281 @@ def test_publication_store_prepares_idempotently_and_completes(tmp_path):
     assert completed.projection()["checkpoint_store_commitments"] == "recorded"
     assert completed.projection()["checkpoint_record_seal"] == "verified"
     assert completed.projection()["checkpoint_intent_link"] == "verified"
+    assert completed.continuity_sequence == 1
+    continuity = store.get_continuity()
+    assert continuity is not None
+    assert continuity.sequence == 1
+    assert continuity.checkpoint_hash == completed.completed.record_hash
+    assert store.continuity_verification(completed) == "verified"
+
+
+def test_publication_continuity_advances_without_retaining_unbounded_history(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    first = store.get_continuity()
+    assert first is not None
+
+    build_harness(state, MockAgentAdapter())
+
+    publication = store.get()
+    continuity = store.get_continuity()
+    assert publication is not None
+    assert publication.completed is not None
+    assert continuity is not None
+    assert publication.continuity_sequence == 2
+    assert continuity.sequence == 2
+    assert continuity.checkpoint_hash == publication.completed.record_hash
+    assert continuity.prior_checkpoint_hash == first.checkpoint_hash
+    assert store.continuity_verification(publication) == "verified"
+
+
+def test_continuity_state_is_strict_and_failed_bounded_write_preserves_anchor(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    current = store.get_continuity()
+    assert current is not None
+    malformed = current.to_dict()
+    malformed["unexpected"] = True
+    with pytest.raises(AuthorityPublicationContinuityError, match="fields"):
+        AuthorityPublicationContinuityState.from_dict(malformed)
+
+    before = store.continuity_store.path.read_bytes()
+    monkeypatch.setattr(continuity_module, "_MAX_STATE_BYTES", 1)
+    with pytest.raises(
+        AuthorityPublicationContinuityError,
+        match="exceeds 1 bytes",
+    ):
+        store.continuity_store.advance(
+            sequence=2,
+            checkpoint_hash="sha256:" + "8" * 64,
+            prior_checkpoint_hash=current.checkpoint_hash,
+        )
+    assert store.continuity_store.path.read_bytes() == before
+
+
+def test_crash_after_publication_before_continuity_is_visible_and_recovers(
+    tmp_path,
+    monkeypatch,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    original = AuthorityPublicationContinuityStore.advance
+
+    def crash_on_second_sequence(self, **kwargs):
+        if kwargs["sequence"] == 2:
+            raise AuthorityPublicationContinuityError(
+                "simulated continuity advancement crash"
+            )
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(
+        AuthorityPublicationContinuityStore,
+        "advance",
+        crash_on_second_sequence,
+    )
+    with pytest.raises(AuthorityPublicationError, match="advancement crash"):
+        build_harness(state, MockAgentAdapter())
+
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    publication_before = store.path.read_bytes()
+    continuity_before = store.continuity_store.path.read_bytes()
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+    assert report.status == "recovery_required"
+    assert report.safe_to_execute is True
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "recovery_required"
+    )
+    assert any(
+        issue.code == "authority_publication_continuity_recovery_required"
+        for issue in report.issues
+    )
+    assert snapshot["authority_publication"]["publication_continuity"] == (
+        "recovery_required"
+    )
+    assert store.path.read_bytes() == publication_before
+    assert store.continuity_store.path.read_bytes() == continuity_before
+
+    monkeypatch.setattr(AuthorityPublicationContinuityStore, "advance", original)
+    build_harness(state, MockAgentAdapter())
+    recovered = store.get()
+    assert recovered is not None
+    assert recovered.continuity_sequence == 3
+    assert store.continuity_verification(recovered) == "verified"
+
+
+def test_publication_rollback_behind_continuity_is_critical_and_not_repaired(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    old_publication = store.path.read_bytes()
+    build_harness(state, MockAgentAdapter())
+    continuity = store.get_continuity()
+    assert continuity is not None
+    store.path.write_bytes(old_publication)
+    publication_before = store.path.read_bytes()
+    continuity_before = store.continuity_store.path.read_bytes()
+
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "rollback"
+    )
+    assert any(
+        issue.code == "authority_publication_continuity_rollback"
+        for issue in report.issues
+    )
+    assert snapshot["authoritative"] is False
+    assert continuity.checkpoint_hash not in json.dumps(snapshot)
+    with pytest.raises(AuthorityPublicationError, match="continuity is rollback"):
+        build_harness(state, MockAgentAdapter())
+    assert store.path.read_bytes() == publication_before
+    assert store.continuity_store.path.read_bytes() == continuity_before
+
+
+def test_continuity_deletion_after_sequence_one_is_critical_and_not_recreated(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    assert store.get().continuity_sequence == 2
+    store.continuity_store.path.unlink()
+    publication_before = store.path.read_bytes()
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "missing"
+    )
+    assert any(
+        issue.code == "authority_publication_continuity_invalid"
+        for issue in report.issues
+    )
+    with pytest.raises(AuthorityPublicationError, match="continuity is missing"):
+        build_harness(state, MockAgentAdapter())
+    assert store.path.read_bytes() == publication_before
+    assert not store.continuity_store.path.exists()
+
+
+def test_continuity_record_substitution_is_critical_and_not_rewritten(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    raw = json.loads(store.continuity_store.path.read_text(encoding="utf-8"))
+    raw["checkpoint_hash"] = "sha256:" + "9" * 64
+    store.continuity_store.path.write_text(json.dumps(raw), encoding="utf-8")
+    before = store.continuity_store.path.read_bytes()
+
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "invalid"
+    )
+    assert any(issue.code == "authority_publication_invalid" for issue in report.issues)
+    assert snapshot["authoritative"] is False
+    assert raw["checkpoint_hash"] not in json.dumps(snapshot)
+    with pytest.raises(AuthorityPublicationError, match="record hash"):
+        build_harness(state, MockAgentAdapter())
+    assert store.continuity_store.path.read_bytes() == before
+
+
+def test_valid_continuity_anchor_for_another_checkpoint_is_critical(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    substituted = AuthorityPublicationContinuityState.create(
+        sequence=1,
+        checkpoint_hash="sha256:" + "9" * 64,
+        prior_checkpoint_hash="GENESIS",
+    )
+    store.continuity_store.path.write_text(
+        json.dumps(substituted.to_dict()),
+        encoding="utf-8",
+    )
+    before = store.continuity_store.path.read_bytes()
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "diverged"
+    )
+    assert any(
+        issue.code == "authority_publication_continuity_invalid"
+        for issue in report.issues
+    )
+    with pytest.raises(AuthorityPublicationError, match="continuity is diverged"):
+        build_harness(state, MockAgentAdapter())
+    assert store.continuity_store.path.read_bytes() == before
+
+
+def test_valid_continuity_anchor_with_wrong_predecessor_is_critical(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    publication = store.get()
+    assert publication is not None
+    assert publication.completed is not None
+    assert publication.completed.record_hash is not None
+    substituted = AuthorityPublicationContinuityState.create(
+        sequence=1,
+        checkpoint_hash=publication.completed.record_hash,
+        prior_checkpoint_hash="sha256:" + "7" * 64,
+    )
+    store.continuity_store.path.write_text(
+        json.dumps(substituted.to_dict()),
+        encoding="utf-8",
+    )
+    before = store.continuity_store.path.read_bytes()
+
+    report = StateIntegrityAuditor(state).audit()
+
+    assert report.safe_to_execute is False
+    assert report.stores["authority_publication"]["publication_continuity"] == (
+        "diverged"
+    )
+    assert any(
+        issue.code == "authority_publication_continuity_invalid"
+        for issue in report.issues
+    )
+    with pytest.raises(AuthorityPublicationError, match="continuity is diverged"):
+        build_harness(state, MockAgentAdapter())
+    assert store.continuity_store.path.read_bytes() == before
+
+
+def test_current_linked_checkpoint_cannot_reset_continuity_enrollment(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    raw = json.loads(store.path.read_text(encoding="utf-8"))
+    raw["continuity_sequence"] = 0
+    store.path.write_text(json.dumps(raw), encoding="utf-8")
+    before = store.path.read_bytes()
+
+    with pytest.raises(AuthorityPublicationError, match="requires continuity"):
+        store.get()
+    report = StateIntegrityAuditor(state).audit()
+    assert report.safe_to_execute is False
+    assert any(issue.code == "authority_publication_invalid" for issue in report.issues)
+    with pytest.raises(AuthorityPublicationError, match="requires continuity"):
+        build_harness(state, MockAgentAdapter())
+    assert store.path.read_bytes() == before
 
 
 def test_valid_active_record_with_wrong_checkpoint_link_is_critical_and_refused(
@@ -1101,6 +1382,7 @@ def test_legacy_active_publication_remains_recoverable(tmp_path, monkeypatch):
     path = state / "authority_publication.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.1.0"
+    raw.pop("continuity_sequence")
     raw["active"].pop("store_hashes")
     raw["active"].pop("prior_checkpoint_hash")
     raw["active"].pop("record_hash")
@@ -1120,7 +1402,7 @@ def test_legacy_active_publication_remains_recoverable(tmp_path, monkeypatch):
     monkeypatch.setattr(AuthorityPublicationStore, "complete", original)
     build_harness(state, MockAgentAdapter())
     migrated = json.loads(path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.5.0"
+    assert migrated["schema_version"] == "0.6.0"
     assert migrated["active"] is None
     assert set(migrated["completed"]["store_hashes"]) == set(STORE_HASHES)
     assert migrated["completed"]["record_hash"].startswith("sha256:")
@@ -1154,6 +1436,7 @@ def test_legacy_v04_active_intent_completes_without_fabricating_transition_link(
     ).sealed(schema_version="0.4.0")
     raw = json.loads(store.path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.4.0"
+    raw.pop("continuity_sequence")
     raw["active"] = legacy.to_dict(schema_version="0.4.0")
     store.path.write_text(json.dumps(raw), encoding="utf-8")
     before = store.path.read_bytes()
@@ -1171,7 +1454,7 @@ def test_legacy_v04_active_intent_completes_without_fabricating_transition_link(
     build_harness(state, MockAgentAdapter())
     migrated = store.get()
     assert migrated is not None
-    assert migrated.schema_version == "0.5.0"
+    assert migrated.schema_version == "0.6.0"
     assert migrated.projection()["checkpoint_intent_link"] == "legacy_unavailable"
 
     build_harness(state, MockAgentAdapter())
@@ -1188,12 +1471,14 @@ def test_legacy_v02_checkpoint_is_readable_and_migrates_on_successful_startup(
     path = state / "authority_publication.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.2.0"
+    raw.pop("continuity_sequence")
     raw["completed"].pop("store_hashes")
     raw["completed"].pop("prepared_at")
     raw["completed"].pop("prior_checkpoint_hash")
     raw["completed"].pop("intent_record_hash")
     raw["completed"].pop("record_hash")
     path.write_text(json.dumps(raw), encoding="utf-8")
+    (state / "authority_publication_continuity.json").unlink()
     before = path.read_bytes()
 
     loaded = AuthorityPublicationStore(path).get()
@@ -1212,7 +1497,7 @@ def test_legacy_v02_checkpoint_is_readable_and_migrates_on_successful_startup(
 
     build_harness(state, MockAgentAdapter())
     migrated = json.loads(path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.5.0"
+    assert migrated["schema_version"] == "0.6.0"
     assert migrated["completed"]["store_hashes"] is not None
     assert migrated["completed"]["record_hash"].startswith("sha256:")
 
@@ -1227,12 +1512,14 @@ def test_legacy_v02_checkpoint_remains_recoverable_during_partial_rotation(
     publication_path = state / "authority_publication.json"
     publication = json.loads(publication_path.read_text(encoding="utf-8"))
     publication["schema_version"] = "0.2.0"
+    publication.pop("continuity_sequence")
     publication["completed"].pop("store_hashes")
     publication["completed"].pop("prepared_at")
     publication["completed"].pop("prior_checkpoint_hash")
     publication["completed"].pop("intent_record_hash")
     publication["completed"].pop("record_hash")
     publication_path.write_text(json.dumps(publication), encoding="utf-8")
+    (state / "authority_publication_continuity.json").unlink()
 
     profile_store = AuthorityProfileStore(state / "authority_profile.json")
     with pytest.raises(AuthorityProfileError, match="does not match") as mismatch:
@@ -1293,7 +1580,7 @@ def test_legacy_v02_checkpoint_remains_recoverable_during_partial_rotation(
         dry_run=True,
     )
     migrated = json.loads(publication_path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.5.0"
+    assert migrated["schema_version"] == "0.6.0"
     assert migrated["completed"]["store_hashes"] is not None
     assert migrated["completed"]["record_hash"].startswith("sha256:")
 
@@ -1306,11 +1593,13 @@ def test_legacy_v03_checkpoint_is_readable_and_migrates_with_a_record_seal(
     path = state / "authority_publication.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.3.0"
+    raw.pop("continuity_sequence")
     raw["completed"].pop("prepared_at")
     raw["completed"].pop("prior_checkpoint_hash")
     raw["completed"].pop("intent_record_hash")
     raw["completed"].pop("record_hash")
     path.write_text(json.dumps(raw), encoding="utf-8")
+    (state / "authority_publication_continuity.json").unlink()
     before = path.read_bytes()
 
     loaded = AuthorityPublicationStore(path).get()
@@ -1330,7 +1619,7 @@ def test_legacy_v03_checkpoint_is_readable_and_migrates_with_a_record_seal(
 
     build_harness(state, MockAgentAdapter())
     migrated = json.loads(path.read_text(encoding="utf-8"))
-    assert migrated["schema_version"] == "0.5.0"
+    assert migrated["schema_version"] == "0.6.0"
     assert migrated["completed"]["record_hash"].startswith("sha256:")
 
 
@@ -1354,8 +1643,10 @@ def test_legacy_v04_checkpoint_is_readable_and_migrates_with_transition_links(
     )
     raw = json.loads(store.path.read_text(encoding="utf-8"))
     raw["schema_version"] = "0.4.0"
+    raw.pop("continuity_sequence")
     raw["completed"] = legacy.to_dict(schema_version="0.4.0")
     store.path.write_text(json.dumps(raw), encoding="utf-8")
+    store.continuity_store.path.unlink()
     before = store.path.read_bytes()
 
     legacy_state = store.get()
@@ -1374,9 +1665,47 @@ def test_legacy_v04_checkpoint_is_readable_and_migrates_with_transition_links(
     build_harness(state, MockAgentAdapter())
     migrated = store.get()
     assert migrated is not None
-    assert migrated.schema_version == "0.5.0"
+    assert migrated.schema_version == "0.6.0"
     assert migrated.completed is not None
     assert migrated.projection()["checkpoint_intent_link"] == "verified"
+
+
+def test_legacy_v05_checkpoint_is_readable_and_enrolls_continuity_on_startup(
+    tmp_path,
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    store = AuthorityPublicationStore(state / "authority_publication.json")
+    raw = json.loads(store.path.read_text(encoding="utf-8"))
+    raw["schema_version"] = "0.5.0"
+    raw.pop("continuity_sequence")
+    store.path.write_text(json.dumps(raw), encoding="utf-8")
+    store.continuity_store.path.unlink()
+    before = store.path.read_bytes()
+
+    legacy = store.get()
+    assert legacy is not None
+    assert legacy.continuity_sequence is None
+    assert store.continuity_verification(legacy) == "legacy_unavailable"
+    report = StateIntegrityAuditor(state).audit()
+    snapshot = CommandCore(state).snapshot()
+    assert report.status == "healthy"
+    assert report.safe_to_execute is True
+    assert snapshot["authority_publication"]["publication_continuity"] == (
+        "legacy_unavailable"
+    )
+    assert store.path.read_bytes() == before
+    assert not store.continuity_store.path.exists()
+
+    build_harness(state, MockAgentAdapter())
+    migrated = store.get()
+    continuity = store.get_continuity()
+    assert migrated is not None
+    assert migrated.schema_version == "0.6.0"
+    assert migrated.continuity_sequence == 2
+    assert continuity is not None
+    assert continuity.sequence == 2
+    assert store.continuity_verification(migrated) == "verified"
 
 
 def test_publication_state_rejects_unknown_fields():

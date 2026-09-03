@@ -97,6 +97,14 @@ spliced into a false recovery sequence. Legacy schemas `0.1.0` through `0.4.0`
 remain readable with explicit unavailable-link posture; read-only inspection
 never migrates them. See `sealed_authority_publication_transitions.md`.
 
+v0.79 schema `0.6.0` adds a compact continuity sequence to publication state
+and maintains an independently atomic, sealed
+`authority_publication_continuity.json` ratchet. A checkpoint-first crash is a
+safe deterministic advancement; publication rollback, divergent substitution,
+or missing continuity after sequence one is critical. Schemas through `0.5.0`
+remain readable and enroll only during successful owning-runtime startup. See
+`authority_publication_continuity.md`.
+
 ## Limits
 
 This is a local crash-recovery protocol, not a distributed transaction or

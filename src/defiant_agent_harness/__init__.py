@@ -42,6 +42,11 @@ from .authority_publication import (
     AuthorityPublicationState,
     AuthorityPublicationStore,
 )
+from .authority_publication_continuity import (
+    AuthorityPublicationContinuityError,
+    AuthorityPublicationContinuityState,
+    AuthorityPublicationContinuityStore,
+)
 from .orchestrator.harness import (
     AuthorizationReconciliationOutcome,
     Harness,
@@ -118,7 +123,7 @@ from .evidence_witness import (
 )
 from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.78.0"
+__version__ = "0.79.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -130,6 +135,9 @@ __all__ = [
     "AuthorityProfileState",
     "AuthorityProfileStore",
     "AuthorityPublicationCheckpoint",
+    "AuthorityPublicationContinuityError",
+    "AuthorityPublicationContinuityState",
+    "AuthorityPublicationContinuityStore",
     "AuthorityPublicationError",
     "AuthorityPublicationIntent",
     "AuthorityPublicationState",

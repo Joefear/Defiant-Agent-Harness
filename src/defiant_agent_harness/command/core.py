@@ -18,6 +18,7 @@ from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..limits import (
     MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES,
+    MAX_AUTHORITY_PUBLICATION_CONTINUITY_STATE_BYTES,
     MAX_AUTHORITY_PUBLICATION_STATE_BYTES,
     MAX_AUTHORITY_PROFILE_STATE_BYTES,
     MAX_POLICY_CONTEXT_CHARACTERS,
@@ -109,7 +110,7 @@ from ..strict_json import STRICT_JSON_PROFILE
 from ..strict_yaml import STRICT_YAML_PROFILE
 
 SNAPSHOT_SCHEMA = "defiant.command.snapshot"
-SNAPSHOT_VERSION = "0.72.0"
+SNAPSHOT_VERSION = "0.73.0"
 
 
 class CommandError(RuntimeError):
@@ -275,6 +276,9 @@ class CommandCore:
                     "authority_publication_state_bytes": (
                         MAX_AUTHORITY_PUBLICATION_STATE_BYTES
                     ),
+                    "authority_publication_continuity_state_bytes": (
+                        MAX_AUTHORITY_PUBLICATION_CONTINUITY_STATE_BYTES
+                    ),
                     "authority_publication_manifest_bytes": (
                         MAX_AUTHORITY_PUBLICATION_MANIFEST_BYTES
                     ),
@@ -384,6 +388,7 @@ class CommandCore:
                     "validated_authority_publication_snapshot": True,
                     "validated_authority_publication_record_seals": True,
                     "validated_authority_publication_transition_links": True,
+                    "verified_authority_publication_continuity": True,
                     "verified_authority_publication_manifest": True,
                     "verified_active_authority_publication_phase": True,
                     "verified_active_authority_publication_store_commitments": True,

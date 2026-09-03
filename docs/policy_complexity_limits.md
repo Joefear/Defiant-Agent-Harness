@@ -32,7 +32,7 @@ settings. Splitting one large policy into more files does not increase the
 complete-ruleset ceilings. Operators whose reviewed rulesets exceed a ceiling
 must reduce or consolidate policy rather than weakening the control at runtime.
 
-Command Core schema `0.72.0` publishes the five fixed ceilings under
+Command Core schema `0.73.0` publishes the five fixed ceilings under
 `resource_limits`. Command Center displays them with the other static limits.
 Both surfaces remain strictly read-only: they cannot upload a pack, change a
 limit, grant an exception, or activate policy.

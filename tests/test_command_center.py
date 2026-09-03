@@ -141,6 +141,7 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"evidence_witness_policy_state_bytes" in javascript
     assert b"authority_profile_state_bytes" in javascript
     assert b"authority_publication_state_bytes" in javascript
+    assert b"authority_publication_continuity_state_bytes" in javascript
     assert b"authority_publication_manifest_bytes" in javascript
     assert b"operator_trust_state_bytes" in javascript
     assert b"mcp_config_collection_items" in javascript
@@ -232,10 +233,13 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
     assert b"validated_authority_publication_snapshot" in javascript
     assert b"validated_authority_publication_record_seals" in javascript
     assert b"validated_authority_publication_transition_links" in javascript
+    assert b"verified_authority_publication_continuity" in javascript
     assert b"intent_record_seal" in javascript
     assert b"checkpoint_record_seal" in javascript
     assert b"intent_checkpoint_link" in javascript
     assert b"checkpoint_intent_link" in javascript
+    assert b"publication_continuity" in javascript
+    assert b"continuity_sequence" in javascript
     assert b"verified_authority_publication_manifest" in javascript
     assert b"verified_active_authority_publication_phase" in javascript
     assert b"verified_active_authority_publication_store_commitments" in javascript

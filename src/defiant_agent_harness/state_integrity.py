@@ -69,7 +69,7 @@ from .workspace_integrity import (
 )
 
 AUDIT_SCHEMA = "defiant.state_integrity"
-AUDIT_VERSION = "0.25.0"
+AUDIT_VERSION = "0.26.0"
 
 _TERMINAL_RESULTS = {
     ResultStatus.SUCCEEDED.value,
@@ -399,6 +399,7 @@ class StateIntegrityAuditor:
             "control_plane_isolation.json",
             "operator_trust.json",
             "authority_profile.json",
+            "authority_publication_continuity.json",
             "authority_publication.json",
             "operation_journal.json",
             "runtime_artifacts.json",
@@ -434,9 +435,22 @@ class StateIntegrityAuditor:
                     "checkpoint_record_seal": "not_applicable",
                     "intent_checkpoint_link": "not_applicable",
                     "checkpoint_intent_link": "not_applicable",
+                    "publication_continuity": "not_applicable",
+                    "continuity_sequence": None,
                     "prepared_at": None,
                     "completed_at": None,
                 }
+                if store.continuity_verification(None) == "diverged":
+                    report.stores["authority_publication"]["publication_continuity"] = (
+                        "invalid"
+                    )
+                    self._issue(
+                        report,
+                        "authority_publication_continuity_orphaned",
+                        "critical",
+                        "authority_publication_continuity.json",
+                        "publication continuity exists without publication state",
+                    )
                 profile = AuthorityProfileStore(
                     self.workdir / "authority_profile.json"
                 ).get()
@@ -451,6 +465,36 @@ class StateIntegrityAuditor:
                 return
 
             projection = state.projection()
+            continuity_verification = store.continuity_verification(state)
+            projection["publication_continuity"] = (
+                "recovery_required"
+                if continuity_verification == "forward_recovery"
+                else continuity_verification
+            )
+            if continuity_verification == "forward_recovery":
+                self._issue(
+                    report,
+                    "authority_publication_continuity_recovery_required",
+                    "warning",
+                    "authority_publication_continuity.json",
+                    "the publication continuity anchor requires deterministic advancement",
+                )
+            elif continuity_verification == "rollback":
+                self._issue(
+                    report,
+                    "authority_publication_continuity_rollback",
+                    "critical",
+                    "authority_publication_continuity.json",
+                    "publication state is behind its durable continuity anchor",
+                )
+            elif continuity_verification in {"missing", "diverged"}:
+                self._issue(
+                    report,
+                    "authority_publication_continuity_invalid",
+                    "critical",
+                    "authority_publication_continuity.json",
+                    "publication state and continuity anchor disagree",
+                )
             profile = AuthorityProfileStore(
                 self.workdir / "authority_profile.json"
             ).get()
@@ -555,6 +599,8 @@ class StateIntegrityAuditor:
                 "checkpoint_record_seal": "invalid",
                 "intent_checkpoint_link": "invalid",
                 "checkpoint_intent_link": "invalid",
+                "publication_continuity": "invalid",
+                "continuity_sequence": None,
                 "prepared_at": None,
                 "completed_at": None,
             }
