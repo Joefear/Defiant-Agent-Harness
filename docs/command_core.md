@@ -11,7 +11,7 @@ Run it with:
 dah --workdir .dah command
 ```
 
-The JSON result uses schema `defiant.command.snapshot` version `0.73.0` and
+The JSON result uses schema `defiant.command.snapshot` version `0.74.0` and
 contains:
 
 - evidence-chain and cross-store integrity plus an overall `authoritative` flag;
@@ -23,6 +23,8 @@ contains:
 - fixed symmetric authority-profile and operator-trust state read/write and
   canonical snapshot ceilings;
 - the fixed symmetric authority-publication continuity-anchor read/write and
+  canonical snapshot ceiling;
+- the fixed symmetric authority-publication witness-policy read/write and
   canonical snapshot ceiling;
 - the fixed symmetric runtime-artifact-state read/write and canonical snapshot
   ceiling;
@@ -69,6 +71,10 @@ contains:
   continuity state and sequence, and timestamps without raw record, linkage,
   checkpoint, or continuity hashes, raw manifests, individual commitment
   hashes, or state paths;
+- sanitized external authority-publication witness mode, verification,
+  witnessed sequence, current lag, profile generation, key id, signer, and
+  signing time without the checkpoint hash, signature, payload, operator note,
+  witness path, or key path;
 - sanitized runtime-artifact mode, bundle hash, count, executable-pin posture,
   last verification time, and binding to the active authority profile, without
   artifact paths or individual file digests;

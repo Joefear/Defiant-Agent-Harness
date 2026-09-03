@@ -1042,6 +1042,27 @@ matching startup. The compact ratchet does not retain an unbounded local event
 log and does not claim to detect matched rollback of the publication file and
 anchor together. See `authority_publication_continuity.md`.
 
+## v0.80 external authority-publication witness
+
+An optional external Ed25519 document now witnesses the retained publication
+head and its compact continuity sequence. The signed payload binds deployment
+root identity, authority-profile generation and hash, continuity sequence,
+checkpoint hash, signer, key id, and observation time. Trusted key identifiers
+and required mode are part of the authority profile and the combined
+authority-publication manifest; the durable policy state is stored separately
+in `authority_publication_witness_policy.json`. Witnesses and key material must
+remain outside the state root.
+
+Owning-runtime startup requires an exact current witness. After that startup
+publishes its new checkpoint, read-only diagnostics accept the cryptographically
+provable one-step forward relation as safe but recovery-required, directing the
+operator to publish a refreshed witness. A second startup, older lag, matched
+local rollback, signature failure, trust substitution, root mismatch, or
+post-enrollment omission fails closed. Command Core and Command Center receive
+only sanitized mode, verification, sequence, lag, signer, and time; they cannot
+write policy, accept a witness, sign, recover, or advance publication. See
+`authority_publication_witness.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

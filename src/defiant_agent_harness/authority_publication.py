@@ -1048,6 +1048,7 @@ def authority_manifest_commitments_for(
     runtime_artifacts: Any | None,
     launch_envelope: Any | None,
     evidence_head: Any,
+    authority_publication_witness_policy: Any | None = None,
 ) -> tuple[str, dict[str, str | None]]:
     """Commit one manifest and each exact target-store authority projection."""
     manifest = {
@@ -1063,6 +1064,10 @@ def authority_manifest_commitments_for(
             "evidence_head": evidence_head,
         },
     }
+    if authority_publication_witness_policy is not None:
+        manifest["authority_publication_witness_policy"] = (
+            authority_publication_witness_policy
+        )
     try:
         snapshot, manifest_hash = authority_snapshot_and_sha256_of(
             manifest,
@@ -1099,6 +1104,11 @@ def authority_manifest_commitments_from_state(
         evidence_head_authority,
     )
     from .evidence_witness import EvidenceWitnessPolicyStore, WITNESS_VERSION
+    from .authority_publication_witness import (
+        AuthorityPublicationWitnessPolicyStore,
+        WITNESS_MODE as PUBLICATION_WITNESS_MODE,
+        WITNESS_VERSION as PUBLICATION_WITNESS_VERSION,
+    )
     from .launch_envelope import LaunchEnvelopeStateStore
     from .runtime_artifacts import RuntimeArtifactStateStore
     from .state_storage import StateStorageStateStore
@@ -1119,6 +1129,9 @@ def authority_manifest_commitments_from_state(
         runtime = RuntimeArtifactStateStore(root / "runtime_artifacts.json").get()
         launch = LaunchEnvelopeStateStore(root / "launch_envelope.json").get()
         evidence_head = EvidenceHeadStateStore(root / "evidence_head.json").get()
+        publication_witness = AuthorityPublicationWitnessPolicyStore(
+            root / "authority_publication_witness_policy.json"
+        ).get()
     except RuntimeError as exc:
         raise AuthorityPublicationError(
             "a completed authority publication dependency is invalid"
@@ -1164,6 +1177,18 @@ def authority_manifest_commitments_from_state(
     }
     if witness.max_unwitnessed_records is not None:
         witness_authority["max_unwitnessed_records"] = witness.max_unwitnessed_records
+    publication_witness_authority = None
+    if publication_witness is not None:
+        if publication_witness.profile_hash != profile_hash:
+            raise AuthorityPublicationError(
+                "completed authority publication dependency 'authority_publication_witness_policy' has a profile mismatch"
+            )
+        if publication_witness.mode == PUBLICATION_WITNESS_MODE:
+            publication_witness_authority = {
+                "mode": publication_witness.mode,
+                "schema_version": PUBLICATION_WITNESS_VERSION,
+                "trusted_key_ids": list(publication_witness.trusted_key_ids),
+            }
     return authority_manifest_commitments_for(
         profile_hash=profile_hash,
         generation=generation,
@@ -1174,6 +1199,7 @@ def authority_manifest_commitments_from_state(
         runtime_artifacts=(runtime.authority_dict() if runtime is not None else None),
         launch_envelope=(launch.authority_dict() if launch is not None else None),
         evidence_head=evidence_head_authority(),
+        authority_publication_witness_policy=publication_witness_authority,
     )
 
 

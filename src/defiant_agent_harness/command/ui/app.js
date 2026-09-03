@@ -155,6 +155,7 @@ function renderResourceLimits(limits, configuration) {
     `authority profile state ${bytes(limits.authority_profile_state_bytes)}`,
     `authority publication state ${bytes(limits.authority_publication_state_bytes)}`,
     `authority publication continuity ${bytes(limits.authority_publication_continuity_state_bytes)}`,
+    `authority publication witness policy ${bytes(limits.authority_publication_witness_policy_state_bytes)}`,
     `authority publication manifest ${bytes(limits.authority_publication_manifest_bytes)}`,
     `operator trust state ${bytes(limits.operator_trust_state_bytes)}`,
     `runtime artifact state ${bytes(limits.runtime_artifact_state_bytes)}`,
@@ -232,6 +233,9 @@ function renderResourceLimits(limits, configuration) {
     const authorityPublicationContinuity = configuration.verified_authority_publication_continuity
       ? "authority publication checkpoints are cross-checked against a sealed monotonic continuity ratchet"
       : "authority publication continuity unverified";
+    const authorityPublicationWitness = configuration.verified_external_authority_publication_witness
+      ? "authority publication continuity can be verified against an authority-bound external signed witness"
+      : "external authority publication witness verification unavailable";
     const authorityPublicationManifest = configuration.verified_authority_publication_manifest
       ? "completed authority publication manifests are recomputed from durable dependent state"
       : "authority publication manifest verification unavailable";
@@ -278,7 +282,7 @@ function renderResourceLimits(limits, configuration) {
       ? "evidence-witness policy validation and publication use one detached bounded canonical state snapshot with symmetric I/O limits"
       : "evidence-witness policy snapshot integrity unverified";
     details.push(
-      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationRecordSeals}; ${authorityPublicationTransitionLinks}; ${authorityPublicationContinuity}; ${authorityPublicationManifest}; ${activeAuthorityPublication}; ${activeAuthorityPublicationCommitments}; ${activeAuthorityPublicationCheckpointCommitments}; ${completedAuthorityPublicationCheckpointCommitments}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
+      `authority YAML ${label(configuration.yaml_parser_profile)} (aliases and duplicate keys refused; MCP collections bounded before transformation; policy text bounded before transformation; ${policyOwnership}; ${policyRuntime}; ${policyContext}; ${operationJournal}; ${nativeHookEvent}; ${authorityContinuity}; ${authorityContinuityIo}; ${authorityPublication}; ${authorityPublicationState}; ${authorityPublicationRecordSeals}; ${authorityPublicationTransitionLinks}; ${authorityPublicationContinuity}; ${authorityPublicationWitness}; ${authorityPublicationManifest}; ${activeAuthorityPublication}; ${activeAuthorityPublicationCommitments}; ${activeAuthorityPublicationCheckpointCommitments}; ${completedAuthorityPublicationCheckpointCommitments}; ${runtimeArtifactState}; ${launchEnvelopeState}; ${stateStorageState}; ${controlPlaneIsolationState}; ${workspaceIntegrityState}; ${nativeHookCorrelation}; ${approvalRecordState}; ${budgetLedgerSnapshot}; ${evidenceHeadSnapshot}; ${evidenceWitnessPolicySnapshot}; canonical mapping key families and complete key tokens, size, sort work, values, strings, and numbers preflighted into a detached validated snapshot adopted directly by action, tool-call, and tool-result owners; request allowlist, request input, and action provenance collections snapshotted from built-in storage before validation; accepted scalar subclasses normalized to exact built-in values before ownership; policy decisions, capability grants, evidence records, and operation journals retain bounded exact built-in snapshots; governed request construction, tool-call translation, action hashing, tool-result capture, payload matching, glob matching, policy context, and journal publication bounded and fail-closed)`,
       `authority JSON ${label(configuration.json_parser_profile)} (strict UTF-8, bounded structure and scalars, duplicate keys and non-finite numbers refused)`,
     );
   }
@@ -335,8 +339,11 @@ function renderStateIntegrity(integrity) {
     : "State integrity alert.";
   const journal = integrity.stores.operation_journal;
   const publication = integrity.stores.authority_publication;
+  const publicationWitness = integrity.stores.authority_publication_witness;
   elements.stateIntegrityDetail.textContent = integrity.safe_to_execute
-    ? publication && publication.publication_continuity === "recovery_required"
+    ? publicationWitness && publicationWitness.verification === "forward"
+      ? `The external authority-publication witness is one checkpoint behind at sequence ${integer.format(publicationWitness.witnessed_continuity_sequence || 0)}. Publish a refreshed witness before the next owning-runtime startup. This dashboard remains read-only.`
+      : publication && publication.publication_continuity === "recovery_required"
       ? `Authority publication continuity at sequence ${integer.format(publication.continuity_sequence || 0)} requires deterministic advancement by the owning runtime. This dashboard remains read-only.`
       : publication && publication.state === "recovery_required"
       ? `Authority publication for generation ${integer.format(publication.generation)} requires exact replay (${label(publication.verification)}; continuity ${label(publication.publication_continuity)} at sequence ${integer.format(publication.continuity_sequence || 0)}; intent seal ${label(publication.intent_record_seal)}; checkpoint seal ${label(publication.checkpoint_record_seal)}; prior-checkpoint link ${label(publication.intent_checkpoint_link)}; originating-intent link ${label(publication.checkpoint_intent_link)}; target commitments ${label(publication.store_commitments)}; checkpoint commitments ${label(publication.checkpoint_store_commitments)}). This dashboard remains read-only.`
@@ -538,6 +545,7 @@ function renderAuthorityProfile(
   workspaceIntegrity,
   evidenceHead,
   evidenceWitness,
+  publicationWitness,
 ) {
   if (!profile || profile.state === "not_enrolled") {
     elements.profileGeneration.textContent = "—";
@@ -583,7 +591,10 @@ function renderAuthorityProfile(
   const evidenceWitnessDetail = evidenceWitness
     ? `${label(evidenceWitness.state)} · ${label(evidenceWitness.verification)} · ${integer.format(evidenceWitness.witnessed_record_count || 0)} records · ${evidenceWitnessLag}`
     : "Not configured";
-  elements.profileDetail.textContent = `${profileDetail} · Publication ${publicationDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
+  const publicationWitnessDetail = publicationWitness
+    ? `${label(publicationWitness.state)} · ${label(publicationWitness.verification)} · sequence ${integer.format(publicationWitness.witnessed_continuity_sequence || 0)} · ${integer.format(publicationWitness.unwitnessed_publication_count || 0)} unwitnessed`
+    : "Not configured";
+  elements.profileDetail.textContent = `${profileDetail} · Publication ${publicationDetail} · Publication witness ${publicationWitnessDetail} · Evidence head ${evidenceHeadDetail} · External witness ${evidenceWitnessDetail} · Workspace ${workspaceDetail} · Isolation ${isolationDetail} · Storage ${storageDetail} · Artifacts ${artifactDetail} · Launch ${launchDetail}`;
 }
 
 function renderActivity(activity) {
@@ -635,6 +646,7 @@ function renderSnapshot(snapshot) {
     snapshot.workspace_integrity,
     snapshot.evidence_head,
     snapshot.evidence_witness,
+    snapshot.authority_publication_witness,
   );
   renderActivity(snapshot.recent_activity);
   elements.errorBanner.hidden = true;

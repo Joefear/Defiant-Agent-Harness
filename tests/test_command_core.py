@@ -159,7 +159,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["schema_name"] == "defiant.command.snapshot"
-    assert output["schema_version"] == "0.73.0"
+    assert output["schema_version"] == "0.74.0"
     assert output["resource_limits"] == {
         "tool_call_name_characters": 4096,
         "tool_call_identifier_characters": 4096,
@@ -202,6 +202,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "authority_profile_state_bytes": 1024 * 1024,
         "authority_publication_state_bytes": 64 * 1024,
         "authority_publication_continuity_state_bytes": 64 * 1024,
+        "authority_publication_witness_policy_state_bytes": 256 * 1024,
         "authority_publication_manifest_bytes": 64 * 1024,
         "operator_trust_state_bytes": 1024 * 1024,
         "runtime_artifact_state_bytes": 64 * 1024,
@@ -284,6 +285,7 @@ def test_command_cli_emits_json_snapshot(tmp_path, capsys):
         "validated_authority_publication_record_seals": True,
         "validated_authority_publication_transition_links": True,
         "verified_authority_publication_continuity": True,
+        "verified_external_authority_publication_witness": True,
         "verified_authority_publication_manifest": True,
         "verified_active_authority_publication_phase": True,
         "verified_active_authority_publication_store_commitments": True,

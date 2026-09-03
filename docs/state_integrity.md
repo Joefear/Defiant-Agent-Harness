@@ -70,6 +70,12 @@ the separately sealed continuity anchor. A checkpoint-first write gap is a
 warning-level deterministic recovery condition. Publication rollback,
 divergence, an orphan anchor, or missing continuity after initial enrollment is
 critical. Older publication schemas remain explicit `legacy_unavailable` state.
+v0.80 validates the optional authority-bound external publication witness and
+its durable policy. An exact current witness is verified; the compact ratchet's
+one-step forward state is warning-level `publication_witness_refresh_required`.
+An older witness, matched local rollback behind the witness, signature or trust
+failure, root/profile mismatch, policy substitution, or post-enrollment
+omission is critical and blocks authority.
 
 Run it without initializing or modifying the state directory:
 
@@ -84,7 +90,7 @@ runtime, as well as the durable trust-generation chain. Omitting them after
 enrollment does not prevent this read-only command from starting; it reports
 `operator_trust_unverified`, marks state unsafe, and makes no changes.
 
-The command emits schema `defiant.state_integrity` version `0.26.0` and exits
+The command emits schema `defiant.state_integrity` version `0.27.0` and exits
 non-zero only when `safe_to_execute` is false. The report contains store status,
 counts, sanitized issue codes, and operational identifiers. It never includes
 targets, payload previews, reconciliation notes, or raw tool output.

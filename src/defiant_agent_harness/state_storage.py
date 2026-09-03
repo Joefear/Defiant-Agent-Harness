@@ -51,6 +51,7 @@ KNOWN_STATE_FILENAMES = (
     "approvals.json",
     "authority.lock",
     "authority_publication_continuity.json",
+    "authority_publication_witness_policy.json",
     "authority_publication.json",
     "authority_profile.json",
     "budget.json",

@@ -18,6 +18,15 @@ from ..authority_publication import (
     authority_manifest_commitments_for,
     authority_manifest_commitments_from_state,
 )
+from ..authority_publication_witness import (
+    AuthorityPublicationWitnessError,
+    AuthorityPublicationWitnessPolicy,
+    AuthorityPublicationWitnessPolicyStore,
+    WITNESS_MODE as PUBLICATION_WITNESS_MODE,
+    assess_witness as assess_publication_witness,
+    load_witness as load_publication_witness,
+    validate_external_witness_paths as validate_external_publication_witness_paths,
+)
 from ..budgets.ledger import BudgetLedger
 from ..contracts import (
     Decision,
@@ -1495,6 +1504,8 @@ def build_harness(
     evidence_head_witness: str | Path | None = None,
     trusted_evidence_witness_keys: list[str] | None = None,
     max_unwitnessed_records: int | None = None,
+    authority_publication_witness: str | Path | None = None,
+    trusted_authority_publication_witness_keys: list[str] | None = None,
     require_windows_private_state_acl: bool = False,
     _operator_control: bool = False,
 ) -> Harness:
@@ -1573,6 +1584,39 @@ def build_harness(
         if evidence_head_witness is not None
         else None
     )
+    publication_witness_key_paths = trusted_authority_publication_witness_keys or []
+    if bool(authority_publication_witness) != bool(publication_witness_key_paths):
+        raise AuthorityPublicationWitnessError(
+            "--authority-publication-witness and at least one trusted publication "
+            "witness key are required together"
+        )
+    validate_external_publication_witness_paths(
+        state_root,
+        authority_publication_witness,
+        publication_witness_key_paths,
+    )
+    publication_witness_policy_store = AuthorityPublicationWitnessPolicyStore(
+        state_root / "authority_publication_witness_policy.json"
+    )
+    enrolled_publication_witness_policy = publication_witness_policy_store.get()
+    if (
+        enrolled_publication_witness_policy is not None
+        and enrolled_publication_witness_policy.mode == PUBLICATION_WITNESS_MODE
+        and authority_publication_witness is None
+    ):
+        raise AuthorityPublicationWitnessError(
+            "this authority profile requires an external publication witness"
+        )
+    publication_witness_policy = (
+        AuthorityPublicationWitnessPolicy.from_paths(publication_witness_key_paths)
+        if publication_witness_key_paths
+        else None
+    )
+    publication_witness_document = (
+        load_publication_witness(authority_publication_witness)
+        if authority_publication_witness is not None
+        else None
+    )
     authority_lock = AuthorityTransactionLock(state_root / "authority.lock")
     allowed_workspace = (
         Path(workspace_root) if workspace_root is not None else Path.cwd() / "workspace"
@@ -1602,6 +1646,10 @@ def build_harness(
     }
     if witness_policy is not None:
         authority_inputs["evidence_head_witness"] = witness_policy.authority_dict()
+    if publication_witness_policy is not None:
+        authority_inputs["authority_publication_witness"] = (
+            publication_witness_policy.authority_dict()
+        )
     policy = PolicyEngine.from_loaded(
         loaded_policy_packs,
         additional_known_tools=(registry.names() if tools is not None else None),
@@ -1617,6 +1665,15 @@ def build_harness(
         ):
             raise EvidenceWitnessError(
                 "this authority profile requires an external evidence-head witness"
+            )
+        enrolled_publication_witness_policy = publication_witness_policy_store.get()
+        if (
+            enrolled_publication_witness_policy is not None
+            and enrolled_publication_witness_policy.mode == PUBLICATION_WITNESS_MODE
+            and authority_publication_witness is None
+        ):
+            raise AuthorityPublicationWitnessError(
+                "this authority profile requires an external publication witness"
             )
         trust_store = OperatorTrustStateStore(state_root / "operator_trust.json")
         operator_trust = trust_store.preview_for_authority(trusted_operator_keys or [])
@@ -1645,6 +1702,11 @@ def build_harness(
             if enrolled_witness_policy is None:
                 raise EvidenceWitnessError(
                     "evidence witness policy observation is not initialized; start "
+                    "the owning authority runtime once first"
+                )
+            if enrolled_publication_witness_policy is None:
+                raise AuthorityPublicationWitnessError(
+                    "publication witness policy observation is not initialized; start "
                     "the owning authority runtime once first"
                 )
             profile_state = profile_store.get()
@@ -1680,6 +1742,31 @@ def build_harness(
                 raise EvidenceWitnessError(
                     "external evidence witnessing is not enrolled for operator control"
                 )
+            if enrolled_publication_witness_policy.mode == PUBLICATION_WITNESS_MODE:
+                if publication_witness_policy is None:
+                    raise AuthorityPublicationWitnessError(
+                        "external publication witness is required for operator control"
+                    )
+                if (
+                    enrolled_publication_witness_policy.trusted_key_ids
+                    != publication_witness_policy.trusted_key_ids
+                ):
+                    raise AuthorityPublicationWitnessError(
+                        "operator-control publication witness keys do not match the "
+                        "enrolled policy"
+                    )
+                _preflight_publication_witness(
+                    state_root,
+                    publication_witness_document,
+                    publication_witness_policy,
+                    profile_state,
+                    state_storage.root_hash,
+                    require_current=False,
+                )
+            elif publication_witness_policy is not None:
+                raise AuthorityPublicationWitnessError(
+                    "external publication witnessing is not enrolled for operator control"
+                )
             audit_profile_hash = profile_state.profile_hash
         else:
             _preflight_evidence_head(state_root)
@@ -1696,6 +1783,20 @@ def build_harness(
                     witness_policy,
                     prior_profile,
                     state_storage.root_hash,
+                )
+            if publication_witness_policy is not None:
+                if prior_profile is None:
+                    raise AuthorityPublicationWitnessError(
+                        "enroll authority first, then create a publication witness and "
+                        "stage the witness-required profile"
+                    )
+                _preflight_publication_witness(
+                    state_root,
+                    publication_witness_document,
+                    publication_witness_policy,
+                    prior_profile,
+                    state_storage.root_hash,
+                    require_current=True,
                 )
             preview_profile = profile_store.preview_for_authority(
                 policy.ruleset_hash,
@@ -1727,6 +1828,11 @@ def build_harness(
                     else None
                 ),
                 evidence_head=evidence_head_authority(),
+                authority_publication_witness_policy=(
+                    publication_witness_policy.authority_dict()
+                    if publication_witness_policy is not None
+                    else None
+                ),
             )
             publication_store = AuthorityPublicationStore(
                 state_root / "authority_publication.json"
@@ -1768,6 +1874,7 @@ def build_harness(
                         control_plane_isolation=control_plane_isolation,
                         workspace_integrity=workspace_integrity,
                         witness_policy=witness_policy,
+                        publication_witness_policy=publication_witness_policy,
                         runtime_artifact_assurance=runtime_artifact_assurance,
                         launch_envelope_assurance=launch_envelope_assurance,
                     )
@@ -1809,6 +1916,10 @@ def build_harness(
                 state_root / "workspace_integrity.json"
             ).record(policy.ruleset_hash, workspace_integrity)
             witness_policy_store.record(policy.ruleset_hash, witness_policy)
+            publication_witness_policy_store.record(
+                policy.ruleset_hash,
+                publication_witness_policy,
+            )
         if runtime_artifact_assurance is not None:
             from ..runtime_artifacts import RuntimeArtifactStateStore
 
@@ -1856,6 +1967,10 @@ def build_harness(
                 workspace_root=workspace_integrity.root,
                 evidence_head_witness=evidence_head_witness,
                 trusted_evidence_witness_keys=witness_key_paths,
+                authority_publication_witness=authority_publication_witness,
+                trusted_authority_publication_witness_keys=(
+                    publication_witness_key_paths
+                ),
             ),
             operation_journal=OperationJournal(state_root / "operation_journal.json"),
             authority_lock=authority_lock,
@@ -1872,6 +1987,7 @@ def build_harness(
                 control_plane_isolation=control_plane_isolation,
                 workspace_integrity=workspace_integrity,
                 witness_policy=witness_policy,
+                publication_witness_policy=publication_witness_policy,
                 runtime_artifact_assurance=runtime_artifact_assurance,
                 launch_envelope_assurance=launch_envelope_assurance,
             )
@@ -1925,6 +2041,7 @@ def _require_completed_authority_publication_intact(
     control_plane_isolation,
     workspace_integrity,
     witness_policy: EvidenceWitnessPolicy | None,
+    publication_witness_policy: AuthorityPublicationWitnessPolicy | None,
     runtime_artifact_assurance,
     launch_envelope_assurance,
 ) -> None:
@@ -1983,6 +2100,30 @@ def _require_completed_authority_publication_intact(
     ):
         raise AuthorityPublicationError(
             "completed authority publication store 'evidence_witness_policy' is inconsistent"
+        )
+
+    publication_witness_state = AuthorityPublicationWitnessPolicyStore(
+        state_root / "authority_publication_witness_policy.json"
+    ).get()
+    expected_publication_witness_mode = (
+        PUBLICATION_WITNESS_MODE
+        if publication_witness_policy is not None
+        else "not_configured"
+    )
+    expected_publication_witness_keys = (
+        publication_witness_policy.trusted_key_ids
+        if publication_witness_policy is not None
+        else ()
+    )
+    if (
+        publication_witness_state is None
+        or publication_witness_state.profile_hash != profile_hash
+        or publication_witness_state.mode != expected_publication_witness_mode
+        or publication_witness_state.trusted_key_ids
+        != expected_publication_witness_keys
+    ):
+        raise AuthorityPublicationError(
+            "completed authority publication store 'authority_publication_witness_policy' is inconsistent"
         )
 
     runtime_state = RuntimeArtifactStateStore(
@@ -2083,4 +2224,44 @@ def _preflight_evidence_witness(
         raise EvidenceWitnessError(
             "refusing authority with untrusted evidence-head witness: "
             + assessment.detail
+        )
+
+
+def _preflight_publication_witness(
+    state_root: Path,
+    document: dict | None,
+    policy: AuthorityPublicationWitnessPolicy,
+    profile,
+    deployment_root_hash: str,
+    *,
+    require_current: bool,
+) -> None:
+    if document is None:
+        raise AuthorityPublicationWitnessError(
+            "external publication witness is required"
+        )
+    store = AuthorityPublicationStore(state_root / "authority_publication.json")
+    publication = store.get()
+    continuity = store.get_continuity()
+    if publication is None or continuity is None:
+        raise AuthorityPublicationWitnessError(
+            "publication continuity must be enrolled before external witnessing"
+        )
+    assessment = assess_publication_witness(
+        document,
+        policy,
+        deployment_root_hash=deployment_root_hash,
+        profile=profile,
+        publication=publication,
+        continuity=continuity,
+    )
+    if not assessment.ok:
+        raise AuthorityPublicationWitnessError(
+            "refusing authority with untrusted publication witness: "
+            + assessment.detail
+        )
+    if require_current and assessment.verification != "verified":
+        raise AuthorityPublicationWitnessError(
+            "publication witness must be refreshed before the owning runtime "
+            "advances authority publication"
         )
