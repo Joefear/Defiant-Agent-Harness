@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.82.
+logs. A full trusted-memory/DKE system is not part of v0.83.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.82 is
+## What v0.83 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -134,6 +134,14 @@ then reads back and constant-time compares the exact published bytes before
 reporting success. A sync, cleanup, read-back, or byte-identity failure returns
 an error and leaves any already-created final file untouched for operator
 inspection; it is never silently accepted, removed, repaired, or overwritten.
+
+v0.83 applies coherent issuance and durable publication to external
+evidence-head witnesses. The operator command holds the cross-process
+authority lock across live state-root verification, one descriptor-backed
+evidence capture, verification of that exact captured chain against its
+durable checkpoint, signing, durable non-overwriting output, and exact
+read-back comparison. Missing evidence is refused without recreation, and
+contention or ambiguous publication fails without reporting success.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1086,7 +1094,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.82 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.83 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -1114,7 +1122,8 @@ profile-bound control-plane path isolation for governed workspace tools,
 profile-bound workspace-root identity and replacement detection,
 profile-bound crash-safe evidence-head checkpointing,
 profile-bound operator-signed external evidence-head witnessing with optional
-maximum unwitnessed-record lag,
+maximum unwitnessed-record lag plus serialized exact-snapshot issuance and
+crash-durable verified output,
 fixed fail-closed pre-parse resource ceilings across durable state, evidence,
 MCP transports, native hooks, and MCP configuration,
 strict bounded and ambiguity-free authority YAML parsing for policy packs and

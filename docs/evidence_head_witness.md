@@ -110,6 +110,28 @@ atomic publication. A refused candidate leaves the prior policy unchanged.
 The external witness document remains governed by its separate existing input
 and output bound. See `validated_evidence_witness_policy_snapshot.md`.
 
+## v0.83 verified, durable issuance
+
+`witness-evidence-head` now acquires `authority.lock` before observing state
+and holds it through signing and external publication. It verifies the live
+state-root identity and security posture against `state_storage.json`, refuses
+a missing evidence store without recreating it, captures `evidence.jsonl` once
+through the descriptor-backed bounded reader, and verifies that exact captured
+sequence against its profile-bound durable evidence-head checkpoint.
+
+The signed temporary file is fsynced, linked to the requested final name
+without replacement, and the output directory is synchronized before and
+after temporary-link cleanup where the platform supports it. The final bytes
+are read back and constant-time compared with the exact signed serialization
+before success is reported. POSIX directory synchronization is required;
+Windows follows the persistence layer's best-effort directory-sync contract.
+
+Contention creates no output. If a failure occurs after the final link may
+exist, issuance reports failure but never deletes, repairs, or overwrites that
+file. Treat the path as ambiguous, inspect or independently verify it, and use
+a new name unless the operator deliberately removes it. This remains a
+point-in-time guarantee and does not protect a later externally writable file.
+
 ## Read-only operations
 
 Doctor, Command Core, and Command Center accept the same global external-input
