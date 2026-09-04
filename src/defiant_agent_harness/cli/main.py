@@ -41,11 +41,9 @@ from ..authority_publication_witness import (
     AuthorityPublicationWitnessError,
     AuthorityPublicationWitnessPolicy,
     assess_witness as assess_publication_witness,
-    build_witness_payload as build_publication_witness_payload,
+    create_current_witness as create_current_publication_witness,
     load_witness as load_publication_witness,
-    sign_witness as sign_publication_witness,
     validate_external_witness_paths as validate_external_publication_witness_paths,
-    write_witness as write_publication_witness,
 )
 from ..command.core import CommandCore, CommandError
 from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
@@ -556,15 +554,19 @@ def cmd_witness_authority_publication(args) -> int:
         _require_external_secret(args.workdir, args.signing_key, "signing key")
         _require_external_secret(args.workdir, args.passphrase_file, "passphrase file")
         _require_external_secret(args.workdir, args.output, "publication witness")
-        document = sign_publication_witness(
-            build_publication_witness_payload(args.workdir),
+        create_current_publication_witness(
+            args.workdir,
             args.signing_key,
             read_passphrase(args.passphrase_file),
             signer=args.signer,
             note=args.note,
+            output_path=args.output,
         )
-        write_publication_witness(args.output, document)
-    except (EvidenceSigningError, AuthorityPublicationWitnessError) as exc:
+    except (
+        EvidenceSigningError,
+        AuthorityPublicationWitnessError,
+        PersistenceError,
+    ) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
     print(f"wrote authority-publication witness {args.output}")

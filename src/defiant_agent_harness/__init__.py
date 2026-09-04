@@ -53,6 +53,7 @@ from .authority_publication_witness import (
     AuthorityPublicationWitnessPolicy,
     AuthorityPublicationWitnessPolicyState,
     AuthorityPublicationWitnessPolicyStore,
+    create_current_witness,
 )
 from .orchestrator.harness import (
     AuthorizationReconciliationOutcome,
@@ -130,7 +131,7 @@ from .evidence_witness import (
 )
 from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.80.0"
+__version__ = "0.81.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -154,6 +155,7 @@ __all__ = [
     "AuthorityPublicationWitnessPolicy",
     "AuthorityPublicationWitnessPolicyState",
     "AuthorityPublicationWitnessPolicyStore",
+    "create_current_witness",
     "AuthorityTransactionLock",
     "ContentRef",
     "ControlPlaneIsolationAssurance",

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.80.
+logs. A full trusted-memory/DKE system is not part of v0.81.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.80 is
+## What v0.81 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -116,6 +116,16 @@ tampering, or omission after enrollment fails closed. The witness and public
 keys must remain outside `.dah`, while Command Core and Command Center expose
 only sanitized verification posture and never gain signing or mutation
 authority.
+
+v0.81 hardens publication-witness issuance itself. The signing command now
+holds the cross-process authority transaction lock through state verification,
+signing, and non-overwriting external publication. It rechecks live state-root
+identity and security posture, requires an exact completed checkpoint for the
+active profile, and independently reconstructs the complete durable authority
+manifest and retained per-store commitments before signing. Corrupted,
+substituted, active, or concurrently changing authority state cannot be
+accidentally notarized. Read-only integrity diagnostics also treat a retained
+publication-witness policy lock as an unsafe writer/crash signal.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1068,7 +1078,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.80 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.81 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
@@ -1084,6 +1094,8 @@ originating-intent transition links plus a sealed monotonic publication
 continuity ratchet,
 optional authority-bound external signing of the retained publication head
 with exact-startup verification and a one-checkpoint refresh window,
+serialized, independently reconstructed publication-witness issuance that
+refuses inconsistent or concurrently changing authority state,
 content-addressed local runtime artifact assurance with opt-in closed declared
 dependency roots,
 restricted and authority-bound local process launch envelopes,

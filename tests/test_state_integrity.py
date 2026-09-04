@@ -246,9 +246,13 @@ def test_broken_evidence_is_reported_without_trusting_cross_store_links(tmp_path
     assert "evidence_invalid" in _issue_codes(report)
 
 
-def test_lock_file_is_an_unsafe_concurrent_or_crash_signal(tmp_path):
+@pytest.mark.parametrize(
+    "lock_name",
+    ["budget.json.lock", "authority_publication_witness_policy.json.lock"],
+)
+def test_lock_file_is_an_unsafe_concurrent_or_crash_signal(tmp_path, lock_name):
     tmp_path.mkdir(exist_ok=True)
-    (tmp_path / "budget.json.lock").write_text("pid=99999\n")
+    (tmp_path / lock_name).write_text("pid=99999\n")
 
     report = StateIntegrityAuditor(tmp_path).audit()
 

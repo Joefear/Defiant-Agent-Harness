@@ -337,6 +337,17 @@ tampering, or omitting a required witness blocks authority. This still depends
 on independent retention and key custody: an attacker who can replace both
 local state and the operator's external witness/key channel can defeat it.
 
+Through v0.80, the signing command checked the publication/profile/continuity
+relationship but did not independently reconstruct every durable manifest
+dependency under the authority transaction lock. An operator could therefore
+sign a checkpoint while a dependency had been validly substituted or a writer
+was changing authority state. v0.81 holds the cross-process authority lock
+through live-root verification, complete manifest and per-store commitment
+reconstruction, signing, and non-overwriting external publication. Contention,
+active recovery, root replacement, or dependency mismatch refuses issuance
+without creating an output. A compromised signing host or key holder remains
+outside this control.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix
