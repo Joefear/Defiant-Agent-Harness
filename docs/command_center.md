@@ -234,6 +234,12 @@ signature, signed payload, note, witness path, or public-key path and gains no
 witness creation, upload, acceptance, trust-key, profile-rotation, publication,
 recovery, or other mutation control.
 
+v0.81 changes witness issuance outside Command Center and adds no dashboard
+field or endpoint. Any inconsistent dependency or retained publication-witness
+policy lock already appears through the existing sanitized state-integrity
+alert. The browser remains unable to verify for signing, acquire authority,
+create a witness, or mutate local or external state.
+
 ## Read-only boundary
 
 The server binds to `127.0.0.1` and does not accept a host override. Its HTTP

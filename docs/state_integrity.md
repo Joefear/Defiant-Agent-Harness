@@ -76,6 +76,9 @@ one-step forward state is warning-level `publication_witness_refresh_required`.
 An older witness, matched local rollback behind the witness, signature or trust
 failure, root/profile mismatch, policy substitution, or post-enrollment
 omission is critical and blocks authority.
+v0.81 includes `authority_publication_witness_policy.json.lock` in the
+read-only writer/crash audit. A retained lock is a critical concurrent-writer
+signal and is never removed or repaired by diagnostics.
 
 Run it without initializing or modifying the state directory:
 

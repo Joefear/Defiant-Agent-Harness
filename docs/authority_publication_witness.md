@@ -68,6 +68,24 @@ operator must sign and distribute a fresh witness before the next owning
 startup. The old file is never overwritten—publish a new file and update the
 external deployment reference.
 
+## v0.81 issuance verification
+
+`witness-authority-publication` now acquires the same nonblocking,
+cross-process `authority.lock` used by owning runtimes and retains it through
+verification, signing, and external file publication. While holding that lock
+it rechecks the live state-root identity and enrolled security posture, refuses
+an active recovery intent, requires the completed checkpoint to match the
+active profile generation and continuity head, independently reconstructs the
+complete durable authority manifest, and compares every retained per-store
+commitment. Only that coherent point-in-time checkpoint is signed.
+
+If another authority transaction is active, a dependency was substituted, a
+policy write was interrupted, or the state root changed, issuance fails and no
+external witness file is created. The command does not repair local state or
+overwrite an existing output. This issuance gate strengthens what the operator
+signs; it does not turn local time into trusted time or replace independent
+witness retention.
+
 ## Failure posture
 
 The harness refuses authority for an invalid signature, untrusted key,

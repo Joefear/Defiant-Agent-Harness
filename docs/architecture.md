@@ -1063,6 +1063,19 @@ only sanitized mode, verification, sequence, lag, signer, and time; they cannot
 write policy, accept a witness, sign, recover, or advance publication. See
 `authority_publication_witness.md`.
 
+## v0.81 verified publication-witness issuance
+
+Witness verification is useful only if issuance cannot notarize a locally
+inconsistent checkpoint. The high-level issuance path now holds
+`authority.lock` across live root verification, completed-checkpoint and
+continuity verification, independent durable-manifest reconstruction,
+per-store commitment comparison, signing, and non-overwriting external
+publication. Contention fails immediately, and a substituted dependency or
+interrupted witness-policy writer blocks issuance without creating an output.
+Low-level payload and signing primitives remain available for explicit library
+composition, while the operator CLI always uses the serialized verified path.
+No Command Center endpoint or mutation capability is added.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

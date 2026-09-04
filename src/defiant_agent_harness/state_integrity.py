@@ -436,6 +436,7 @@ class StateIntegrityAuditor:
             "authority_profile.json",
             "authority_publication_continuity.json",
             "authority_publication.json",
+            "authority_publication_witness_policy.json",
             "operation_journal.json",
             "runtime_artifacts.json",
             "launch_envelope.json",

@@ -22,9 +22,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from .authority_profile import AuthorityProfileState, AuthorityProfileStore
 from .authority_publication import (
+    AuthorityPublicationError,
     AuthorityPublicationState,
     AuthorityPublicationStore,
     assess_authority_publication_continuity,
+    authority_manifest_commitments_from_state,
 )
 from .authority_publication_continuity import AuthorityPublicationContinuityState
 from .contracts import (
@@ -42,6 +44,7 @@ from .limits import (
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
 )
 from .persistence import (
+    AuthorityTransactionLock,
     PersistenceError,
     atomic_write_json,
     exclusive_file_lock,
@@ -49,7 +52,11 @@ from .persistence import (
     inspect_storage_root,
     read_json,
 )
-from .state_storage import StateStorageStateStore
+from .state_storage import (
+    StateStorageError,
+    StateStorageStateStore,
+    inspect_state_storage,
+)
 from .strict_json import StrictJsonError, loads_strict_json
 
 WITNESS_SCHEMA = "defiant.authority.publication_witness"
@@ -343,20 +350,61 @@ def build_witness_payload(workdir: str | Path) -> dict[str, Any]:
         raise AuthorityPublicationWitnessError(
             "authority profile, state storage, publication, and continuity must be enrolled"
         )
+    try:
+        live_storage = inspect_state_storage(
+            root,
+            require_windows_private_acl=storage.mode == "windows_private_acl",
+        )
+    except StateStorageError as exc:
+        raise AuthorityPublicationWitnessError(
+            "cannot verify live state storage before publication witnessing"
+        ) from exc
+    if (
+        live_storage is None
+        or live_storage.authority_dict() != storage.authority_dict()
+    ):
+        raise AuthorityPublicationWitnessError(
+            "state storage identity or security posture does not match its authority record"
+        )
     if storage.profile_hash != profile.profile_hash:
         raise AuthorityPublicationWitnessError(
             "state storage is not bound to the active profile"
         )
     if (
-        publication.completed is None
+        publication.active is not None
+        or publication.completed is None
         or publication.completed.profile_hash != profile.profile_hash
+        or publication.completed.generation != profile.generation
     ):
         raise AuthorityPublicationWitnessError(
-            "authority publication is not bound to the active profile"
+            "authority publication is not a completed checkpoint for the active profile"
         )
     if assess_authority_publication_continuity(publication, continuity) != "verified":
         raise AuthorityPublicationWitnessError(
             "publication must exactly match its continuity anchor before witnessing"
+        )
+    try:
+        observed_manifest_hash, observed_store_hashes = (
+            authority_manifest_commitments_from_state(
+                root,
+                profile_hash=profile.profile_hash,
+                generation=profile.generation,
+            )
+        )
+    except AuthorityPublicationError as exc:
+        raise AuthorityPublicationWitnessError(
+            "cannot independently verify completed authority publication dependencies"
+        ) from exc
+    completed = publication.completed
+    if not hmac.compare_digest(completed.manifest_hash, observed_manifest_hash):
+        raise AuthorityPublicationWitnessError(
+            "completed authority publication manifest does not match durable dependencies"
+        )
+    if completed.store_hashes is None or dict(completed.store_hashes) != (
+        observed_store_hashes
+    ):
+        raise AuthorityPublicationWitnessError(
+            "completed authority publication store commitments do not match durable dependencies"
         )
     return {
         "schema_name": WITNESS_SCHEMA,
@@ -368,6 +416,31 @@ def build_witness_payload(workdir: str | Path) -> dict[str, Any]:
         "checkpoint_hash": continuity.checkpoint_hash,
         "observed_at": utc_now(),
     }
+
+
+def create_current_witness(
+    workdir: str | Path,
+    private_key_path: str | Path,
+    passphrase: bytes,
+    *,
+    signer: str,
+    note: str,
+    output_path: str | Path,
+) -> dict[str, Any]:
+    """Verify, sign, and publish one coherent current-head observation."""
+
+    root = Path(workdir)
+    validate_external_witness_paths(root, output_path, [private_key_path])
+    with AuthorityTransactionLock(root / "authority.lock").acquire():
+        document = sign_witness(
+            build_witness_payload(root),
+            private_key_path,
+            passphrase,
+            signer=signer,
+            note=note,
+        )
+        write_witness(output_path, document)
+        return document
 
 
 def sign_witness(

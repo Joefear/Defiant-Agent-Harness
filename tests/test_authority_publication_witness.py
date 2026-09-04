@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 
 import pytest
 
@@ -19,6 +20,7 @@ from defiant_agent_harness.authority_publication_witness import (
     WITNESS_MODE,
     assess_witness,
     build_witness_payload,
+    create_current_witness,
     load_witness,
     sign_witness,
     validate_external_witness_paths,
@@ -28,6 +30,10 @@ from defiant_agent_harness.evidence.signing import generate_key_pair
 from defiant_agent_harness.command.core import CommandCore
 from defiant_agent_harness.cli.main import main
 from defiant_agent_harness.orchestrator.harness import build_harness
+from defiant_agent_harness.persistence import (
+    AuthorityLockError,
+    AuthorityTransactionLock,
+)
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
 from defiant_agent_harness.state_storage import StateStorageStateStore
 
@@ -314,13 +320,42 @@ def test_required_witness_blocks_matched_publication_and_anchor_rollback(tmp_pat
     assert any(issue.code == "publication_witness_invalid" for issue in report.issues)
 
 
-def test_valid_policy_downgrade_is_detected_by_publication_manifest(tmp_path):
-    state, workspace, _, _, _, _ = _enroll_required_witness(tmp_path)
+def test_valid_policy_downgrade_is_detected_by_publication_manifest(tmp_path, capsys):
+    state, workspace, _, private_key, _, _ = _enroll_required_witness(tmp_path)
     policy_path = state / "authority_publication_witness_policy.json"
     substituted = json.loads(policy_path.read_text(encoding="utf-8"))
     substituted["mode"] = "not_configured"
     substituted["trusted_key_ids"] = []
     policy_path.write_text(json.dumps(substituted), encoding="utf-8")
+
+    with pytest.raises(AuthorityPublicationWitnessError, match="manifest"):
+        build_witness_payload(state)
+
+    passphrase_file = tmp_path / "issuance-passphrase.txt"
+    passphrase_file.write_bytes(PASSPHRASE)
+    refused_output = tmp_path / "must-not-be-created.json"
+    assert (
+        main(
+            [
+                "--workdir",
+                str(state),
+                "witness-authority-publication",
+                "--signing-key",
+                str(private_key),
+                "--passphrase-file",
+                str(passphrase_file),
+                "--signer",
+                "release-operator",
+                "--note",
+                "must refuse substituted policy",
+                "--output",
+                str(refused_output),
+            ]
+        )
+        == 1
+    )
+    assert "manifest" in capsys.readouterr().err
+    assert not refused_output.exists()
 
     report = StateIntegrityAuditor(state, workspace_root=workspace).audit()
 
@@ -332,6 +367,48 @@ def test_valid_policy_downgrade_is_detected_by_publication_manifest(tmp_path):
         issue.code == "authority_publication_manifest_mismatch"
         for issue in report.issues
     )
+
+
+def test_current_witness_issuance_is_serialized_with_authority(tmp_path):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    private_key, public_key = _keys(tmp_path)
+    destination = tmp_path / "serialized-publication-witness.json"
+    acquired = threading.Event()
+    release = threading.Event()
+
+    def hold_authority():
+        with AuthorityTransactionLock(state / "authority.lock").acquire():
+            acquired.set()
+            assert release.wait(timeout=10)
+
+    holder = threading.Thread(target=hold_authority)
+    holder.start()
+    assert acquired.wait(timeout=10)
+    try:
+        with pytest.raises(AuthorityLockError, match="authority transaction is busy"):
+            create_current_witness(
+                state,
+                private_key,
+                PASSPHRASE,
+                signer="release-operator",
+                note="serialize witness issuance",
+                output_path=destination,
+            )
+        assert not destination.exists()
+    finally:
+        release.set()
+        holder.join(timeout=10)
+
+    document = create_current_witness(
+        state,
+        private_key,
+        PASSPHRASE,
+        signer="release-operator",
+        note="serialize witness issuance",
+        output_path=destination,
+    )
+    assert assess_witness(document, **_context(state, public_key)).ok is True
 
 
 def test_cli_witness_and_verify_round_trip(tmp_path, capsys):
