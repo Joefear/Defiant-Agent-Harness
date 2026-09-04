@@ -1076,6 +1076,23 @@ Low-level payload and signing primitives remain available for explicit library
 composition, while the operator CLI always uses the serialized verified path.
 No Command Center endpoint or mutation capability is added.
 
+## v0.82 durable publication-witness output
+
+The external witness writer now treats the final filesystem publication as a
+separate fail-closed boundary. It fsyncs the signed temporary file, creates the
+final name without replacement, synchronizes the output directory, removes the
+temporary hard link, synchronizes the directory again, and reads back the
+exact final bytes before the serialized issuance transaction returns success.
+Directory synchronization follows the persistence platform contract: required
+on POSIX and best effort on Windows.
+
+Failure after the final link is created is deliberately not rolled back. The
+file may be the only durable copy, and deleting it would turn uncertainty into
+data loss. Issuance instead reports the ambiguity and preserves the final path
+for operator inspection. No runtime state or Command Core schema changes, and
+Command Center receives no path, content, durability control, or mutation
+endpoint.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

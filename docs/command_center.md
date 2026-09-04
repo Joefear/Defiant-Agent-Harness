@@ -240,6 +240,12 @@ policy lock already appears through the existing sanitized state-integrity
 alert. The browser remains unable to verify for signing, acquire authority,
 create a witness, or mutate local or external state.
 
+v0.82 hardens the external witness file writer and likewise adds no dashboard
+field or endpoint. Directory synchronization, temporary cleanup, and exact
+post-write byte verification happen only in the operator CLI/library issuance
+path. Command Center remains unable to publish, retry, delete, replace, or
+repair an external witness and receives no output path or signed content.
+
 ## Read-only boundary
 
 The server binds to `127.0.0.1` and does not accept a host override. Its HTTP

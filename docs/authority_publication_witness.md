@@ -86,6 +86,25 @@ overwrite an existing output. This issuance gate strengthens what the operator
 signs; it does not turn local time into trusted time or replace independent
 witness retention.
 
+## v0.82 crash-durable publication verification
+
+After the signed temporary file is flushed, the non-overwriting publication
+path atomically links it to the requested final name. The writer synchronizes
+the containing directory before removing the temporary link, removes that
+link, synchronizes the directory again, and reads the final file back under
+the still-held authority transaction lock. Success requires a constant-time
+match with the exact serialized signed document. Directory synchronization is
+required on POSIX and best effort on Windows, matching the platform contract
+used by harness persistence.
+
+If final-link durability cannot be confirmed, temporary cleanup fails, cleanup
+durability cannot be confirmed, the final file cannot be read, or its bytes do
+not match, issuance fails. Because the final link may already exist, the writer
+does not delete or overwrite it. The operator must treat the destination as
+ambiguous, inspect or independently verify it, and either retain it as the
+published witness or deliberately remove it and publish to a new name. A retry
+against the same existing path remains refused.
+
 ## Failure posture
 
 The harness refuses authority for an invalid signature, untrusted key,
@@ -93,6 +112,10 @@ deployment-root or profile mismatch, a local sequence behind the witness,
 more than one unwitnessed publication, policy substitution, malformed or
 oversized input, an external path inside state, or missing witness material
 after enrollment. It never repairs or rewrites external material.
+
+Publication success is a point-in-time claim. It does not prevent an actor
+with later write access to the external directory from replacing the file;
+independent retention and access control remain required.
 
 Command Core and Command Center project only mode, verification state,
 profile generation, witnessed sequence, lag, key id, signer, and signing time.
