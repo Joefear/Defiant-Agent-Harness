@@ -27,7 +27,7 @@ from .contracts import (
     sha256_of,
     utc_now,
 )
-from .evidence.store import EvidenceStore
+from .evidence.store import EvidenceError, EvidenceStore, verify_evidence_records
 from .evidence.signing import public_key_id
 from .evidence_head import (
     EvidenceHeadStateStore,
@@ -41,14 +41,20 @@ from .limits import (
     MAX_TRUSTED_PUBLIC_KEY_SET_BYTES,
 )
 from .persistence import (
+    AuthorityTransactionLock,
     PersistenceError,
     atomic_write_json,
     exclusive_file_lock,
     inspect_state_file,
     inspect_storage_root,
     read_json,
+    sync_storage_directory,
 )
-from .state_storage import StateStorageStateStore
+from .state_storage import (
+    StateStorageError,
+    StateStorageStateStore,
+    inspect_state_storage,
+)
 from .strict_json import StrictJsonError, loads_strict_json
 
 WITNESS_SCHEMA = "defiant.evidence.head_witness"
@@ -418,15 +424,41 @@ def build_witness_payload(workdir: str | Path) -> dict[str, Any]:
         raise EvidenceWitnessError(
             "authority profile, state storage, and evidence head must be enrolled"
         )
+    try:
+        live_storage = inspect_state_storage(
+            root,
+            require_windows_private_acl=storage.mode == "windows_private_acl",
+        )
+    except StateStorageError as exc:
+        raise EvidenceWitnessError(
+            "cannot verify live state storage before evidence witnessing"
+        ) from exc
+    if (
+        live_storage is None
+        or live_storage.authority_dict() != storage.authority_dict()
+    ):
+        raise EvidenceWitnessError(
+            "state storage identity or security posture does not match its authority record"
+        )
     if storage.profile_hash != profile.profile_hash:
         raise EvidenceWitnessError("state storage is not bound to the active profile")
     if checkpoint.profile_hash != profile.profile_hash:
         raise EvidenceWitnessError("evidence head is not bound to the active profile")
-    evidence = EvidenceStore(root / "evidence.jsonl")
-    status = evidence.verify()
-    if not status.ok:
-        raise EvidenceWitnessError("refusing to witness a broken evidence chain")
-    records = evidence.records()
+    evidence_path = root / "evidence.jsonl"
+    try:
+        if inspect_state_file(evidence_path) is None:
+            raise EvidenceWitnessError("evidence store must be enrolled")
+        evidence = EvidenceStore(evidence_path)
+        records = evidence.records()
+        status = verify_evidence_records(records)
+        if not status.ok:
+            raise EvidenceWitnessError("refusing to witness a broken evidence chain")
+    except EvidenceWitnessError:
+        raise
+    except (EvidenceError, PersistenceError) as exc:
+        raise EvidenceWitnessError(
+            "cannot verify durable evidence before witnessing"
+        ) from exc
     if assess_evidence_head(checkpoint, records) != "verified":
         raise EvidenceWitnessError(
             "evidence chain must exactly match its durable checkpoint before witnessing"
@@ -441,6 +473,31 @@ def build_witness_payload(workdir: str | Path) -> dict[str, Any]:
         "head_hash": checkpoint.head_hash,
         "observed_at": utc_now(),
     }
+
+
+def create_current_witness(
+    workdir: str | Path,
+    private_key_path: str | Path,
+    passphrase: bytes,
+    *,
+    signer: str,
+    note: str,
+    output_path: str | Path,
+) -> dict[str, Any]:
+    """Verify, sign, and publish one coherent current evidence-head observation."""
+
+    root = Path(workdir)
+    validate_external_witness_paths(root, output_path, [private_key_path])
+    with AuthorityTransactionLock(root / "authority.lock").acquire():
+        document = sign_witness(
+            build_witness_payload(root),
+            private_key_path,
+            passphrase,
+            signer=signer,
+            note=note,
+        )
+        write_witness(output_path, document)
+        return document
 
 
 def sign_witness(
@@ -569,7 +626,9 @@ def write_witness(path: str | Path, document: dict[str, Any]) -> None:
         ).encode("utf-8")
     except (TypeError, ValueError, OverflowError) as exc:
         raise EvidenceWitnessError("evidence witness is not valid JSON") from exc
-    _write_new(Path(path), encoded, 0o600)
+    destination = Path(path)
+    _write_new(destination, encoded, 0o600)
+    _verify_published_bytes(destination, encoded)
 
 
 def _verify_signature(
@@ -815,7 +874,12 @@ def _read_limited(path: Path, maximum: int, label: str) -> bytes:
 
 
 def _write_new(path: Path, content: bytes, mode: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise EvidenceWitnessError(
+            "cannot prepare evidence-witness output directory"
+        ) from exc
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
@@ -825,16 +889,59 @@ def _write_new(path: Path, content: bytes, mode: int) -> None:
             os.fsync(fh.fileno())
         os.link(temporary, path)
     except FileExistsError as exc:
+        _discard_temporary(temporary, after_publication=False)
         raise EvidenceWitnessError(
             f"refusing to overwrite existing file: {path}"
         ) from exc
     except OSError as exc:
+        _discard_temporary(temporary, after_publication=False)
         raise EvidenceWitnessError(f"cannot write {path}: {exc}") from exc
-    finally:
+
+    try:
+        sync_storage_directory(path.parent)
+    except PersistenceError as exc:
+        _discard_temporary(temporary, after_publication=True)
         try:
-            temporary.unlink()
-        except OSError:
+            sync_storage_directory(path.parent)
+        except PersistenceError:
             pass
+        raise EvidenceWitnessError(
+            "evidence witness may exist but durable publication could not be confirmed"
+        ) from exc
+
+    _discard_temporary(temporary, after_publication=True)
+    try:
+        sync_storage_directory(path.parent)
+    except PersistenceError as exc:
+        raise EvidenceWitnessError(
+            "evidence witness was created but temporary cleanup durability could not "
+            "be confirmed"
+        ) from exc
+
+
+def _discard_temporary(path: Path, *, after_publication: bool) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        phase = "published" if after_publication else "incomplete"
+        raise EvidenceWitnessError(
+            f"cannot remove {phase} evidence-witness temporary file"
+        ) from exc
+
+
+def _verify_published_bytes(path: Path, expected: bytes) -> None:
+    try:
+        observed = _read_limited(path, _MAX_DOCUMENT_BYTES, "published witness")
+    except EvidenceWitnessError as exc:
+        raise EvidenceWitnessError(
+            "evidence witness was created but read-back verification failed"
+        ) from exc
+    if not hmac.compare_digest(observed, expected):
+        raise EvidenceWitnessError(
+            "published evidence-witness bytes do not match the signed document"
+        )
 
 
 def _error_detail(exc: BaseException) -> str:

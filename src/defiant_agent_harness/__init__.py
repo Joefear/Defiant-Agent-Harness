@@ -128,10 +128,11 @@ from .evidence_witness import (
     EvidenceWitnessPolicy,
     EvidenceWitnessPolicyState,
     EvidenceWitnessPolicyStore,
+    create_current_witness as create_current_evidence_witness,
 )
 from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.82.0"
+__version__ = "0.83.0"
 
 __all__ = [
     "ActionHashLimitError",
@@ -172,6 +173,7 @@ __all__ = [
     "EvidenceWitnessPolicy",
     "EvidenceWitnessPolicyState",
     "EvidenceWitnessPolicyStore",
+    "create_current_evidence_witness",
     "ExecutionCompletionSubject",
     "GrantError",
     "GuardrailDecision",

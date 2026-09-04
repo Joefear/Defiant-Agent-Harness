@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Iterator
+from typing import IO, Iterable, Iterator
 
 from ..contracts import EvidenceRecord, sha256_of, utc_now
 from ..evidence_head import EvidenceHeadError, EvidenceHeadStateStore
@@ -49,6 +49,45 @@ class ChainStatus:
     count: int
     broken_at: int | None = None
     detail: str = ""
+
+
+def verify_evidence_records(records: Iterable[dict]) -> ChainStatus:
+    """Verify one already-captured evidence sequence without reopening its store."""
+
+    previous = GENESIS
+    count = 0
+    try:
+        for index, record in enumerate(records):
+            count = index + 1
+            if record.get("previous_record_hash") != previous:
+                return ChainStatus(
+                    False,
+                    count,
+                    index,
+                    (
+                        f"record {index} ({record.get('record_id')}) expected "
+                        f"previous hash {previous} but carries "
+                        f"{record.get('previous_record_hash')} -- a preceding "
+                        "record was altered or removed"
+                    ),
+                )
+            body = {key: value for key, value in record.items() if key != "record_hash"}
+            recomputed = sha256_of(body)
+            if recomputed != record.get("record_hash"):
+                return ChainStatus(
+                    False,
+                    count,
+                    index,
+                    (
+                        f"record {index} ({record.get('record_id')}) content "
+                        "does not match its own hash -- this record was altered "
+                        "in place"
+                    ),
+                )
+            previous = record["record_hash"]
+    except EvidenceError as exc:
+        return ChainStatus(False, count, count, str(exc))
+    return ChainStatus(True, count, detail="chain intact")
 
 
 def iter_bounded_evidence_lines(handle: IO[bytes]) -> Iterator[tuple[int, bytes]]:
@@ -350,42 +389,7 @@ class EvidenceStore:
         return self._verify_unlocked()
 
     def _verify_unlocked(self) -> ChainStatus:
-        previous = GENESIS
-        count = 0
-        try:
-            for index, record in enumerate(self._raw()):
-                count = index + 1
-                if record.get("previous_record_hash") != previous:
-                    return ChainStatus(
-                        False,
-                        count,
-                        index,
-                        (
-                            f"record {index} ({record.get('record_id')}) expected "
-                            f"previous hash {previous} but carries "
-                            f"{record.get('previous_record_hash')} -- a preceding "
-                            "record was altered or removed"
-                        ),
-                    )
-                body = {
-                    key: value for key, value in record.items() if key != "record_hash"
-                }
-                recomputed = sha256_of(body)
-                if recomputed != record.get("record_hash"):
-                    return ChainStatus(
-                        False,
-                        count,
-                        index,
-                        (
-                            f"record {index} ({record.get('record_id')}) content "
-                            "does not match its own hash -- this record was altered "
-                            "in place"
-                        ),
-                    )
-                previous = record["record_hash"]
-        except EvidenceError as exc:
-            return ChainStatus(False, count, count, str(exc))
-        return ChainStatus(True, count, detail="chain intact")
+        return verify_evidence_records(self._raw())
 
     # -- export ------------------------------------------------------
 

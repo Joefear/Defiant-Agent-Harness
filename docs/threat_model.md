@@ -394,6 +394,17 @@ It still cannot prove that no later records once existed. Replacing code,
 external configuration, trusted keys, and witness storage remains a
 privileged-host compromise outside this boundary.
 
+Through v0.82, evidence-head witness creation observed, signed, and published
+in separate un-serialized steps. A concurrent authority operation or a second
+evidence-file read could move the observed chain, and the external writer did
+not confirm directory durability or final byte identity. v0.83 holds the
+cross-process authority lock, verifies live root posture, validates one
+descriptor-backed captured chain against its exact durable checkpoint, and
+retains the lock through durable, read-back-verified publication. Contention,
+missing evidence, or post-link ambiguity fails closed. Direct modification by
+a compromised host and later replacement of the external file remain outside
+the guarantee.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

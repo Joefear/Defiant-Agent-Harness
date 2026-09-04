@@ -246,6 +246,12 @@ post-write byte verification happen only in the operator CLI/library issuance
 path. Command Center remains unable to publish, retry, delete, replace, or
 repair an external witness and receives no output path or signed content.
 
+v0.83 hardens evidence-head witness issuance outside Command Center and adds
+no dashboard field or endpoint. The browser cannot acquire the authority lock,
+capture evidence for signing, create or retry a witness, or inspect, delete, or
+repair an ambiguous external output. Existing sanitized witness posture remains
+read-only.
+
 ## Read-only boundary
 
 The server binds to `127.0.0.1` and does not accept a host override. Its HTTP

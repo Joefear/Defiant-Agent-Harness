@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 
 import pytest
 
@@ -23,12 +24,19 @@ from defiant_agent_harness.evidence_witness import (
     WITNESS_MODE,
     assess_witness,
     build_witness_payload,
+    create_current_witness,
     load_witness,
     sign_witness,
     write_witness,
 )
 from defiant_agent_harness.orchestrator.harness import build_harness
-from defiant_agent_harness.persistence import atomic_write_json, read_json
+from defiant_agent_harness.persistence import (
+    AuthorityLockError,
+    AuthorityTransactionLock,
+    PersistenceError,
+    atomic_write_json,
+    read_json,
+)
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
 from defiant_agent_harness.state_storage import StateStorageStateStore
 
@@ -106,6 +114,193 @@ def _enroll_required_witness(
         max_unwitnessed_records=max_unwitnessed_records,
     )
     return state, workspace, harness, private_key, public_key, witness_path
+
+
+def _current_issuance_state(tmp_path):
+    state = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    harness = build_harness(state, MockAgentAdapter(), workspace_root=workspace)
+    harness.evidence.append(_record(1))
+    private_key, public_key = _keys(tmp_path)
+    return state, harness, private_key, public_key
+
+
+def test_current_evidence_witness_issuance_is_serialized_with_authority(tmp_path):
+    state, harness, private_key, public_key = _current_issuance_state(tmp_path)
+    destination = tmp_path / "serialized-evidence-witness.json"
+    acquired = threading.Event()
+    release = threading.Event()
+
+    def hold_authority():
+        with AuthorityTransactionLock(state / "authority.lock").acquire():
+            acquired.set()
+            assert release.wait(timeout=10)
+
+    holder = threading.Thread(target=hold_authority)
+    holder.start()
+    assert acquired.wait(timeout=10)
+    try:
+        with pytest.raises(AuthorityLockError, match="authority transaction is busy"):
+            create_current_witness(
+                state,
+                private_key,
+                PASSPHRASE,
+                signer="release-operator",
+                note="serialize evidence witness issuance",
+                output_path=destination,
+            )
+        assert not destination.exists()
+    finally:
+        release.set()
+        holder.join(timeout=10)
+
+    document = create_current_witness(
+        state,
+        private_key,
+        PASSPHRASE,
+        signer="release-operator",
+        note="serialize evidence witness issuance",
+        output_path=destination,
+    )
+    profile = AuthorityProfileStore(state / "authority_profile.json").get()
+    storage = StateStorageStateStore(state / "state_storage.json").get()
+    assert profile is not None and storage is not None
+    assessment = assess_witness(
+        document,
+        EvidenceWitnessPolicy.from_paths([public_key]),
+        deployment_root_hash=storage.root_hash,
+        profile=profile,
+        records=harness.evidence.records(),
+    )
+    assert assessment.ok is True
+    assert not holder.is_alive()
+
+
+def test_current_evidence_witness_missing_store_fails_without_recreation(tmp_path):
+    state, _harness, private_key, _public_key = _current_issuance_state(tmp_path)
+    evidence_path = state / "evidence.jsonl"
+    evidence_path.unlink()
+    destination = tmp_path / "must-not-exist.json"
+
+    with pytest.raises(EvidenceWitnessError, match="evidence store must be enrolled"):
+        create_current_witness(
+            state,
+            private_key,
+            PASSPHRASE,
+            signer="release-operator",
+            note="do not recreate missing evidence",
+            output_path=destination,
+        )
+
+    assert not evidence_path.exists()
+    assert not destination.exists()
+
+
+def test_evidence_witness_publication_syncs_and_verifies_exact_bytes(
+    tmp_path, monkeypatch
+):
+    state, _harness, private_key, _public_key = _current_issuance_state(tmp_path)
+    destination = tmp_path / "durable-evidence-witness.json"
+    syncs = []
+
+    def record_sync(path):
+        syncs.append(path)
+
+    monkeypatch.setattr(witness_module, "sync_storage_directory", record_sync)
+    create_current_witness(
+        state,
+        private_key,
+        PASSPHRASE,
+        signer="release-operator",
+        note="durably publish evidence witness",
+        output_path=destination,
+    )
+
+    assert syncs == [destination.parent, destination.parent]
+    assert not list(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_evidence_witness_publication_fails_on_directory_sync_uncertainty(
+    tmp_path, monkeypatch
+):
+    state, _harness, private_key, _public_key = _current_issuance_state(tmp_path)
+    destination = tmp_path / "uncertain-evidence-witness.json"
+
+    def refuse_sync(_path):
+        raise PersistenceError("simulated directory sync failure")
+
+    monkeypatch.setattr(witness_module, "sync_storage_directory", refuse_sync)
+    with pytest.raises(
+        EvidenceWitnessError, match="durable publication could not be confirmed"
+    ):
+        create_current_witness(
+            state,
+            private_key,
+            PASSPHRASE,
+            signer="release-operator",
+            note="detect durability uncertainty",
+            output_path=destination,
+        )
+
+    assert destination.exists()
+    assert not list(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_evidence_witness_publication_fails_on_post_link_substitution(
+    tmp_path, monkeypatch
+):
+    state, _harness, private_key, _public_key = _current_issuance_state(tmp_path)
+    destination = tmp_path / "substituted-evidence-witness.json"
+    original_write = witness_module._write_new
+
+    def substitute_after_write(path, content, mode):
+        original_write(path, content, mode)
+        path.write_bytes(b"{}\n")
+
+    monkeypatch.setattr(witness_module, "_write_new", substitute_after_write)
+    with pytest.raises(
+        EvidenceWitnessError, match="bytes do not match the signed document"
+    ):
+        create_current_witness(
+            state,
+            private_key,
+            PASSPHRASE,
+            signer="release-operator",
+            note="detect evidence witness substitution",
+            output_path=destination,
+        )
+
+    assert destination.read_bytes() == b"{}\n"
+
+
+def test_evidence_witness_publication_fails_if_published_temp_cannot_be_removed(
+    tmp_path, monkeypatch
+):
+    state, _harness, private_key, _public_key = _current_issuance_state(tmp_path)
+    destination = tmp_path / "cleanup-evidence-witness.json"
+    original_unlink = witness_module.Path.unlink
+
+    def refuse_temp_cleanup(path, *args, **kwargs):
+        if path.name.startswith(f".{destination.name}.") and path.name.endswith(".tmp"):
+            raise PermissionError("simulated cleanup refusal")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(witness_module.Path, "unlink", refuse_temp_cleanup)
+    with pytest.raises(
+        EvidenceWitnessError,
+        match="cannot remove published evidence-witness temporary file",
+    ):
+        create_current_witness(
+            state,
+            private_key,
+            PASSPHRASE,
+            signer="release-operator",
+            note="detect temporary cleanup failure",
+            output_path=destination,
+        )
+
+    assert destination.exists()
+    assert len(list(tmp_path.glob(f".{destination.name}.*.tmp"))) == 1
 
 
 class HostileText(str):

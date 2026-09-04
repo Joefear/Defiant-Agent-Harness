@@ -1093,6 +1093,22 @@ for operator inspection. No runtime state or Command Core schema changes, and
 Command Center receives no path, content, durability control, or mutation
 endpoint.
 
+## v0.83 verified evidence-head witness issuance
+
+Evidence-head witness creation now uses one high-level transaction rather than
+independent build, sign, and write CLI steps. Under `authority.lock`, it
+revalidates live state-storage identity, captures the evidence file once with
+the secure bounded reader, verifies that exact owned sequence and its durable
+checkpoint, signs it, and retains the lock until non-overwriting external
+publication is durable and byte-verified. A missing evidence store is an error,
+not an initialization request.
+
+The external writer uses the same conservative final-link, directory-sync,
+temporary-cleanup, and exact read-back posture as authority-publication
+witnesses. Post-link uncertainty preserves the final file for operator
+inspection and returns failure. Command Core and Command Center schemas do not
+change, and no browser mutation capability is added.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

@@ -63,11 +63,9 @@ from ..evidence_witness import (
     EvidenceWitnessError,
     EvidenceWitnessPolicy,
     assess_witness,
-    build_witness_payload,
+    create_current_witness as create_current_evidence_witness,
     load_witness,
-    sign_witness,
     validate_external_witness_paths,
-    write_witness,
 )
 from ..state_storage import StateStorageStateStore
 from ..mcp.config import McpConfigError, load_proxy_config
@@ -495,15 +493,15 @@ def cmd_witness_evidence_head(args) -> int:
         _require_external_secret(args.workdir, args.signing_key, "signing key")
         _require_external_secret(args.workdir, args.passphrase_file, "passphrase file")
         _require_external_secret(args.workdir, args.output, "evidence witness")
-        document = sign_witness(
-            build_witness_payload(args.workdir),
+        create_current_evidence_witness(
+            args.workdir,
             args.signing_key,
             read_passphrase(args.passphrase_file),
             signer=args.signer,
             note=args.note,
+            output_path=args.output,
         )
-        write_witness(args.output, document)
-    except (EvidenceSigningError, EvidenceWitnessError) as exc:
+    except (EvidenceSigningError, EvidenceWitnessError, PersistenceError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
     print(f"wrote evidence-head witness {args.output}")
