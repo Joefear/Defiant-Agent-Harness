@@ -51,6 +51,7 @@ from .persistence import (
     inspect_state_file,
     inspect_storage_root,
     read_json,
+    sync_storage_directory,
 )
 from .state_storage import (
     StateStorageError,
@@ -585,7 +586,9 @@ def write_witness(path: str | Path, document: dict[str, Any]) -> None:
         raise AuthorityPublicationWitnessError(
             "publication witness is not valid JSON"
         ) from exc
-    _write_new(Path(path), encoded)
+    destination = Path(path)
+    _write_new(destination, encoded)
+    _verify_published_bytes(destination, encoded)
 
 
 def _verify_signature(
@@ -827,7 +830,12 @@ def _read_limited(path: Path, maximum: int, label: str) -> bytes:
 
 
 def _write_new(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise AuthorityPublicationWitnessError(
+            "cannot prepare publication-witness output directory"
+        ) from exc
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -837,18 +845,67 @@ def _write_new(path: Path, content: bytes) -> None:
             os.fsync(stream.fileno())
         os.link(temporary, path)
     except FileExistsError as exc:
+        _discard_temporary(temporary, after_publication=False)
         raise AuthorityPublicationWitnessError(
             "refusing to overwrite existing publication witness"
         ) from exc
     except OSError as exc:
+        _discard_temporary(temporary, after_publication=False)
         raise AuthorityPublicationWitnessError(
             "cannot write publication witness"
         ) from exc
-    finally:
+
+    try:
+        sync_storage_directory(path.parent)
+    except PersistenceError as exc:
+        _discard_temporary(temporary, after_publication=True)
         try:
-            temporary.unlink()
-        except OSError:
+            sync_storage_directory(path.parent)
+        except PersistenceError:
             pass
+        raise AuthorityPublicationWitnessError(
+            "publication witness may exist but durable publication could not be "
+            "confirmed"
+        ) from exc
+
+    _discard_temporary(temporary, after_publication=True)
+    try:
+        sync_storage_directory(path.parent)
+    except PersistenceError as exc:
+        raise AuthorityPublicationWitnessError(
+            "publication witness was created but temporary cleanup durability "
+            "could not be confirmed"
+        ) from exc
+
+
+def _discard_temporary(
+    path: Path,
+    *,
+    after_publication: bool,
+) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        phase = "published" if after_publication else "incomplete"
+        error = AuthorityPublicationWitnessError(
+            f"cannot remove {phase} publication-witness temporary file"
+        )
+        raise error from exc
+
+
+def _verify_published_bytes(path: Path, expected: bytes) -> None:
+    try:
+        observed = _read_limited(path, _MAX_DOCUMENT_BYTES, "published witness")
+    except AuthorityPublicationWitnessError as exc:
+        raise AuthorityPublicationWitnessError(
+            "publication witness was created but read-back verification failed"
+        ) from exc
+    if not hmac.compare_digest(observed, expected):
+        raise AuthorityPublicationWitnessError(
+            "published publication-witness bytes do not match the signed document"
+        )
 
 
 def _payload_snapshot(value: Any) -> dict[str, Any]:

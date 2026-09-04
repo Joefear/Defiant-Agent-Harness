@@ -6,6 +6,7 @@ import threading
 
 import pytest
 
+import defiant_agent_harness.authority_publication_witness as witness_module
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.authority_profile import (
     AuthorityProfileError,
@@ -33,6 +34,7 @@ from defiant_agent_harness.orchestrator.harness import build_harness
 from defiant_agent_harness.persistence import (
     AuthorityLockError,
     AuthorityTransactionLock,
+    PersistenceError,
 )
 from defiant_agent_harness.state_integrity import StateIntegrityAuditor
 from defiant_agent_harness.state_storage import StateStorageStateStore
@@ -108,6 +110,102 @@ def test_signed_publication_witness_verifies_exact_head_and_round_trips(tmp_path
     )
     with pytest.raises(AuthorityPublicationWitnessError, match="overwrite"):
         write_witness(destination, document)
+
+
+def test_witness_publication_syncs_directory_before_and_after_temp_cleanup(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    private_key, _ = _keys(tmp_path)
+    destination = tmp_path / "durable-publication-witness.json"
+    syncs = []
+
+    def record_sync(path):
+        syncs.append(path)
+
+    monkeypatch.setattr(witness_module, "sync_storage_directory", record_sync)
+    write_witness(destination, _signed(state, private_key))
+
+    assert syncs == [destination.parent, destination.parent]
+    assert not list(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_witness_publication_fails_if_directory_durability_is_uncertain(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    private_key, _ = _keys(tmp_path)
+    destination = tmp_path / "uncertain-publication-witness.json"
+
+    def refuse_sync(_path):
+        raise PersistenceError("simulated directory sync failure")
+
+    monkeypatch.setattr(witness_module, "sync_storage_directory", refuse_sync)
+    with pytest.raises(
+        AuthorityPublicationWitnessError,
+        match="durable publication could not be confirmed",
+    ):
+        write_witness(destination, _signed(state, private_key))
+
+    assert destination.exists()
+    assert not list(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_witness_publication_fails_on_post_link_byte_substitution(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    private_key, _ = _keys(tmp_path)
+    destination = tmp_path / "substituted-publication-witness.json"
+    original_write = witness_module._write_new
+
+    def substitute_after_write(path, content):
+        original_write(path, content)
+        path.write_bytes(b"{}\n")
+
+    monkeypatch.setattr(witness_module, "_write_new", substitute_after_write)
+    with pytest.raises(
+        AuthorityPublicationWitnessError,
+        match="bytes do not match the signed document",
+    ):
+        create_current_witness(
+            state,
+            private_key,
+            PASSPHRASE,
+            signer="release-operator",
+            note="detect publication substitution",
+            output_path=destination,
+        )
+
+    assert destination.read_bytes() == b"{}\n"
+
+
+def test_witness_publication_fails_if_published_temp_cannot_be_removed(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "state"
+    build_harness(state, MockAgentAdapter())
+    private_key, _ = _keys(tmp_path)
+    destination = tmp_path / "cleanup-publication-witness.json"
+    original_unlink = witness_module.Path.unlink
+
+    def refuse_temp_cleanup(path, *args, **kwargs):
+        if path.name.startswith(f".{destination.name}.") and path.name.endswith(".tmp"):
+            raise PermissionError("simulated cleanup refusal")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(witness_module.Path, "unlink", refuse_temp_cleanup)
+    with pytest.raises(
+        AuthorityPublicationWitnessError,
+        match="cannot remove published publication-witness temporary file",
+    ):
+        write_witness(destination, _signed(state, private_key))
+
+    assert destination.exists()
+    assert len(list(tmp_path.glob(f".{destination.name}.*.tmp"))) == 1
 
 
 def test_witness_accepts_only_one_provable_forward_step(tmp_path):

@@ -348,6 +348,16 @@ active recovery, root replacement, or dependency mismatch refuses issuance
 without creating an output. A compromised signing host or key holder remains
 outside this control.
 
+Through v0.81, the external writer flushed the signed file before creating its
+non-overwriting final name, but it did not explicitly synchronize the output
+directory or prove that the final path still contained the exact bytes before
+reporting success. v0.82 synchronizes final-link publication and temporary-link
+cleanup under the platform persistence contract, then reads back and compares
+the exact serialized document. Any uncertainty fails without deleting an
+already-created final file. Later replacement by an actor with write access to
+the external store remains outside the local guarantee and is why independent,
+access-controlled retention is required.
+
 ### 16. Valid evidence-tail truncation or partial restore
 
 Removing the final records from a hash chain leaves the retained prefix
