@@ -405,6 +405,15 @@ missing evidence, or post-link ambiguity fails closed. Direct modification by
 a compromised host and later replacement of the external file remain outside
 the guarantee.
 
+Evidence witness verification through v0.83 constructed a writable evidence
+store, so observing a deleted log could create an empty replacement. Issuance
+checked existence first but still had the same constructor race. Verification
+also reopened the file between chain validation and witness comparison.
+v0.84 reads existing evidence without initialization and validates the exact
+captured sequence used for comparison. Missing or malformed input fails with
+no repair. These observations remain point-in-time; they do not exclude later
+writers or make a compromised host trustworthy.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

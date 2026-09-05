@@ -58,7 +58,7 @@ from ..evidence.signing import (
     verify_export,
     write_export,
 )
-from ..evidence.store import EvidenceError, EvidenceStore
+from ..evidence.store import EvidenceError, EvidenceStore, verify_evidence_records
 from ..evidence_witness import (
     EvidenceWitnessError,
     EvidenceWitnessPolicy,
@@ -529,8 +529,10 @@ def cmd_verify_evidence_head_witness(args) -> int:
             raise EvidenceWitnessError(
                 "authority profile and state storage must be enrolled"
             )
-        evidence = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-        chain = evidence.verify()
+        records = EvidenceStore.read_existing_records(
+            Path(args.workdir) / "evidence.jsonl"
+        )
+        chain = verify_evidence_records(records)
         if not chain.ok:
             raise EvidenceWitnessError("cannot verify against a broken evidence chain")
         status = assess_witness(
@@ -538,9 +540,9 @@ def cmd_verify_evidence_head_witness(args) -> int:
             policy,
             deployment_root_hash=storage.root_hash,
             profile=profile,
-            records=evidence.records(),
+            records=records,
         )
-    except EvidenceWitnessError as exc:
+    except (EvidenceWitnessError, EvidenceError) as exc:
         print(json.dumps({"ok": False, "detail": str(exc)}, indent=2))
         return 1
     print(json.dumps(status.to_dict(), indent=2, sort_keys=True))

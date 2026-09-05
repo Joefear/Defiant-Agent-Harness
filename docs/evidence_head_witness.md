@@ -134,6 +134,21 @@ point-in-time guarantee and does not protect a later externally writable file.
 
 ## Read-only operations
 
+v0.84 makes evidence capture in issuance and `verify-evidence-head-witness`
+independent of the writable store constructor. The existing log is opened
+directly using the same strict parser, per-record limits, and descriptor/file
+identity checks. Missing directories or logs are never initialized by this
+reader. Deletion after issuance's preliminary existence check is also refused
+without recreating the log. Issuance still takes its authority lock; this change
+does not alter that lock's lifecycle or ordinary store initialization.
+
+The verification command captures records once, verifies their complete hash
+chain, and compares the signed witness with that same sequence. Missing,
+malformed, or corrupt evidence produces a nonzero exit and JSON `ok: false`
+without changing local state. A valid capture is a point-in-time observation:
+later appends or replacements are observed on the next verification, and the
+diagnostic command does not acquire authority or freeze writers.
+
 Doctor, Command Core, and Command Center accept the same global external-input
 options. They never copy, advance, replace, or acknowledge the witness. Their
 projection contains only verification state, hashes, witnessed and unwitnessed
