@@ -403,10 +403,17 @@ class EvidenceStore:
     # -- export ------------------------------------------------------
 
     def export_request(self, request_id: str) -> dict:
+        return self.export_existing_request(self.path, request_id)
+
+    @staticmethod
+    def export_existing_request(path: str | Path, request_id: str) -> dict:
+        """Export one locked capture without initializing evidence or its root."""
         try:
-            with exclusive_file_lock(self.path):
-                status = self._verify_unlocked()
-                all_records = list(self._raw())
+            if inspect_state_file(path) is None:
+                raise EvidenceError("cannot export missing evidence store")
+            with exclusive_file_lock(path, require_existing_root=True):
+                all_records = EvidenceStore.read_existing_records(path)
+                status = verify_evidence_records(all_records)
         except PersistenceError as exc:
             raise EvidenceError(str(exc)) from exc
         records = [

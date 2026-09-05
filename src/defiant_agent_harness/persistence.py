@@ -418,16 +418,26 @@ class AuthorityTransactionLock:
 
 
 @contextmanager
-def exclusive_file_lock(target: str | Path) -> Iterator[None]:
+def exclusive_file_lock(
+    target: str | Path, *, require_existing_root: bool = False
+) -> Iterator[None]:
     """Acquire a conservative cross-process lock for one state file.
 
     Lock contention fails immediately instead of waiting or proceeding
     concurrently. If a process crashes, the lock file remains intentionally:
     an operator must confirm no writer is alive before removing it.
+    Existing-only callers may refuse directory initialization while retaining
+    the same conservative lock lifecycle.
     """
     path = Path(target)
     lock_path = path.with_name(path.name + ".lock")
-    root = prepare_storage_root(path.parent)
+    root = (
+        inspect_storage_root(path.parent)
+        if require_existing_root
+        else prepare_storage_root(path.parent)
+    )
+    if root is None:
+        raise PersistenceError("state directory does not exist")
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     try:

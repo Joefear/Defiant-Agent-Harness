@@ -436,8 +436,9 @@ def cmd_policy(args) -> int:
 
 def cmd_export(args) -> int:
     try:
-        store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-        document = store.export_request(args.request_id)
+        document = EvidenceStore.export_existing_request(
+            Path(args.workdir) / "evidence.jsonl", args.request_id
+        )
         if args.signing_key:
             if not args.passphrase_file:
                 raise EvidenceSigningError(
