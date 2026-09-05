@@ -444,6 +444,14 @@ chain decisions, and signatures are unchanged. This does not bound upstream
 message construction, redact secrets, or cover every CLI diagnostic. See
 `safe_inspection_diagnostics.md`.
 
+History inspection through v0.88 retained the entire decoded log even for a
+small display limit, allowing a long history to amplify inspection memory use.
+v0.89 streams one existing descriptor, validates each record before selection,
+and retains only the requested tail of bounded rendered rows. Failures discard
+the buffer and close the reader. This is not a whole-log byte cap, writer lock,
+log-rotation policy, or bounded-time scan; large requested row counts can still
+use proportionally more memory. See `streaming_history.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

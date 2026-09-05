@@ -11,9 +11,11 @@ diagnostic on stderr and no partial output on stdout. An existing empty log
 remains valid: history reports no evidence, verify reports an intact zero-record
 chain, and show reports a missing record.
 
-Each command materializes one sequence using the strict parser and existing
-per-record and filesystem checks. Show now reads the complete sequence before
-returning an early match, so malformed data later in the log is not ignored.
+Each command uses the strict parser and existing per-record and filesystem
+checks. Show and verify materialize one sequence; show reads that complete
+sequence before returning an early match, so malformed data later in the log
+is not ignored. Since v0.89, history streams the log and retains only bounded
+display rows, while still requiring a successful full read before output.
 
 v0.87 additionally validates the six history projection fields as strings before
 filtering, limiting, or printing. History escapes and truncates displayed cells;
@@ -36,8 +38,10 @@ uncertain writer lock, and successful inspection never authorizes execution.
 Later writes require a new observation. Verify checks the captured chain, not
 the durable checkpoint, external witness, or full cross-store state.
 
-The complete history remains unbounded and inspection is linear in its size;
-history's display limit is not a read limit. Export, signing, ordinary writer
+The complete log remains unbounded and inspection is linear in its size;
+history's display limit is not a read limit. History retention now follows the
+requested row count plus per-record parsing work; show and verify still retain
+the full capture. See `streaming_history.md`. Export, signing, ordinary writer
 initialization, and authority lock lifecycles are unchanged. Command Core and
 Command Center contracts are unchanged; Command Center remains read-only.
 No DKE or Spartan capability is added.

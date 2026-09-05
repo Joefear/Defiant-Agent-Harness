@@ -102,7 +102,10 @@ def test_reader_errors_are_escaped(tmp_path, capsys, monkeypatch, command, contr
     def fail(*args, **kwargs):
         raise EvidenceError("cannot read evidence store: " + control)
 
-    monkeypatch.setattr(EvidenceStore, "read_existing_records", staticmethod(fail))
+    method = (
+        "stream_existing_records" if command == "history" else "read_existing_records"
+    )
+    monkeypatch.setattr(EvidenceStore, method, staticmethod(fail))
     assert main(_args(root, command)) == 1
     captured = capsys.readouterr()
     output = _plain(captured.err)
@@ -161,9 +164,10 @@ def test_long_error_escaping_uses_only_bounded_prefix(
     def fail(*args, **kwargs):
         raise EvidenceError("\x1b" * 100000)
 
-    method = (
-        "export_existing_request" if command == "export" else "read_existing_records"
-    )
+    method = {
+        "history": "stream_existing_records",
+        "export": "export_existing_request",
+    }.get(command, "read_existing_records")
     monkeypatch.setattr(EvidenceStore, method, staticmethod(fail))
     dumps = json.dumps
     sizes = []

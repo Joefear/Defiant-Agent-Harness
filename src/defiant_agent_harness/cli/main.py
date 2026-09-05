@@ -29,6 +29,7 @@ dah mcp-http-proxy        govern one remote Streamable HTTP MCP server
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import sys
 from pathlib import Path
@@ -365,40 +366,46 @@ def cmd_history(args) -> int:
     try:
         if type(args.limit) is not int or args.limit < 0:
             raise EvidenceError("history limit must be a non-negative integer")
-        recs = EvidenceStore.read_existing_records(
+        # Do not use maxlen: arbitrarily large positive limits remain valid.
+        rows: deque[str] = deque()
+        has_matches = False
+        with EvidenceStore.stream_existing_records(
             Path(args.workdir) / "evidence.jsonl"
-        )
-        for record in recs:
-            for field in (
-                "timestamp",
-                "tool_name",
-                "decision",
-                "result_status",
-                "record_id",
-                "request_id",
-            ):
-                if type(record.get(field)) is not str:
-                    raise EvidenceError(f"invalid evidence history field: {field}")
+        ) as records:
+            for record in records:
+                for field in (
+                    "timestamp",
+                    "tool_name",
+                    "decision",
+                    "result_status",
+                    "record_id",
+                    "request_id",
+                ):
+                    if type(record.get(field)) is not str:
+                        raise EvidenceError(f"invalid evidence history field: {field}")
+                if args.request and record["request_id"] != args.request:
+                    continue
+                has_matches = True
+                if args.limit == 0:
+                    continue
+                rows.append(
+                    f"{_terminal_text(record['timestamp'][:19], 19):<22} "
+                    f"{_terminal_text(record['tool_name'], 13):<14} "
+                    f"{_terminal_text(record['decision'], 18):<18} "
+                    f"{_c(_terminal_text(record['result_status'], 20)):<29} "
+                    f"{_terminal_text(record['record_id'], 80)}"
+                )
+                if len(rows) > args.limit:
+                    rows.popleft()
     except EvidenceError as exc:
         print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
-    if args.request:
-        recs = [r for r in recs if r["request_id"] == args.request]
-    if not recs:
+    if not has_matches:
         print("no evidence yet.")
         return 0
     if args.limit == 0:
         print("no evidence selected.")
         return 0
-    rows = []
-    for r in recs[-args.limit :]:
-        rows.append(
-            f"{_terminal_text(r['timestamp'][:19], 19):<22} "
-            f"{_terminal_text(r['tool_name'], 13):<14} "
-            f"{_terminal_text(r['decision'], 18):<18} "
-            f"{_c(_terminal_text(r['result_status'], 20)):<29} "
-            f"{_terminal_text(r['record_id'], 80)}"
-        )
     print(f"\n{'time':<22} {'tool':<14} {'decision':<18} {'status':<20} record")
     print("-" * 100)
     for row in rows:
