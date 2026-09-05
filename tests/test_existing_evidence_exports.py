@@ -76,18 +76,19 @@ def test_existing_empty_store_can_be_exported_without_constructor(
 @pytest.mark.parametrize("api", ["instance", "existing"])
 def test_export_verifies_and_selects_one_locked_capture(tmp_path, monkeypatch, api):
     store, record = _store(tmp_path / "state")
-    reader = EvidenceStore.read_existing_records
+    reader = EvidenceStore.stream_existing_records
     calls = []
 
+    @contextmanager
     def capture_then_change(path):
         assert store.path.with_name("evidence.jsonl.lock").exists()
         calls.append(path)
-        records = reader(path)
+        with reader(path) as records:
+            yield records
         store.path.write_bytes(b"{}\n")
-        return records
 
     monkeypatch.setattr(
-        EvidenceStore, "read_existing_records", staticmethod(capture_then_change)
+        EvidenceStore, "stream_existing_records", staticmethod(capture_then_change)
     )
     document = (
         store.export_request(record.request_id)

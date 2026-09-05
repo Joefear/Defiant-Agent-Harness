@@ -37,6 +37,13 @@ verifies a document, uploads a key, or mutates harness state.
 
 ## Deliberate limits
 
+Since v0.91, request selection and chain verification consume one locked stream
+without retaining unrelated decoded records. All selected records remain in
+memory before the existing signing and serialization ceilings are applied.
+The artifact-byte limit is not an incremental selection-memory limit; a large
+single request can still consume substantial memory. See
+`streaming_request_exports.md`.
+
 The ceiling bounds one handoff artifact. It does not cap, truncate, or compact
 the live append-only evidence history, whose verification remains linear in
 the total retained record count. An individual request whose selected records

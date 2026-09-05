@@ -34,6 +34,9 @@ no-overwrite output, and export schemas are unchanged.
 
 This is a point-in-time observation under cooperating writer exclusion, not a
 defense against a compromised host or later replacement of the exported file.
-The full history remains materialized in memory; no new total-history bound is
-introduced. Command Core and Command Center contracts remain unchanged and
-Command Center stays read-only. No DKE or Spartan capability is added.
+Since v0.91, one locked stream feeds both verification and selection, retaining
+only matching records plus per-record working storage. The selected request
+can still be large; no total-history or process-memory bound is introduced.
+See `streaming_request_exports.md`. Command Core and Command Center contracts
+remain unchanged and Command Center stays read-only. No DKE or Spartan
+capability is added.

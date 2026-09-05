@@ -460,6 +460,16 @@ read before emitting results, and later reader errors take precedence. This
 does not prove completeness, add a writer lock, cap scan time, or alter default
 writer verification. See `streaming_inspection.md`.
 
+Request exports through v0.90 retained every decoded record, so unrelated
+history increased memory use even for a small request. v0.91 retains only the
+selected request and per-record working data while scanning under the existing
+lock. It drains after a hash failure to prevent a malformed tail from yielding
+an export or reaching signing. First-failure counts are not relabeled as
+verified full-log counts. Selected data, serialization memory, linear read
+time, and lock duration remain costs; this is not a process-memory quota,
+streaming signature, or defense against non-cooperating writers. See
+`streaming_request_exports.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of
