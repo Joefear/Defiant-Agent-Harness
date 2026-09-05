@@ -428,6 +428,13 @@ Missing evidence is not recreated, and an uncertain writer lock remains a
 refusal. Transient export locking and explicit output publication are still
 writes; the change does not claim protection against a compromised host.
 
+History rendering through v0.86 assumed display fields had string types and
+printed raw evidence text. Malformed fields could cause partial output followed
+by a traceback, and terminal control characters could alter the display.
+v0.87 validates projection types before output and escapes and bounds displayed
+cells. This is history-specific presentation hardening, not evidence repair,
+hash verification, or a global terminal-safety guarantee for every CLI command.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of
