@@ -1167,6 +1167,17 @@ use proportionally more memory. Full-log processing time and concurrent-writer
 limits remain. Other evidence capture APIs, writers, and the read-only Command
 surfaces are unchanged. See `streaming_history.md`.
 
+## v0.90 streaming show and verification
+
+Show retains its first matching record while consuming the existing-log stream.
+Verify uses the verifier's opt-in complete-read mode: it keeps the first hash
+failure and drains the tail so later reader errors retain precedence. Neither
+prints a result until the read completes. First-failure status fields, lossless
+show output, and default early-stop verification for other callers are
+unchanged. Memory retention no longer grows with decoded history length; the
+per-record and full-log time limits remain. Command Center stays read-only.
+See `streaming_inspection.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

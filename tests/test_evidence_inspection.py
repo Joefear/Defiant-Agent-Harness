@@ -128,32 +128,19 @@ def test_inspection_keeps_record_limit(tmp_path, capsys, monkeypatch, command):
 def test_inspection_uses_one_capture(tmp_path, capsys, monkeypatch, command):
     root = tmp_path / "state"
     record = _enroll(root)
-    reader = EvidenceStore.read_existing_records
+    stream = EvidenceStore.stream_existing_records
     calls = []
 
-    def capture_then_change(path):
+    @contextmanager
+    def stream_then_change(path):
         calls.append(path)
-        records = reader(path)
+        with stream(path) as records:
+            yield records
         path.write_bytes(b"{}\n")
-        return records
 
-    if command == "history":
-        stream = EvidenceStore.stream_existing_records
-
-        @contextmanager
-        def stream_then_change(path):
-            calls.append(path)
-            with stream(path) as records:
-                yield records
-            path.write_bytes(b"{}\n")
-
-        monkeypatch.setattr(
-            EvidenceStore, "stream_existing_records", staticmethod(stream_then_change)
-        )
-    else:
-        monkeypatch.setattr(
-            EvidenceStore, "read_existing_records", staticmethod(capture_then_change)
-        )
+    monkeypatch.setattr(
+        EvidenceStore, "stream_existing_records", staticmethod(stream_then_change)
+    )
     assert main(_args(root, command, record.record_id)) == 0
     capsys.readouterr()
     assert calls == [root / "evidence.jsonl"]
