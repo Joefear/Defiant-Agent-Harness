@@ -1119,6 +1119,15 @@ chain and witness against one capture. This closes missing-file initialization
 and verify/reopen gaps without changing ordinary writer initialization,
 authority locking, or the Command Core and Command Center contracts.
 
+## v0.85 read-only evidence inspection
+
+History, show, and verify use the existing-record reader without constructing
+a writable evidence store. Each consumes one complete capture before rendering
+or verifying it; read failures return nonzero without initializing or repairing
+state. History and show remain inspection surfaces, not hash-integrity
+endorsements. See `read_only_evidence_inspection.md`. Export and writer
+lifecycles are unchanged.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
