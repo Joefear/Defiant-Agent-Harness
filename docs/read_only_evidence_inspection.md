@@ -20,6 +20,10 @@ filtering, limiting, or printing. History escapes and truncates displayed cells;
 negative limits are refused and zero selects no rows. See
 `safe_history_rendering.md`. Show remains a JSON inspection path.
 
+v0.88 also escapes and bounds the commands' human-readable error text, missing
+show IDs, and verify's broken-chain detail. Full JSON values remain unchanged.
+See `safe_inspection_diagnostics.md` for the covered output paths and limits.
+
 ## Deliberate limits
 
 History and show are inspection tools, not hash-integrity endorsements. A

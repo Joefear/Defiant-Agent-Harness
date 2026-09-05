@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.87.
+logs. A full trusted-memory/DKE system is not part of v0.88.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.87 is
+## What v0.88 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -165,6 +165,12 @@ v0.87 validates history display fields before filtering or printing, escapes
 evidence-supplied terminal controls, and bounds displayed cell widths.
 Negative history limits are refused; zero selects no rows while still requiring
 readable evidence. See `docs/safe_history_rendering.md`.
+
+v0.88 extends bounded, terminal-safe text rendering to the human-readable
+diagnostics of history, show, verify, and export. Untrusted record IDs, broken
+chain details, and export paths cannot insert terminal controls into those
+messages. JSON inspection/export output and integrity decisions stay unchanged.
+See `docs/safe_inspection_diagnostics.md` for the precise scope and limits.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1117,7 +1123,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.87 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.88 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,
