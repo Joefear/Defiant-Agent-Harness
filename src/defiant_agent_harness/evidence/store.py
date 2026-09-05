@@ -430,18 +430,29 @@ class EvidenceStore:
 
     @staticmethod
     def export_existing_request(path: str | Path, request_id: str) -> dict:
-        """Export one locked capture without initializing evidence or its root."""
+        """Stream one locked capture, retaining only the requested records."""
+        records = []
+        head_hash = GENESIS
         try:
             if inspect_state_file(path) is None:
                 raise EvidenceError("cannot export missing evidence store")
             with exclusive_file_lock(path, require_existing_root=True):
-                all_records = EvidenceStore.read_existing_records(path)
-                status = verify_evidence_records(all_records)
+                with EvidenceStore.stream_existing_records(path) as stream:
+
+                    def select_records() -> Iterator[dict]:
+                        nonlocal head_hash
+                        for record in stream:
+                            if record.get("request_id") == request_id:
+                                records.append(record)
+                            head_hash = record.get("record_hash")
+                            yield record
+
+                    with closing(select_records()) as observed:
+                        status = verify_evidence_records(
+                            observed, require_complete_read=True
+                        )
         except PersistenceError as exc:
             raise EvidenceError(str(exc)) from exc
-        records = [
-            record for record in all_records if record.get("request_id") == request_id
-        ]
         return {
             "schema_name": EXPORT_SCHEMA,
             "schema_version": EXPORT_VERSION,
@@ -449,13 +460,7 @@ class EvidenceStore:
             "exported_at": utc_now(),
             "record_count": len(records),
             "full_chain_record_count": status.count,
-            "chain_head_hash": (
-                all_records[-1]["record_hash"]
-                if status.ok and all_records
-                else GENESIS
-                if status.ok
-                else None
-            ),
+            "chain_head_hash": head_hash if status.ok else None,
             "chain_status": status.__dict__,
             "records": records,
         }

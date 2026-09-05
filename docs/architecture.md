@@ -1178,6 +1178,18 @@ unchanged. Memory retention no longer grows with decoded history length; the
 per-record and full-log time limits remain. Command Center stays read-only.
 See `streaming_inspection.md`.
 
+## v0.91 streaming request exports
+
+Request export verifies and selects from one existing-log stream under the
+existing exclusive lock. A pass-through iterator retains matching records and
+the latest observed head hash, while complete-read verification preserves the
+first hash failure and drains the tail. Reader failures prevent publication;
+readable broken chains remain unsigned diagnostic exports with a null head.
+The lock outlives the stream and is released on success or failure. Selected
+records remain materialized for the unchanged signing and serialization path.
+See `streaming_request_exports.md` for resource and trust limits. Command Core
+and Command Center are unchanged and read-only.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
