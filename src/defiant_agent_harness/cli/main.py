@@ -354,8 +354,13 @@ def cmd_reconcile_authorization(args) -> int:
 
 
 def cmd_history(args) -> int:
-    store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-    recs = store.records()
+    try:
+        recs = EvidenceStore.read_existing_records(
+            Path(args.workdir) / "evidence.jsonl"
+        )
+    except EvidenceError as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
     if args.request:
         recs = [r for r in recs if r["request_id"] == args.request]
     if not recs:
@@ -373,8 +378,17 @@ def cmd_history(args) -> int:
 
 
 def cmd_show(args) -> int:
-    store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-    rec = store.get(args.record_id)
+    try:
+        records = EvidenceStore.read_existing_records(
+            Path(args.workdir) / "evidence.jsonl"
+        )
+    except EvidenceError as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    rec = next(
+        (record for record in records if record.get("record_id") == args.record_id),
+        None,
+    )
     if rec is None:
         print(f"no record {args.record_id}", file=sys.stderr)
         return 1
@@ -383,8 +397,14 @@ def cmd_show(args) -> int:
 
 
 def cmd_verify(args) -> int:
-    store = EvidenceStore(Path(args.workdir) / "evidence.jsonl")
-    status = store.verify()
+    try:
+        records = EvidenceStore.read_existing_records(
+            Path(args.workdir) / "evidence.jsonl"
+        )
+    except EvidenceError as exc:
+        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        return 1
+    status = verify_evidence_records(records)
     if status.ok:
         print(f"{GREEN}chain intact{RESET}  {status.count} records")
         return 0

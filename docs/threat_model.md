@@ -414,6 +414,13 @@ captured sequence used for comparison. Missing or malformed input fails with
 no repair. These observations remain point-in-time; they do not exclude later
 writers or make a compromised host trustworthy.
 
+History, show, and verify retained writable evidence-store construction through
+v0.84. A missing log could therefore become an empty replacement, including an
+apparently successful zero-record chain verification. v0.85 removes that path:
+these commands capture existing evidence once and refuse unreadable input
+without state writes. They do not exclude writers, prove completeness, or
+promote displayed records to trusted evidence.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of
