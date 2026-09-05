@@ -435,6 +435,15 @@ v0.87 validates projection types before output and escapes and bounds displayed
 cells. This is history-specific presentation hardening, not evidence repair,
 hash verification, or a global terminal-safety guarantee for every CLI command.
 
+Human-readable inspection diagnostics through v0.87 still printed raw chain
+failure details, missing record IDs, and exception text. Evidence-controlled
+identifiers or hashes could therefore inject terminal controls even though
+history rows were safe. v0.88 escapes and bounds these messages in history,
+show, verify, and export, including export destination messages. Full JSON,
+chain decisions, and signatures are unchanged. This does not bound upstream
+message construction, redact secrets, or cover every CLI diagnostic. See
+`safe_inspection_diagnostics.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

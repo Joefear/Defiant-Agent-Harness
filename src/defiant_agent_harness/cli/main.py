@@ -353,8 +353,8 @@ def cmd_reconcile_authorization(args) -> int:
     return 0
 
 
-def _history_cell(value: str, width: int) -> str:
-    # Escape before truncating so no evidence-supplied terminal control survives.
+def _terminal_text(value: str, width: int = 1024) -> str:
+    # Bound the input to escaping, then bound the ASCII display projection.
     text = json.dumps(value[:width], ensure_ascii=True)[1:-1]
     if len(value) <= width and len(text) <= width:
         return text
@@ -380,7 +380,7 @@ def cmd_history(args) -> int:
                 if type(record.get(field)) is not str:
                     raise EvidenceError(f"invalid evidence history field: {field}")
     except EvidenceError as exc:
-        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
     if args.request:
         recs = [r for r in recs if r["request_id"] == args.request]
@@ -393,11 +393,11 @@ def cmd_history(args) -> int:
     rows = []
     for r in recs[-args.limit :]:
         rows.append(
-            f"{_history_cell(r['timestamp'][:19], 19):<22} "
-            f"{_history_cell(r['tool_name'], 13):<14} "
-            f"{_history_cell(r['decision'], 18):<18} "
-            f"{_c(_history_cell(r['result_status'], 20)):<29} "
-            f"{_history_cell(r['record_id'], 80)}"
+            f"{_terminal_text(r['timestamp'][:19], 19):<22} "
+            f"{_terminal_text(r['tool_name'], 13):<14} "
+            f"{_terminal_text(r['decision'], 18):<18} "
+            f"{_c(_terminal_text(r['result_status'], 20)):<29} "
+            f"{_terminal_text(r['record_id'], 80)}"
         )
     print(f"\n{'time':<22} {'tool':<14} {'decision':<18} {'status':<20} record")
     print("-" * 100)
@@ -413,14 +413,14 @@ def cmd_show(args) -> int:
             Path(args.workdir) / "evidence.jsonl"
         )
     except EvidenceError as exc:
-        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
     rec = next(
         (record for record in records if record.get("record_id") == args.record_id),
         None,
     )
     if rec is None:
-        print(f"no record {args.record_id}", file=sys.stderr)
+        print(f"no record {_terminal_text(args.record_id)}", file=sys.stderr)
         return 1
     print(json.dumps(rec, indent=2, sort_keys=True))
     return 0
@@ -432,14 +432,14 @@ def cmd_verify(args) -> int:
             Path(args.workdir) / "evidence.jsonl"
         )
     except EvidenceError as exc:
-        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
     status = verify_evidence_records(records)
     if status.ok:
         print(f"{GREEN}chain intact{RESET}  {status.count} records")
         return 0
     print(f"{RED}CHAIN BROKEN{RESET} at record {status.broken_at}")
-    print(f"  {status.detail}")
+    print(f"  {_terminal_text(status.detail)}")
     return 1
 
 
@@ -491,12 +491,12 @@ def cmd_export(args) -> int:
             )
         if args.output:
             write_export(args.output, document)
-            print(f"wrote evidence export {args.output}")
+            print(f"wrote evidence export {_terminal_text(str(args.output))}")
         else:
             print(encode_export(document).decode("utf-8"), end="")
         return 0
     except (EvidenceError, EvidenceSigningError) as exc:
-        print(f"{RED}{exc}{RESET}", file=sys.stderr)
+        print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
 
 

@@ -1145,6 +1145,17 @@ terminal controls. Non-negative limit handling gives zero an empty selection.
 These are presentation checks, not authority or hash-integrity endorsements;
 see `safe_history_rendering.md`.
 
+## v0.88 safe inspection diagnostics
+
+History, show, verify, and export render their human-readable diagnostic text
+through one bounded ASCII-escaping helper. This includes evidence-reader
+errors, missing record IDs, broken-chain details, export errors, and export
+destination messages. History keeps its smaller per-cell widths; diagnostic
+fragments use a 1,024-character ceiling. The display projection does not change
+chain status, hashes, signatures, JSON output, or writer behavior. Command
+Center remains read-only. See `safe_inspection_diagnostics.md` for scope and
+allocation limits.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
