@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.89.
+logs. A full trusted-memory/DKE system is not part of v0.90.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.89 is
+## What v0.90 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -177,6 +177,12 @@ requested bounded display rows, rather than retaining the whole decoded log.
 Every record is still validated and no output is printed until the read
 succeeds. Early failures close the stream. See `docs/streaming_history.md` for
 memory, concurrency, and full-log processing limits.
+
+v0.90 also streams show and verify. Show retains only its first matching record;
+verify retains chain state and the first hash failure. Both still read the full
+log before printing results, so malformed tails cannot be hidden by an early
+match or hash failure. JSON output and default writer verification are unchanged.
+See `docs/streaming_inspection.md` for complete-read semantics and limits.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1129,7 +1135,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.89 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.90 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,

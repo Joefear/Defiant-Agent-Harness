@@ -132,7 +132,7 @@ from .evidence_witness import (
 )
 from .tools.registry import ToolResultContractError, ToolResultLimitError
 
-__version__ = "0.89.0"
+__version__ = "0.90.0"
 
 __all__ = [
     "ActionHashLimitError",

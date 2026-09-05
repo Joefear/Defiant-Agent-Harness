@@ -12,10 +12,11 @@ remains valid: history reports no evidence, verify reports an intact zero-record
 chain, and show reports a missing record.
 
 Each command uses the strict parser and existing per-record and filesystem
-checks. Show and verify materialize one sequence; show reads that complete
-sequence before returning an early match, so malformed data later in the log
-is not ignored. Since v0.89, history streams the log and retains only bounded
-display rows, while still requiring a successful full read before output.
+checks. Since v0.89, history streams the log and retains only bounded display
+rows. v0.90 streams show and verify as well: show retains its first match, and
+verify keeps chain state and its first hash failure. Each requires a successful
+full read before output, so malformed tails are not hidden by an early match
+or hash failure. See `streaming_inspection.md` for complete-read semantics.
 
 v0.87 additionally validates the six history projection fields as strings before
 filtering, limiting, or printing. History escapes and truncates displayed cells;
@@ -39,9 +40,11 @@ Later writes require a new observation. Verify checks the captured chain, not
 the durable checkpoint, external witness, or full cross-store state.
 
 The complete log remains unbounded and inspection is linear in its size;
-history's display limit is not a read limit. History retention now follows the
-requested row count plus per-record parsing work; show and verify still retain
-the full capture. See `streaming_history.md`. Export, signing, ordinary writer
-initialization, and authority lock lifecycles are unchanged. Command Core and
+history's display limit is not a read limit. History retention follows the
+requested row count, show retains at most one selected record, and verify keeps
+chain state or its first failure detail, all in addition to per-record working
+storage. See `streaming_history.md` and `streaming_inspection.md`. Export,
+signing, ordinary writer initialization, and authority lock lifecycles are
+unchanged. Command Core and
 Command Center contracts are unchanged; Command Center remains read-only.
 No DKE or Spartan capability is added.

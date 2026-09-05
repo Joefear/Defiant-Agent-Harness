@@ -52,16 +52,21 @@ class ChainStatus:
     detail: str = ""
 
 
-def verify_evidence_records(records: Iterable[dict]) -> ChainStatus:
-    """Verify one already-captured evidence sequence without reopening its store."""
+def verify_evidence_records(
+    records: Iterable[dict], *, require_complete_read: bool = False
+) -> ChainStatus:
+    """Verify once; complete-read mode drains after hash failure and raises read errors."""
 
     previous = GENESIS
     count = 0
+    first_failure = None
     try:
         for index, record in enumerate(records):
+            if first_failure is not None:
+                continue
             count = index + 1
             if record.get("previous_record_hash") != previous:
-                return ChainStatus(
+                first_failure = ChainStatus(
                     False,
                     count,
                     index,
@@ -72,10 +77,13 @@ def verify_evidence_records(records: Iterable[dict]) -> ChainStatus:
                         "record was altered or removed"
                     ),
                 )
+                if not require_complete_read:
+                    return first_failure
+                continue
             body = {key: value for key, value in record.items() if key != "record_hash"}
             recomputed = sha256_of(body)
             if recomputed != record.get("record_hash"):
-                return ChainStatus(
+                first_failure = ChainStatus(
                     False,
                     count,
                     index,
@@ -85,9 +93,16 @@ def verify_evidence_records(records: Iterable[dict]) -> ChainStatus:
                         "in place"
                     ),
                 )
+                if not require_complete_read:
+                    return first_failure
+                continue
             previous = record["record_hash"]
     except EvidenceError as exc:
+        if require_complete_read:
+            raise
         return ChainStatus(False, count, count, str(exc))
+    if first_failure is not None:
+        return first_failure
     return ChainStatus(True, count, detail="chain intact")
 
 

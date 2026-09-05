@@ -416,16 +416,16 @@ def cmd_history(args) -> int:
 
 def cmd_show(args) -> int:
     try:
-        records = EvidenceStore.read_existing_records(
+        rec = None
+        with EvidenceStore.stream_existing_records(
             Path(args.workdir) / "evidence.jsonl"
-        )
+        ) as records:
+            for record in records:
+                if rec is None and record.get("record_id") == args.record_id:
+                    rec = record
     except EvidenceError as exc:
         print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
-    rec = next(
-        (record for record in records if record.get("record_id") == args.record_id),
-        None,
-    )
     if rec is None:
         print(f"no record {_terminal_text(args.record_id)}", file=sys.stderr)
         return 1
@@ -435,13 +435,13 @@ def cmd_show(args) -> int:
 
 def cmd_verify(args) -> int:
     try:
-        records = EvidenceStore.read_existing_records(
+        with EvidenceStore.stream_existing_records(
             Path(args.workdir) / "evidence.jsonl"
-        )
+        ) as records:
+            status = verify_evidence_records(records, require_complete_read=True)
     except EvidenceError as exc:
         print(f"{RED}{_terminal_text(str(exc))}{RESET}", file=sys.stderr)
         return 1
-    status = verify_evidence_records(records)
     if status.ok:
         print(f"{GREEN}chain intact{RESET}  {status.count} records")
         return 0

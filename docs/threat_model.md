@@ -452,6 +452,14 @@ the buffer and close the reader. This is not a whole-log byte cap, writer lock,
 log-rotation policy, or bounded-time scan; large requested row counts can still
 use proportionally more memory. See `streaming_history.md`.
 
+Show and verify through v0.89 still materialized the complete decoded log.
+v0.90 streams both commands, retaining only a selected show record or verifier
+state plus per-record working storage. A naive early return after a match or
+hash failure would hide malformed tails; both commands therefore finish the
+read before emitting results, and later reader errors take precedence. This
+does not prove completeness, add a writer lock, cap scan time, or alter default
+writer verification. See `streaming_inspection.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of
