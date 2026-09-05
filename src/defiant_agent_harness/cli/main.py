@@ -353,11 +353,32 @@ def cmd_reconcile_authorization(args) -> int:
     return 0
 
 
+def _history_cell(value: str, width: int) -> str:
+    # Escape before truncating so no evidence-supplied terminal control survives.
+    text = json.dumps(value[:width], ensure_ascii=True)[1:-1]
+    if len(value) <= width and len(text) <= width:
+        return text
+    return text[: width - 3] + "..."
+
+
 def cmd_history(args) -> int:
     try:
+        if type(args.limit) is not int or args.limit < 0:
+            raise EvidenceError("history limit must be a non-negative integer")
         recs = EvidenceStore.read_existing_records(
             Path(args.workdir) / "evidence.jsonl"
         )
+        for record in recs:
+            for field in (
+                "timestamp",
+                "tool_name",
+                "decision",
+                "result_status",
+                "record_id",
+                "request_id",
+            ):
+                if type(record.get(field)) is not str:
+                    raise EvidenceError(f"invalid evidence history field: {field}")
     except EvidenceError as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
@@ -366,13 +387,22 @@ def cmd_history(args) -> int:
     if not recs:
         print("no evidence yet.")
         return 0
+    if args.limit == 0:
+        print("no evidence selected.")
+        return 0
+    rows = []
+    for r in recs[-args.limit :]:
+        rows.append(
+            f"{_history_cell(r['timestamp'][:19], 19):<22} "
+            f"{_history_cell(r['tool_name'], 13):<14} "
+            f"{_history_cell(r['decision'], 18):<18} "
+            f"{_c(_history_cell(r['result_status'], 20)):<29} "
+            f"{_history_cell(r['record_id'], 80)}"
+        )
     print(f"\n{'time':<22} {'tool':<14} {'decision':<18} {'status':<20} record")
     print("-" * 100)
-    for r in recs[-args.limit :]:
-        print(
-            f"{r['timestamp'][:19]:<22} {r['tool_name'][:13]:<14} "
-            f"{r['decision']:<18} {_c(r['result_status']):<29} {r['record_id']}"
-        )
+    for row in rows:
+        print(row)
     print()
     return 0
 
@@ -1187,7 +1217,7 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile_authorization.set_defaults(fn=cmd_reconcile_authorization)
 
     h = sub.add_parser("history")
-    h.add_argument("--limit", type=int, default=25)
+    h.add_argument("--limit", type=_non_negative_int, default=25)
     h.add_argument("--request", default="")
     h.set_defaults(fn=cmd_history)
 

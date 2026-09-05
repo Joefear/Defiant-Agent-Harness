@@ -1136,6 +1136,15 @@ locking from enrolling a missing directory. Chain verification and request
 selection use the same locked capture. See `existing_evidence_exports.md` for
 the retained lock, signing, output, and point-in-time contracts.
 
+## v0.87 safe history rendering
+
+History validates its projection fields across the captured log before request
+filtering or display. It renders all selected rows before emitting the table,
+using ASCII JSON escapes and fixed cell widths so evidence cannot supply raw
+terminal controls. Non-negative limit handling gives zero an empty selection.
+These are presentation checks, not authority or hash-integrity endorsements;
+see `safe_history_rendering.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

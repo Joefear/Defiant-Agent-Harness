@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.86.
+logs. A full trusted-memory/DKE system is not part of v0.87.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.86 is
+## What v0.87 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -160,6 +160,11 @@ v0.86 makes request exports require existing evidence. Export locking can no
 longer initialize a missing state directory, and chain status, selected records,
 and head hash come from one locked capture. Signing, output limits, and
 no-overwrite rules remain unchanged. See `docs/existing_evidence_exports.md`.
+
+v0.87 validates history display fields before filtering or printing, escapes
+evidence-supplied terminal controls, and bounds displayed cell widths.
+Negative history limits are refused; zero selects no rows while still requiring
+readable evidence. See `docs/safe_history_rendering.md`.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1112,7 +1117,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.86 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.87 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,

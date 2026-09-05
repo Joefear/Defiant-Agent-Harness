@@ -15,6 +15,11 @@ Each command materializes one sequence using the strict parser and existing
 per-record and filesystem checks. Show now reads the complete sequence before
 returning an early match, so malformed data later in the log is not ignored.
 
+v0.87 additionally validates the six history projection fields as strings before
+filtering, limiting, or printing. History escapes and truncates displayed cells;
+negative limits are refused and zero selects no rows. See
+`safe_history_rendering.md`. Show remains a JSON inspection path.
+
 ## Deliberate limits
 
 History and show are inspection tools, not hash-integrity endorsements. A
