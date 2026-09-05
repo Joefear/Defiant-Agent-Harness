@@ -1128,6 +1128,14 @@ state. History and show remain inspection surfaces, not hash-integrity
 endorsements. See `read_only_evidence_inspection.md`. Export and writer
 lifecycles are unchanged.
 
+## v0.86 existing-only evidence exports
+
+Request exports use `EvidenceStore.export_existing_request` without constructing
+a writable store. An existing-only mode on `exclusive_file_lock` prevents export
+locking from enrolling a missing directory. Chain verification and request
+selection use the same locked capture. See `existing_evidence_exports.md` for
+the retained lock, signing, output, and point-in-time contracts.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

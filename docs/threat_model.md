@@ -421,6 +421,13 @@ these commands capture existing evidence once and refuse unreadable input
 without state writes. They do not exclude writers, prove completeness, or
 promote displayed records to trusted evidence.
 
+Request exports retained constructor initialization and separate verification
+and selection reads through v0.85. v0.86 requires existing evidence and an
+existing state directory, then verifies and selects from one locked capture.
+Missing evidence is not recreated, and an uncertain writer lock remains a
+refusal. Transient export locking and explicit output publication are still
+writes; the change does not claim protection against a compromised host.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of
