@@ -448,8 +448,7 @@ def build_witness_payload(workdir: str | Path) -> dict[str, Any]:
     try:
         if inspect_state_file(evidence_path) is None:
             raise EvidenceWitnessError("evidence store must be enrolled")
-        evidence = EvidenceStore(evidence_path)
-        records = evidence.records()
+        records = EvidenceStore.read_existing_records(evidence_path)
         status = verify_evidence_records(records)
         if not status.ok:
             raise EvidenceWitnessError("refusing to witness a broken evidence chain")

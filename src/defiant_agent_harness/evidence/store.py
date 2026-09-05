@@ -284,8 +284,17 @@ class EvidenceStore:
     # -- read --------------------------------------------------------
 
     def _raw(self) -> Iterator[dict]:
+        return self._read_existing(self.path)
+
+    @staticmethod
+    def read_existing_records(path: str | Path) -> list[dict]:
+        """Capture existing evidence without initializing, locking, or repairing it."""
+        return list(EvidenceStore._read_existing(path))
+
+    @staticmethod
+    def _read_existing(path: str | Path) -> Iterator[dict]:
         try:
-            with open_state_file(self.path, "rb") as fh:
+            with open_state_file(path, "rb") as fh:
                 for index, line in iter_bounded_evidence_lines(fh):
                     if not line.strip():
                         continue

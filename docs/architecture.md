@@ -1109,6 +1109,16 @@ witnesses. Post-link uncertainty preserves the final file for operator
 inspection and returns failure. Command Core and Command Center schemas do not
 change, and no browser mutation capability is added.
 
+## v0.84 read-only evidence capture
+
+v0.84 introduces `EvidenceStore.read_existing_records(path)` for observations
+that must never initialize a store. It materializes one sequence with the same
+strict descriptor-backed parser used by ordinary store reads. Evidence witness
+issuance and verification use this reader; the verification CLI validates the
+chain and witness against one capture. This closes missing-file initialization
+and verify/reopen gaps without changing ordinary writer initialization,
+authority locking, or the Command Core and Command Center contracts.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume
