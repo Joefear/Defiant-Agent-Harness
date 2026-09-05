@@ -6,13 +6,15 @@ new authority to Command Core or Command Center.
 ## Validate before display
 
 History requires timestamp, tool name, decision, result status, record ID, and
-request ID to be JSON strings. Validation covers the entire captured sequence
-before request filtering or limiting, so those options cannot hide malformed
-projection fields. A missing or wrongly typed field returns exit code 1 with a
-fixed field-name diagnostic on stderr and no partial table on stdout. The
+request ID to be JSON strings. Each record is validated before request filtering
+or limiting, and the entire read must succeed before output, so those options
+cannot hide malformed projection fields. A missing or wrongly typed field
+returns exit code 1 with a fixed field-name diagnostic on stderr and no partial
+table on stdout. The
 diagnostic never echoes the invalid value.
 
-After validation and selection, rows are rendered before the table is printed.
+Rows are rendered during capture, but the table is printed only after the full
+read and validation succeed.
 Evidence text is converted to ASCII JSON-style escapes: newline, escape, bell,
 non-ASCII, and bidirectional formatting characters cannot act as terminal
 controls. Harness-owned status colors remain. Timestamps retain their existing
@@ -36,7 +38,8 @@ existing empty log retains the usual no-evidence message.
 ## Limits of the guarantee
 
 History still reads the full existing log and remains non-initializing and
-read-only. No total-history memory bound or maximum positive row count is added.
+read-only. v0.89 retains only the requested bounded display rows plus per-record
+parsing work; no maximum positive row count is added. See `streaming_history.md`.
 These checks do not validate every contract field, authenticate records, check
 hashes, or establish completeness. Readable hash-corrupt records remain
 inspectable. Show, verify, export, signing, and writer lifecycles are unchanged.

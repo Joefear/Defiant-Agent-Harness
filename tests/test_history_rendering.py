@@ -135,7 +135,7 @@ def test_negative_cli_limit_rejected_before_read(tmp_path, monkeypatch, capsys):
     def forbid(*args, **kwargs):
         pytest.fail("invalid limit reached evidence reading")
 
-    monkeypatch.setattr(EvidenceStore, "read_existing_records", forbid)
+    monkeypatch.setattr(EvidenceStore, "stream_existing_records", forbid)
     with pytest.raises(SystemExit) as exc:
         main(["--workdir", str(tmp_path / "absent"), "history", "--limit", "-1"])
     assert exc.value.code == 2
@@ -149,7 +149,7 @@ def test_direct_handler_rejects_invalid_limit_before_read(
     def forbid(*args, **kwargs):
         pytest.fail("invalid limit reached evidence reading")
 
-    monkeypatch.setattr(EvidenceStore, "read_existing_records", forbid)
+    monkeypatch.setattr(EvidenceStore, "stream_existing_records", forbid)
     assert cmd_history(Namespace(workdir=tmp_path, request="", limit=limit)) == 1
     assert "non-negative integer" in capsys.readouterr().err
 

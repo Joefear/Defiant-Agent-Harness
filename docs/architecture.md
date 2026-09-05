@@ -1156,6 +1156,17 @@ chain status, hashes, signatures, JSON output, or writer behavior. Command
 Center remains read-only. See `safe_inspection_diagnostics.md` for scope and
 allocation limits.
 
+## v0.89 streaming history
+
+History consumes one context-managed existing-log stream. It validates each
+record before request filtering, retains only the requested tail of bounded
+rendered rows, and prints only after successful end-of-stream. Both normal
+completion and early failure close the reader. The default 25-row view no
+longer retains the complete decoded log; a large explicit row limit can still
+use proportionally more memory. Full-log processing time and concurrent-writer
+limits remain. Other evidence capture APIs, writers, and the read-only Command
+surfaces are unchanged. See `streaming_history.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

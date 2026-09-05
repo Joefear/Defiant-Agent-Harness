@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Iterable, Iterator
@@ -290,6 +291,13 @@ class EvidenceStore:
     def read_existing_records(path: str | Path) -> list[dict]:
         """Capture existing evidence without initializing, locking, or repairing it."""
         return list(EvidenceStore._read_existing(path))
+
+    @staticmethod
+    @contextmanager
+    def stream_existing_records(path: str | Path) -> Iterator[Iterator[dict]]:
+        """Read one existing stream, closing it even when consumption stops early."""
+        with closing(EvidenceStore._read_existing(path)) as records:
+            yield records
 
     @staticmethod
     def _read_existing(path: str | Path) -> Iterator[dict]:
