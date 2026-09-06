@@ -1212,6 +1212,17 @@ entire compact text before refusing overflow, while exact accepted bytes and
 signatures remain unchanged. Normalization, token allocation, sorting, and
 selected-record memory remain separate costs. See `incremental_compact_exports.md`.
 
+## v0.94 streaming export preflight and payload hashing
+
+A shared bounded ASCII chunk iterator feeds three export consumers: size-only
+checks, incremental SHA-256 payload hashing, and buffered publication encoding.
+Signing and verification no longer allocate complete encoded output for their
+size gates. Payload hashing independently checks its current byte count and
+returns a digest only after successful completion. Exact hashes, signatures,
+and output bytes remain unchanged. General hashing, normalization, per-record
+validation, signed-document copying, and publication retain their existing
+contracts. See `streaming_export_preflight.md`. Command Center stays read-only.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

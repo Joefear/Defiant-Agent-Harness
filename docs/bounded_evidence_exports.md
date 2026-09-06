@@ -37,6 +37,12 @@ normalization, individual encoder tokens, and sorting work are not bounded
 by this accumulator. See `incremental_export_encoding.md` and
 `incremental_compact_exports.md`.
 
+v0.94 uses size-only chunk consumption for signing and verification gates,
+without allocating complete encoded output just to discard it. Export payload
+hashing also consumes canonical chunks and independently enforces the same
+ceiling. Publication still materializes the bounded artifact. See
+`streaming_export_preflight.md`.
+
 ## Read-only visibility
 
 Command Core schema `0.73.0` publishes `evidence_export_bytes` under

@@ -488,6 +488,15 @@ preempted by size refusal, but normalization errors retain precedence. This is
 not a streaming signature, input snapshot guarantee, or process-memory quota;
 general hash callers are unchanged. See `incremental_compact_exports.md`.
 
+Through v0.93, signing and verification built bounded but complete output
+buffers merely to check size, and export payload hashing still joined the
+complete canonical text. v0.94 consumes size-check chunks without copying or
+retaining their history and feeds payload chunks directly into SHA-256, with
+an independent byte ceiling during that hash observation. Late encoding errors
+cannot produce a returned digest or signature. This does not unify separate
+caller-state observations, bound normalization or tokens, or remove the signed
+snapshot and per-record hashing costs. See `streaming_export_preflight.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

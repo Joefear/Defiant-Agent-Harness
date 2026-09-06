@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 from uuid import uuid4
 
 from cryptography.exceptions import InvalidSignature
@@ -144,7 +145,7 @@ def sign_export(
 ) -> dict[str, Any]:
     """Return a signed copy of a trustworthy evidence export payload."""
 
-    encode_export(payload, pretty=False)
+    _check_export_size(payload, pretty=False)
     _validate_export_payload(payload)
     if "attestation" in payload:
         raise EvidenceSigningError("refusing to sign an already attested export")
@@ -169,7 +170,7 @@ def sign_export(
         **statement,
         "signature": "base64:" + base64.b64encode(signature).decode("ascii"),
     }
-    encode_export(document)
+    _check_export_size(document)
     return document
 
 
@@ -182,7 +183,7 @@ def verify_export(
     try:
         if not isinstance(document, dict):
             raise EvidenceSigningError("signed export root must be an object")
-        encode_export(document, pretty=False)
+        _check_export_size(document, pretty=False)
         attestation = document.get("attestation")
         if not isinstance(attestation, dict):
             raise EvidenceSigningError("signed export is missing its attestation")
@@ -253,34 +254,43 @@ def encode_export(document: dict[str, Any], *, pretty: bool = True) -> bytes:
     """Serialize one export with bounded pretty or compact output accumulation."""
 
     try:
-        if pretty:
-            encoder = json.JSONEncoder(
-                indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
-            )
-            chunks = encoder.iterencode(document)
-            suffix = b"\n"
-        else:
-            chunks = iter_canonical_json(document)
-            suffix = b""
         output = bytearray()
-        for chunk in chunks:
-            # ASCII escaping makes character and UTF-8 byte counts equal.
-            # Reserve the pretty path's newline before copying a chunk.
-            if len(chunk) > MAX_EVIDENCE_EXPORT_BYTES - len(output) - len(suffix):
-                raise EvidenceSigningError(
-                    "evidence export exceeds fixed "
-                    f"{MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
-                )
+        for chunk in _bounded_export_chunks(document, pretty=pretty):
             output.extend(chunk.encode("utf-8"))
-        output.extend(suffix)
-        encoded = bytes(output)
+        return bytes(output)
     except (TypeError, UnicodeError, ValueError, OverflowError) as exc:
         raise EvidenceSigningError("evidence export is not valid JSON") from exc
-    if len(encoded) > MAX_EVIDENCE_EXPORT_BYTES:
-        raise EvidenceSigningError(
-            f"evidence export exceeds fixed {MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
-        )
-    return encoded
+
+
+def _check_export_size(document: dict[str, Any], *, pretty: bool = True) -> None:
+    """Validate output size without retaining encoded output."""
+    try:
+        for _ in _bounded_export_chunks(document, pretty=pretty):
+            pass
+    except (TypeError, UnicodeError, ValueError, OverflowError) as exc:
+        raise EvidenceSigningError("evidence export is not valid JSON") from exc
+
+
+def _bounded_export_chunks(document: dict[str, Any], *, pretty: bool) -> Iterator[str]:
+    if pretty:
+        chunks = json.JSONEncoder(
+            indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
+        ).iterencode(document)
+        suffix = "\n"
+    else:
+        chunks = iter_canonical_json(document)
+        suffix = ""
+    # ASCII character counts equal UTF-8 bytes. Reserve the pretty newline.
+    count = len(suffix)
+    for chunk in chunks:
+        if len(chunk) > MAX_EVIDENCE_EXPORT_BYTES - count:
+            raise EvidenceSigningError(
+                f"evidence export exceeds fixed {MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
+            )
+        count += len(chunk)
+        yield chunk
+    if suffix:
+        yield suffix
 
 
 def public_key_id(key: Ed25519PublicKey) -> str:
@@ -439,7 +449,10 @@ def _statement_bytes(statement: dict[str, Any]) -> bytes:
 
 def _payload_hash(payload: dict[str, Any]) -> str:
     try:
-        return sha256_of(payload)
+        digest = hashlib.sha256()
+        for chunk in _bounded_export_chunks(payload, pretty=False):
+            digest.update(chunk.encode("utf-8"))
+        return "sha256:" + digest.hexdigest()
     except (TypeError, ValueError, OverflowError) as exc:
         raise EvidenceSigningError("evidence export is not canonical JSON") from exc
 
