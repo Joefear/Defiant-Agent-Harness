@@ -1201,6 +1201,17 @@ output or signatures. Compact canonical encoding is unchanged. The accumulator
 limit does not cap input, individual encoder tokens, sorting, or final byte-copy
 overhead. See `incremental_export_encoding.md`. Command Center remains read-only.
 
+## v0.93 incremental compact-export encoding
+
+The compact export path uses `iter_canonical_json`: existing full normalization
+followed by the same canonical JSON settings in a chunk iterator. The shared
+export accumulator checks each ASCII chunk before UTF-8 copying, reserving a
+newline only for pretty output. `canonical_json` and general hash callers are
+not rerouted. Pre-signing and pre-verification size gates no longer join the
+entire compact text before refusing overflow, while exact accepted bytes and
+signatures remain unchanged. Normalization, token allocation, sorting, and
+selected-record memory remain separate costs. See `incremental_compact_exports.md`.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

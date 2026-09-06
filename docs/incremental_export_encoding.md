@@ -15,9 +15,10 @@ An output exactly at the ceiling is accepted; an output one byte larger is
 refused. Successful bytes match the previous pretty format, including escaped
 Unicode and controls, numeric representation, whitespace, and newline.
 
-The compact `pretty=False` path still uses the existing canonical encoder and
-post-encoding byte check. Canonical normalization, payload hashes, signature
-statements, export schemas, and signature bytes are not changed by this slice.
+In v0.92, the compact `pretty=False` path retained its full-text encoder and
+post-encoding byte check. v0.93 also accumulates compact output incrementally;
+see `incremental_compact_exports.md`. Canonical normalization, payload hashes,
+signature statements, export schemas, and signature bytes remain unchanged.
 
 ## Failure and publication
 
@@ -44,7 +45,8 @@ allocate a large individual escaped string or number token, sort a large
 mapping, or build indentation before yielding a chunk; this change does not
 preflight those costs. The bytearray may reserve extra capacity, and conversion
 to the final immutable bytes can temporarily hold another bounded output copy.
-Compact canonical encoding and signing have their existing allocations.
+Compact normalization and signing retain their existing allocations; v0.93
+bounds compact output accumulation separately.
 
 There is no new CPU quota, traversal-depth limit, detached input snapshot,
 streaming signature, evidence truncation, lock behavior, or confidentiality
