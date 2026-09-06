@@ -1190,6 +1190,17 @@ records remain materialized for the unchanged signing and serialization path.
 See `streaming_request_exports.md` for resource and trust limits. Command Core
 and Command Center are unchanged and read-only.
 
+## v0.92 incremental pretty-export encoding
+
+The shared `encode_export` pretty path uses the standard JSON encoder's chunk
+iterator, checking each ASCII chunk against remaining output capacity before
+UTF-8 conversion and accumulation. It reserves the trailing newline and returns
+bytes only after the full encoding succeeds. CLI stdout, file publication, and
+the completed signed-document size check use this path without changing exact
+output or signatures. Compact canonical encoding is unchanged. The accumulator
+limit does not cap input, individual encoder tokens, sorting, or final byte-copy
+overhead. See `incremental_export_encoding.md`. Command Center remains read-only.
+
 ## Known limits
 
 - **Approval state contains sensitive payloads.** Durable restart-safe resume

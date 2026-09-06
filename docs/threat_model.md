@@ -470,6 +470,15 @@ time, and lock duration remain costs; this is not a process-memory quota,
 streaming signature, or defense against non-cooperating writers. See
 `streaming_request_exports.md`.
 
+Pretty export encoding through v0.91 built the entire JSON text and UTF-8 byte
+buffer before checking the artifact ceiling. v0.92 checks each ASCII chunk
+before copying it into the accumulator, reserving the trailing newline and
+stopping at the first overflow. No partial artifact is published. Later invalid
+values are not inspected after overflow; the result remains a refusal, not a
+validity claim. Input materialization, individual token allocation, sorting,
+compact canonical encoding, and signing work remain separate costs. See
+`incremental_export_encoding.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

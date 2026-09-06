@@ -28,6 +28,13 @@ diagnostic names only the evidence-export boundary and fixed byte ceiling; it
 does not echo document content. Existing destinations retain the normal
 no-overwrite rule.
 
+Since v0.92, pretty-output encoding accumulates ASCII JSON chunks only while
+they fit, reserving one byte for the existing trailing newline. Oversize
+encoding stops before traversing the remaining document and before publication.
+Compact canonical encoding still materializes its complete representation;
+selected records, individual encoder tokens, and sorting work are not bounded
+by this accumulator. See `incremental_export_encoding.md`.
+
 ## Read-only visibility
 
 Command Core schema `0.73.0` publishes `evidence_export_bytes` under

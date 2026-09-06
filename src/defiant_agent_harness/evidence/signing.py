@@ -250,15 +250,27 @@ def write_export(path: str | Path, document: dict[str, Any]) -> None:
 
 
 def encode_export(document: dict[str, Any], *, pretty: bool = True) -> bytes:
-    """Serialize one export and refuse output beyond the fixed byte ceiling."""
+    """Serialize one export; bound pretty-output accumulation incrementally."""
 
     try:
-        text = (
-            json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
-            if pretty
-            else canonical_json(document)
-        )
-        encoded = text.encode("utf-8")
+        if pretty:
+            encoder = json.JSONEncoder(
+                indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
+            )
+            output = bytearray()
+            for chunk in encoder.iterencode(document):
+                # ASCII escaping makes character and UTF-8 byte counts equal.
+                # Reserve the existing trailing newline before copying a chunk.
+                if len(chunk) > MAX_EVIDENCE_EXPORT_BYTES - len(output) - 1:
+                    raise EvidenceSigningError(
+                        "evidence export exceeds fixed "
+                        f"{MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
+                    )
+                output.extend(chunk.encode("utf-8"))
+            output.extend(b"\n")
+            encoded = bytes(output)
+        else:
+            encoded = canonical_json(document).encode("utf-8")
     except (TypeError, UnicodeError, ValueError, OverflowError) as exc:
         raise EvidenceSigningError("evidence export is not valid JSON") from exc
     if len(encoded) > MAX_EVIDENCE_EXPORT_BYTES:
