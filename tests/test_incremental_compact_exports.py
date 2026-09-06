@@ -245,5 +245,10 @@ def test_signature_and_payload_match_legacy_encoding(tmp_path, monkeypatch):
         return text.encode("utf-8")
 
     monkeypatch.setattr(signing_module, "encode_export", legacy)
+    monkeypatch.setattr(
+        signing_module,
+        "_check_export_size",
+        lambda document, *, pretty=True: legacy(document, pretty=pretty),
+    )
     assert sign_export(payload, private, password, **options) == streamed
     assert verify_export(streamed, [public]).ok

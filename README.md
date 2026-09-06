@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.93.
+logs. A full trusted-memory/DKE system is not part of v0.94.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.93 is
+## What v0.94 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -204,6 +204,12 @@ normalization still runs in full, then identical canonical chunks are checked
 before copying. General hashing, signatures, pretty output, and schemas are
 unchanged. This does not bound normalization, selected records, or individual
 tokens. See `docs/incremental_compact_exports.md`.
+
+v0.94 makes signing and verification size checks consume chunks without
+retaining output buffers, and hashes export payloads incrementally under the
+same byte ceiling. Hashes, signatures, and published bytes remain identical.
+Normalization, record validation, and the signed-document copy retain their
+existing costs. See `docs/streaming_export_preflight.md`.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1156,7 +1162,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.93 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.94 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,

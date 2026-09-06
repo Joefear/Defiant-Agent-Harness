@@ -15,10 +15,12 @@ behavior retain their canonical rules. Accepted chunks concatenate to the
 existing canonical bytes. Tests compare the exact representation and signatures
 produced with the same key, payload, identity, note, and timestamp.
 
-The existing `canonical_json`, `sha256_of`, payload hashes, and signature
-statement encoders are unchanged. The new helper is used only for compact
-export output accumulation; it has no independent byte ceiling and is not a
-replacement for bounded authority snapshots or general hashing.
+The existing `canonical_json`, `sha256_of`, and signature statement encoders
+are unchanged. Since v0.94, the chunk path also feeds size-only export checks
+and streaming export payload hashing, producing identical digests. See
+`streaming_export_preflight.md`. The canonical chunk helper has no independent
+byte ceiling and is not a replacement for bounded authority snapshots or
+general hashing.
 
 ## Refusal and ordering
 
@@ -43,8 +45,9 @@ This avoids joining an oversized complete compact JSON string and byte buffer.
 It does not cap selected-record memory, the full normalized tree, scalar
 conversion, mapping sorting, individual encoder tokens, or traversal work.
 The bytearray can reserve extra capacity, and its final immutable byte copy can
-temporarily duplicate bounded output. Signing still performs its existing
-canonical hashing, snapshot, and signature work after the size gate.
+temporarily duplicate bounded output. v0.94 streams export payload hashing,
+but normalization, per-record validation hashing, the signed-document copy,
+and signature work retain their existing costs after the size gate.
 
 This is not a fixed process-memory cap, CPU quota, new depth limit, caller-state
 ownership guarantee, streaming signature, or incremental output publication.
