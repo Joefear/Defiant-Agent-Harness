@@ -6,8 +6,9 @@ v0.95 adds `windows-latest` with Python 3.12 to the existing `ubuntu-latest`
 Python 3.10, 3.11, 3.12, 3.13, and 3.14 jobs. Both platforms run the full
 default suite with `python -m pytest -q -rs`; `-rs` prints skipped tests and
 their reasons. Python 3.12 also runs lint, formatting, and wheel building on
-both platforms. The pinned checkout/setup actions and ten-minute timeout are
-unchanged. Matrix fail-fast remains disabled so all platform results are
+both platforms. The pinned checkout/setup actions are unchanged. Linux keeps
+its ten-minute timeout; Windows has a twenty-minute timeout based on the
+observed hosted run below. Matrix fail-fast remains disabled so all results are
 visible; test failures are not allowed to continue as a successful job.
 
 Run the same checks locally from the repository using its development
@@ -106,3 +107,24 @@ above and in the linked run's logs. No new Windows-only skip was introduced.
 The eight local symlink skips did not occur on hosted Windows; both hard-link
 cases also ran. This is evidence about the tests that executed, not about the
 real Windows private-ACL inspection deferred to S2.
+
+## Hosted Windows timeout finding
+
+The first clean-tree [PR run](https://github.com/Joefear/Defiant-Agent-Harness/actions/runs/34010251610)
+passed on Windows: 1,418 passed and four skips in 394.22 seconds, followed by
+successful lint, formatting, and wheel building. The simultaneous
+[branch run](https://github.com/Joefear/Defiant-Agent-Harness/actions/runs/34010251168)
+reached 1,100 passed and two skips in 564.15 seconds before the original
+ten-minute job timeout cancelled it. Timestamped progress advanced through
+75 percent; this was not a completed passing suite, nor did it report an
+assertion failure. The remaining tests and build checks were not verified by
+that cancelled run.
+
+S1 therefore gives only Windows a twenty-minute job budget and retains ten
+minutes on Linux. This allows completion on the observed slower hosted worker
+without altering tests, suppressing failures, changing Harness runtime
+timeouts, or setting a pilot resource ceiling. Require fresh successful runs
+at the revised commit. Cancellation, timeout, and skipped jobs never satisfy
+the release gate; inspect each check's conclusion rather than relying only on
+a watch command's exit status. Investigate recurring stalls or overruns rather
+than treating the additional CI time budget as a performance guarantee.
