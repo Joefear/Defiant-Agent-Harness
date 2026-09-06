@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from .limits import (
     MAX_ACTION_HASH_CANONICAL_BYTES,
@@ -66,6 +66,20 @@ def canonical_json(obj: Any) -> str:
         ensure_ascii=True,
         allow_nan=False,
     )
+
+
+def iter_canonical_json(obj: Any) -> Iterator[str]:
+    """Yield canonical text chunks after the existing full normalization pass.
+
+    This avoids joining the encoded text, but does not bound normalization,
+    individual encoder tokens, or traversal work. Consumers own output limits.
+    """
+    return json.JSONEncoder(
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).iterencode(_enum_safe(obj))
 
 
 def sha256_of(obj: Any) -> str:

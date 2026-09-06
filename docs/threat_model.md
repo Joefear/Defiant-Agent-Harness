@@ -479,6 +479,15 @@ validity claim. Input materialization, individual token allocation, sorting,
 compact canonical encoding, and signing work remain separate costs. See
 `incremental_export_encoding.md`.
 
+Compact export checks through v0.92 still built the entire canonical text and
+byte buffer before checking the export ceiling. v0.93 accumulates canonical
+chunks only while they fit, so overflow can stop encoding before subsequent
+schema validation, hashing, or key loading. Full canonical normalization still
+precedes encoding and is not newly bounded. A later encoding error may now be
+preempted by size refusal, but normalization errors retain precedence. This is
+not a streaming signature, input snapshot guarantee, or process-memory quota;
+general hash callers are unchanged. See `incremental_compact_exports.md`.
+
 ### 18. Undeclared dependency substitution inside a runtime tree
 
 Pinning an interpreter and selected entrypoint does not detect replacement of

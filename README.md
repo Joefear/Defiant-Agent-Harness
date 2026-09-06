@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.92.
+logs. A full trusted-memory/DKE system is not part of v0.93.
 
 ## The invariant
 
@@ -35,7 +35,7 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.92 is
+## What v0.93 is
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently
@@ -197,6 +197,13 @@ Exact output bytes, including ASCII escaping and the trailing newline, remain
 unchanged. Nothing is published until encoding succeeds. Compact canonical
 encoding and signing formats are unchanged. This does not cap selected-record
 memory or individual encoder tokens. See `docs/incremental_export_encoding.md`.
+
+v0.93 extends incremental output accumulation to compact exports, including
+the pre-signing and pre-verification size checks. Existing canonical
+normalization still runs in full, then identical canonical chunks are checked
+before copying. General hashing, signatures, pretty output, and schemas are
+unchanged. This does not bound normalization, selected records, or individual
+tokens. See `docs/incremental_compact_exports.md`.
 
 v0.8 adds offline-verifiable Ed25519 attestations for request evidence exports.
 Signing requires an encrypted private key kept outside harness state, an
@@ -1149,7 +1156,7 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.92 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.93 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,

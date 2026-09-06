@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from ..contracts import canonical_json, sha256_of, utc_now
+from ..contracts import canonical_json, iter_canonical_json, sha256_of, utc_now
 from ..limits import (
     MAX_EVIDENCE_EXPORT_BYTES,
     MAX_TRUSTED_PUBLIC_KEYS,
@@ -250,27 +250,30 @@ def write_export(path: str | Path, document: dict[str, Any]) -> None:
 
 
 def encode_export(document: dict[str, Any], *, pretty: bool = True) -> bytes:
-    """Serialize one export; bound pretty-output accumulation incrementally."""
+    """Serialize one export with bounded pretty or compact output accumulation."""
 
     try:
         if pretty:
             encoder = json.JSONEncoder(
                 indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
             )
-            output = bytearray()
-            for chunk in encoder.iterencode(document):
-                # ASCII escaping makes character and UTF-8 byte counts equal.
-                # Reserve the existing trailing newline before copying a chunk.
-                if len(chunk) > MAX_EVIDENCE_EXPORT_BYTES - len(output) - 1:
-                    raise EvidenceSigningError(
-                        "evidence export exceeds fixed "
-                        f"{MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
-                    )
-                output.extend(chunk.encode("utf-8"))
-            output.extend(b"\n")
-            encoded = bytes(output)
+            chunks = encoder.iterencode(document)
+            suffix = b"\n"
         else:
-            encoded = canonical_json(document).encode("utf-8")
+            chunks = iter_canonical_json(document)
+            suffix = b""
+        output = bytearray()
+        for chunk in chunks:
+            # ASCII escaping makes character and UTF-8 byte counts equal.
+            # Reserve the pretty path's newline before copying a chunk.
+            if len(chunk) > MAX_EVIDENCE_EXPORT_BYTES - len(output) - len(suffix):
+                raise EvidenceSigningError(
+                    "evidence export exceeds fixed "
+                    f"{MAX_EVIDENCE_EXPORT_BYTES}-byte ceiling"
+                )
+            output.extend(chunk.encode("utf-8"))
+        output.extend(suffix)
+        encoded = bytes(output)
     except (TypeError, UnicodeError, ValueError, OverflowError) as exc:
         raise EvidenceSigningError("evidence export is not valid JSON") from exc
     if len(encoded) > MAX_EVIDENCE_EXPORT_BYTES:

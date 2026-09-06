@@ -31,9 +31,11 @@ no-overwrite rule.
 Since v0.92, pretty-output encoding accumulates ASCII JSON chunks only while
 they fit, reserving one byte for the existing trailing newline. Oversize
 encoding stops before traversing the remaining document and before publication.
-Compact canonical encoding still materializes its complete representation;
-selected records, individual encoder tokens, and sorting work are not bounded
-by this accumulator. See `incremental_export_encoding.md`.
+Since v0.93, compact export encoding also accumulates chunks incrementally,
+after the existing full canonical normalization pass. Selected records,
+normalization, individual encoder tokens, and sorting work are not bounded
+by this accumulator. See `incremental_export_encoding.md` and
+`incremental_compact_exports.md`.
 
 ## Read-only visibility
 
