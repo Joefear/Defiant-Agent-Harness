@@ -89,3 +89,38 @@ Command Core and Command Center stay read-only and unchanged. S4 is not begun.
 Record exact SHAs and hosted run links with observed results. A schedule entry,
 passing unit count, dispatch request, or green result from an earlier SHA is
 not a substitute for the corresponding execution evidence.
+
+## S3 observed implementation evidence
+
+The local Windows Python 3.11 default suite passed **1,443 tests with 12
+existing skips** in 501.15 seconds. The focused offline checks passed 22 tests
+with the single live opt-in skip. The real live smoke passed separately, with
+the approved file checked byte-for-byte and the ten-record evidence chain
+verified. A separate local probe forced the actual pytest test to skip:
+pytest returned success, but the live entry point correctly returned failure.
+The probe existed only in that Python process, not in repository files.
+
+The [hosted negative-control dispatch](https://github.com/Joefear/Defiant-Agent-Harness/actions/runs/34153683105)
+used branch commit `4ab7cd309d2b7ff83425231db2497d3f046b43af`, temporarily
+renaming the mapped read tool. Both platforms set `DAH_LIVE_MCP=1`, started
+the pinned server, discovered 14 tools, and completed the governed root
+listing. Both then failed because `read_text_file` was not registered:
+Linux reported one failed live test in 5.56 seconds; Windows in 47.74 seconds.
+Both steps exited 1. The dependent gate observed `failure`, emitted the
+invalid-release diagnostic, and exited 1. This is a branch-only failure proof,
+not a deliberately broken release tag. The original map was restored by
+`d8a460655b795c7a0ab4dd407d6ec92a27063254`, whose tree exactly matched the clean
+implementation commit `94054a801997e5b50beb11028778940a8c67eb09`.
+
+The release PR records the final branch SHA, cold review, and successful hosted
+branch/main/tag run links after they are observed. This section does not
+substitute for those later gates or claim that a scheduled event already ran.
+The pinned npm package reports `serverInfo.version` as `0.2.0`; that protocol
+field is not the npm package version. npm's existing transitive `glob` warning
+is not hidden or treated as proof of production dependency assurance.
+
+Live CI uses its own fresh temporary root and removes it after the test,
+including its npm cache and synthetic evidence. The interactive demo's
+retained-path message applies until this CI cleanup; it is not a promise of
+downloadable evidence artifacts. Hosted logs retain the execution results
+subject to the repository's normal Actions log retention.
