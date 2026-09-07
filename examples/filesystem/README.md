@@ -35,6 +35,24 @@ python examples/filesystem/live_demo.py --yes
 Every run gets its own ignored folder under `examples/filesystem/runs/`. The
 workspace and `.dah` evidence state are retained so the result can be inspected.
 
+## Automatic live CI
+
+S3 runs the existing end-to-end pytest case on Linux and Windows daily,
+on manual CI dispatch, and on `v*` tag pushes. Ordinary pytest remains opt-in
+and offline by default. To run the same fail-on-skip entry point in PowerShell:
+
+```powershell
+$env:DAH_LIVE_MCP = '1'
+python examples/filesystem/live_ci.py
+Remove-Item Env:DAH_LIVE_MCP
+```
+
+CI installs Node 22 and uses the exact package pin below. The test creates a
+fresh temporary workspace and npm cache; it does not use real merchant data.
+The CLI `--yes` is fixture-only operator approval for that disposable write,
+not unattended approval for a deployed workspace. See `../../docs/live_mcp_ci.md`
+for trigger, failure-proof, and release-validation requirements.
+
 ## Configuration
 
 `mcp-proxy.yaml` is an operator-authored classification of a useful subset of

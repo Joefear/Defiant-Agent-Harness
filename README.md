@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.96.
+logs. A full trusted-memory/DKE system is not part of v0.97.
 
 ## The invariant
 
@@ -35,17 +35,19 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.96 is
+## What v0.97 is
 
-v0.96 implements S2 of the Pilot Readiness Arc: real Windows security API
-tests inspect protected current-user ACLs, reject Everyone full control, and
-exercise strict startup and post-startup permission-drift refusal. Test-only
-fixtures provision disposable paths; Defiant still only verifies ACLs and
-never repairs them. The Windows/Linux CI matrix from S1 runs these tests on
-Windows and explicitly skips them on Linux. This is executable ACL coverage,
-not a real-pilot acceptance or production-readiness claim. See `docs/testing.md`
-for coverage and skip details, and `docs/pilot_readiness_arc.md` for the
-remaining gates and owner handoff stopping rule.
+v0.97 implements S3 of the Pilot Readiness Arc: automatic live integration
+through the Harness proxy to the pinned official filesystem MCP server on
+Linux and Windows. CI opts in on a daily schedule, manual dispatch, and `v*`
+release-tag pushes; ordinary push/PR tests remain offline. A skipped, missing,
+or failed live test fails the live gate. A release tag is not valid until both
+live platforms and ordinary CI pass on its exact commit. See
+`docs/live_mcp_ci.md` for the execution and release contract, `docs/testing.md`
+for platform skips, and `docs/pilot_readiness_arc.md` for remaining gates.
+This is synthetic live-server integration, not real-pilot acceptance or
+production readiness. S1 Windows CI and S2 native ACL coverage remain in place;
+non-tool MCP method disposition belongs to S4 and is not changed here.
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently

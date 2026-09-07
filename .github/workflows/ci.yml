@@ -4,11 +4,57 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
 
 permissions:
   contents: read
 
 jobs:
+  live-mcp:
+    # Network-dependent integration is NOT part of ordinary push/PR testing.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      DAH_LIVE_MCP: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Govern the real pinned filesystem server (no skips permitted)
+        run: python examples/filesystem/live_ci.py
+
+  live-mcp-gate:
+    # always() makes a failed/skipped/cancelled matrix invalidate the gate.
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    needs: live-mcp
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      LIVE_MCP_RESULT: ${{ needs.live-mcp.result }}
+    steps:
+      - name: Require both live platforms; a failing release tag is not valid
+        run: |
+          if [ "$LIVE_MCP_RESULT" != "success" ]; then
+            echo "::error::Live MCP gate failed. A release tag with this result is INVALID."
+            exit 1
+          fi
+          echo "Live MCP gate passed on Linux and Windows."
+
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 20 || 10 }}

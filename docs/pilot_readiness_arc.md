@@ -36,7 +36,7 @@ the next handoff be requested. Do not invent an additional arc.
 | --- | --- | --- | --- |
 | S1 | Windows CI and explicit skip inventory | None | Implemented for v0.95.0; main/tag CI gates and evidence in `testing.md` |
 | S2 | Real Windows private-state ACL tests | S1 | Implemented for v0.96.0; requires successful native Windows execution and main/tag CI gates; evidence in `testing.md` |
-| S3 | Automated live pinned filesystem MCP integration | S1 | Not started |
+| S3 | Automated live pinned filesystem MCP integration | S1 | Implemented for v0.97.0; completion requires both-platform negative proof, final branch/main/tag green gates, and cold review; see `live_mcp_ci.md` |
 | S4 | Explicit disposition of non-tool MCP methods | S3 | Not started |
 | S5 | Real process-kill crash recovery | S3 | Not started |
 | S6 | Distinguishable preview-hook enforcement basis and measured latency | S1 | Not started |
