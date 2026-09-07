@@ -12,7 +12,7 @@ runner: live-filesystem-demo
 # This deliberately classifies a useful subset of the official server. Tools
 # omitted from this map remain visible to clients but are blocked if called.
 tools:
-  read_text_file:
+  read_text_file_s3_deliberate_failure:
     side_effect: none
     description: Read one UTF-8 text file inside the governed workspace.
     target_arg: path
