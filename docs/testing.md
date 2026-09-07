@@ -30,8 +30,8 @@ matrix change. See `pilot_readiness_arc.md` for the remaining arc gates.
 ## Reviewable skip inventory
 
 This is the inventory of skip sites in the default suite, extended for S2.
-S3 keeps that default offline inventory intact. Its separate live CI entry
-point sets `DAH_LIVE_MCP=1` and requires the single real-server test to execute
+S3 keeps that default offline inventory intact. Its separate live CI job sets
+`DAH_LIVE_MCP=1`; the entry point requires the single real-server test to execute
 without any skip or xfail on both platforms; see `live_mcp_ci.md`.
 Conditional link-creation skips depend on runner permissions and filesystem
 support, not merely its operating-system name. A hosted Windows runner can

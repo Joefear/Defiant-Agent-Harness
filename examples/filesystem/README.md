@@ -47,7 +47,8 @@ python examples/filesystem/live_ci.py
 Remove-Item Env:DAH_LIVE_MCP
 ```
 
-CI installs Node 22 and uses the exact package pin below. The test creates a
+CI installs Node 22 and runs
+`@modelcontextprotocol/server-filesystem@2026.7.10`. The test creates a
 fresh temporary workspace and npm cache; it does not use real merchant data.
 The CLI `--yes` is fixture-only operator approval for that disposable write,
 not unattended approval for a deployed workspace. See `../../docs/live_mcp_ci.md`

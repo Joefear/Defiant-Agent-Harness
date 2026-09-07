@@ -55,10 +55,12 @@ the real pinned upstream using `npx` (`cmd /d /s /c npx` on Windows). All
 initialize/discovery and tool requests use that proxy's stdio, not a direct
 test-to-server connection. No fake MCP server or patched adapter is involved.
 
-The demo verifies a governed root listing and exact seed-file read; a blocked
+The demo verifies a governed root listing and seed-file content read; a blocked
 directory creation with no directory created; a held write with no premature
 file; operator approval via the normal CLI; the exact unchanged call retry;
 and both proxy read-back and actual disk content matching the approved text.
+Read-response text comparisons trim outer whitespace; the approved file's
+on-disk UTF-8 bytes must match the approved content exactly.
 Finally the CLI verifies the evidence chain and prints recent history. These
 checks prove the exercised synthetic tool path, not the later real Codex,
 merchant, non-tool-method, process-kill, or pilot acceptance obligations.
