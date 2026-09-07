@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.95.
+logs. A full trusted-memory/DKE system is not part of v0.96.
 
 ## The invariant
 
@@ -35,14 +35,17 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.95 is
+## What v0.96 is
 
-v0.95 begins S1 of the Pilot Readiness Arc: Windows Python 3.12 joins the
-existing Linux Python 3.10-3.14 CI matrix, and both platforms report test skip
-reasons. This is test-platform coverage, not proof of real-runner governance,
-real Windows ACL protection, or pilot readiness. See `docs/testing.md` for the
-skip inventory and verification evidence, and `docs/pilot_readiness_arc.md`
-for the bounded arc, remaining gates, and owner handoff stopping rule.
+v0.96 implements S2 of the Pilot Readiness Arc: real Windows security API
+tests inspect protected current-user ACLs, reject Everyone full control, and
+exercise strict startup and post-startup permission-drift refusal. Test-only
+fixtures provision disposable paths; Defiant still only verifies ACLs and
+never repairs them. The Windows/Linux CI matrix from S1 runs these tests on
+Windows and explicitly skips them on Linux. This is executable ACL coverage,
+not a real-pilot acceptance or production-readiness claim. See `docs/testing.md`
+for coverage and skip details, and `docs/pilot_readiness_arc.md` for the
+remaining gates and owner handoff stopping rule.
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, transparently

@@ -29,7 +29,7 @@ matrix change. See `pilot_readiness_arc.md` for the remaining arc gates.
 
 ## Reviewable skip inventory
 
-This is the complete inventory of skip sites in the default suite at S1.
+This is the inventory of skip sites in the default suite, extended for S2.
 Conditional link-creation skips depend on runner permissions and filesystem
 support, not merely its operating-system name. A hosted Windows runner can
 exercise a link test that skips inside a restricted local Windows session.
@@ -53,6 +53,7 @@ merely to satisfy this matrix.
 | `test_workspace_integrity.py::test_symlinked_workspace_root_is_rejected` | `directory symlink creation is unavailable` | Directory symlink creation fails |
 | `test_runtime_artifacts.py::test_closed_dependency_roots_reject_hard_links_when_supported` | `hard-link creation is unavailable` | Hard-link creation fails |
 | `test_state_storage.py::test_hard_linked_state_file_is_refused` | `hard-link creation is unavailable` | Hard-link creation fails |
+| `test_windows_acl_native.py` (all ten cases) | `requires real Windows security APIs and NTFS ACLs` | Non-Windows only; Windows provisioning/API failures fail the test |
 
 The S1 local Windows run recorded 1,410 passed and 12 skipped. Its skipped
 set was the first twelve rows above: fork, live MCP, FIFO, POSIX modes, and
@@ -128,3 +129,92 @@ at the revised commit. Cancellation, timeout, and skipped jobs never satisfy
 the release gate; inspect each check's conclusion rather than relying only on
 a watch command's exit status. Investigate recurring stalls or overruns rather
 than treating the additional CI time budget as a performance guarantee.
+
+## S2 real Windows private-state ACL coverage
+
+v0.96 adds ten cases in `tests/test_windows_acl_native.py`. They invoke the
+production `inspect_windows_private_acl` function and its ctypes calls to
+`GetNamedSecurityInfoW`, `GetSecurityDescriptorControl`, `GetAce`, token-user
+lookup, and SID conversion against real disposable Windows filesystem objects.
+No inspector, native helper, or current-user lookup is monkeypatched. Existing
+synthetic evaluator and mocked caller tests remain useful fast unit coverage,
+but are not presented as native Windows evidence.
+
+The fixture uses built-in PowerShell/.NET to set a deterministic DACL and
+independently observe its owner, protection flag, and security descriptor.
+Every ACL-write target must resolve to an existing descendant of its pytest
+temporary directory, never that directory itself, a real project, or a deployed
+state root.
+The current process user retains full control, including in the negative
+cases. No administrator privilege, third-party ACL package, production ACL
+repair, or Windows emulation is introduced. Fixture subprocesses have a
+30-second timeout; setup errors on Windows fail rather than skip.
+
+Coverage includes:
+
+- A Harness-created root **after explicit test/operator ACL provisioning**,
+  with current-user ownership, a protected DACL, inheritable full control,
+  and either the current user alone or also System and Administrators.
+- A newly created child file inheriting private permissions without a
+  protected file DACL, as the file contract permits.
+- Refusal of Everyone full control on both a directory and a file, a private
+  but unprotected root, and a protected root lacking child inheritance.
+- Real strict Harness startup, healthy read-only Command Core inspection,
+  then root or `budget.json` ACL drift: invalid storage/authority observations,
+  blocked tool handling, unchanged durable bytes, and no ACL repair.
+- Refusal of an initially broad root before any durable authority files are
+  created. Strict-state opt-in is never relaxed to obtain a passing result.
+
+Run this coverage directly with:
+
+```text
+python -m pytest -q -rs tests/test_windows_acl_native.py tests/test_windows_acl.py
+```
+
+The native module has one explicit non-Windows skip marker covering ten cases.
+On the S1 hosted runner configuration, expected totals after this addition and
+the launch-test correction below are 1,429 passed / four skipped on Windows
+and 1,422 passed / eleven skipped on Linux. These are expected counts, not proof
+of an executed release run. Inspect
+the actual platform logs and require every check to succeed. In a restricted
+local Windows environment, the eight existing symlink cases may still skip.
+
+The focused Windows Python 3.11 run completed with **19 passed and no skips**
+in 38.44 seconds: ten native cases plus the nine existing evaluator cases.
+It ran as the normal owning Windows user after the restricted automation
+sandbox refused fixture ACL writes. That restriction was not turned into a
+skip, and no real project/state ACL was changed. Fixture setup writes only the
+owner and DACL, not the SACL (which would require an unrelated audit privilege).
+The wheel's version and bundled Command Center assets were also checked by
+importing directly from the built v0.96.0 wheel. Require the full regression
+suite and hosted main/tag gates separately; this focused result is not a
+substitute for them.
+
+### Launch-test startup race found by full Windows regression
+
+The first full S2 local run reported **1 failed, 1,419 passed, 12 skipped**.
+All native ACL cases passed. The existing
+`test_effective_environment_reaches_child_without_ambient_injection` failed
+because its child had not created the environment marker. Its empty client
+input immediately began the production two-second shutdown grace; a separate
+probe with a 2.5-second child startup delay reproduced the missing marker.
+
+The test now waits for a real child readiness notification before providing
+client EOF, with a ten-second test-only failure bound. It checks both ordinary
+startup and a deliberate 2.5-second delay, adding one case to the suite. The
+original allowed-variable and ambient-injection assertions remain. No Harness
+shutdown timeout, transport behavior, environment policy, or CI skip changed.
+This is a fixture synchronization correction, not live MCP acceptance; S3
+remains separate. The corrected launch module together with both ACL modules
+passed all **36 tests** in 124.71 seconds on local Windows Python 3.11.
+The fresh full run then passed **1,421 tests with 12 skips** in 592.95 seconds.
+All ten native ACL cases ran; the skips were the same fork, live MCP, FIFO,
+POSIX-mode, and eight symlink cases recorded for the local S1 environment.
+Ruff lint and formatting (112 files) passed. Hosted Windows/Linux and main/tag
+CI must still independently pass before release completion.
+
+These tests establish behavior on the tested Windows filesystem and process
+identity. They do not audit the owner's real pilot directory, simulate a
+hostile kernel/administrator, prove race-free OS containment, or satisfy the
+later real-pilot acceptance gate. The inspector remains point-in-time,
+read-only assurance; operators still provision and protect their state roots.

@@ -5,6 +5,7 @@ import os
 import sys
 from io import StringIO
 from pathlib import Path
+from threading import Event
 
 import pytest
 import yaml
@@ -219,16 +220,20 @@ tools: {echo: {side_effect: none}}
         load_proxy_config(bad)
 
 
+@pytest.mark.parametrize("startup_delay", [0, 2.5])
 def test_effective_environment_reaches_child_without_ambient_injection(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, startup_delay
 ):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     marker = tmp_path / "environment.json"
     monkeypatch.setenv("DAH_AMBIENT_ATTACK", "must-not-cross")
     script = (
-        "import json,os,pathlib;"
-        f"pathlib.Path({str(marker)!r}).write_text(json.dumps(dict(os.environ)))"
+        "import json,os,pathlib,sys,time;"
+        f"time.sleep({startup_delay});"
+        f"pathlib.Path({str(marker)!r}).write_text(json.dumps(dict(os.environ)));"
+        "print(json.dumps({'jsonrpc':'2.0','method':'fixture/ready'}),flush=True);"
+        "sys.stdin.read()"
     )
     config_path = _config(
         tmp_path / "proxy.yaml",
@@ -238,7 +243,33 @@ def test_effective_environment_reaches_child_without_ambient_injection(
         command=[str(EXECUTABLE), "-c", script],
     )
 
-    _run(config_path, tmp_path / "state", workspace)
+    # EOF starts the production two-second shutdown grace. Wait for the real
+    # child's notification first, so slow startup cannot race that shutdown.
+    ready = Event()
+
+    class ReadyOutput(StringIO):
+        def write(self, text):
+            written = super().write(text)
+            if '"fixture/ready"' in text:
+                ready.set()
+            return written
+
+    class AwaitReadyInput(StringIO):
+        def readline(self, size=-1):
+            assert ready.wait(10), "child did not confirm its environment fixture"
+            return ""
+
+    output = ReadyOutput()
+    run_stdio_proxy(
+        load_proxy_config(config_path),
+        workdir=tmp_path / "state",
+        user_id="test-user",
+        workspace_id="test-workspace",
+        workspace_root=workspace,
+        client_input=AwaitReadyInput(),
+        client_output=output,
+    )
+    assert json.loads(output.getvalue())["method"] == "fixture/ready"
 
     child = json.loads(marker.read_text(encoding="utf-8"))
     assert child["DAH_ALLOWED"] == "yes"
