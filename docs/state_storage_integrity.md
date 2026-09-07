@@ -64,9 +64,19 @@ v0.96 adds native Windows regression coverage for these conditions, strict
 startup, and permission drift on both the root and a durable state file.
 The test fixture first lets Harness create a disposable root, then explicitly
 provisions its ACL as an operator would; root creation alone does not establish
-Windows privacy. These tests use the real ctypes inspection path, independently
-checked against PowerShell/.NET observations. See `testing.md` for the coverage,
+Defiant's complete strict ACL contract. These tests use the real ctypes
+inspection path, independently checked against PowerShell/.NET observations.
+See `testing.md` for the coverage,
 platform skip contract, and limits of this evidence.
+
+Strict mode also requires the execution identity's newly created files to be
+owned by that user. An elevated Windows account can default new objects to
+Builtin Administrators ownership; that is not accepted merely because the
+account is an administrator or the DACL is otherwise private. Verify creation
+ownership in the intended runtime context as well as the existing root/files.
+Defiant does not change the token's default owner or the machine's ownership
+policy. The native tests explicitly distinguish the provisioned current-owner
+case from unmodified ambient ownership.
 
 ## Atomic replacement and crash posture
 

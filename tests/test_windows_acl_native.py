@@ -7,6 +7,7 @@ Provisioning failures on Windows are failures, never reasons to skip.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import subprocess
@@ -35,6 +36,102 @@ from defiant_agent_harness.windows_acl import (
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="requires real Windows security APIs and NTFS ACLs"
 )
+
+
+@pytest.fixture
+def current_owner_creation():
+    """Select current-user creation ownership on a same-identity thread token.
+
+    Hosted administrators can default new objects to the Administrators owner.
+    Only a duplicate token's default owner changes, not its user or privileges,
+    the process token, another thread, or machine policy. Never replace an
+    existing impersonation context. Always revert before leaving this fixture.
+    """
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    def api(library, name, arguments, result=wintypes.BOOL):
+        function = getattr(library, name)
+        function.argtypes = arguments
+        function.restype = result
+        return function
+
+    handle = wintypes.HANDLE
+    pointer = ctypes.POINTER(handle)
+    close = api(kernel, "CloseHandle", [handle])
+    current_thread = api(kernel, "GetCurrentThread", [], handle)
+    current_process = api(kernel, "GetCurrentProcess", [], handle)
+    open_thread = api(
+        advapi, "OpenThreadToken", [handle, wintypes.DWORD, wintypes.BOOL, pointer]
+    )
+    open_process = api(advapi, "OpenProcessToken", [handle, wintypes.DWORD, pointer])
+    duplicate = api(
+        advapi,
+        "DuplicateTokenEx",
+        [handle, wintypes.DWORD, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, pointer],
+    )
+    get_info = api(
+        advapi,
+        "GetTokenInformation",
+        [
+            handle,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        ],
+    )
+    set_info = api(
+        advapi,
+        "SetTokenInformation",
+        [handle, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
+    )
+    impersonate = api(advapi, "ImpersonateLoggedOnUser", [handle])
+    revert = api(advapi, "RevertToSelf", [])
+
+    prior = handle()
+    if open_thread(current_thread(), 0x0008, True, ctypes.byref(prior)):
+        close(prior)
+        pytest.fail("native owner fixture requires an unimpersonated test thread")
+    assert ctypes.get_last_error() == 1008, ctypes.WinError()  # ERROR_NO_TOKEN
+    primary = handle()
+    owned = handle()
+    active = False
+    try:
+        # QUERY | DUPLICATE; duplicate gets QUERY | ADJUST_DEFAULT | IMPERSONATE.
+        assert open_process(current_process(), 0x000A, ctypes.byref(primary)), (
+            ctypes.WinError()
+        )
+        assert duplicate(primary, 0x008C, None, 2, 2, ctypes.byref(owned)), (
+            ctypes.WinError()
+        )
+        needed = wintypes.DWORD()
+        get_info(primary, 1, None, 0, ctypes.byref(needed))  # TokenUser
+        assert needed.value > 0, ctypes.WinError()
+        user = ctypes.create_string_buffer(needed.value)
+        assert get_info(primary, 1, user, needed, ctypes.byref(needed)), (
+            ctypes.WinError()
+        )
+        # TOKEN_USER begins with its SID pointer; TOKEN_OWNER is one SID pointer.
+        owner = ctypes.c_void_p.from_buffer_copy(user)
+        assert set_info(owned, 4, ctypes.byref(owner), ctypes.sizeof(owner)), (
+            ctypes.WinError()
+        )
+        assert impersonate(owned), ctypes.WinError()
+        active = True
+        yield
+    finally:
+        if active and not revert():
+            pytest.exit(
+                "cannot revert native owner fixture; terminating test run", returncode=1
+            )
+        if owned.value:
+            close(owned)
+        if primary.value:
+            close(primary)
+
 
 _ACL_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
@@ -129,7 +226,7 @@ def test_real_private_root_accepts_current_owner_and_protected_dacl(
     tmp_path, acl_path, system_admins
 ):
     state = tmp_path / "state"
-    prepare_state_storage(state)  # Harness creation does not provision Windows ACLs.
+    prepare_state_storage(state)  # Creation alone does not prove the strict contract.
     before = acl_path(state, system_admins=system_admins)
     assert before["owner_sid"] == before["current_sid"]
     assert before["protected"] is True
@@ -145,7 +242,9 @@ def test_real_private_root_accepts_current_owner_and_protected_dacl(
     assert acl_path(state, write=False) == before  # Inspection never repairs ACLs.
 
 
-def test_real_child_file_inherits_private_acl(tmp_path, acl_path):
+def test_real_child_file_inherits_private_acl(
+    tmp_path, acl_path, current_owner_creation
+):
     state = tmp_path / "state"
     prepare_state_storage(state)
     acl_path(state)
@@ -158,6 +257,22 @@ def test_real_child_file_inherits_private_acl(tmp_path, acl_path):
     assert observed.owner_current_user is True
     assert observed.dacl_protected is False
     assert observed.principal_count == 1
+
+
+def test_real_ambient_child_owner_is_checked_without_repair(tmp_path, acl_path):
+    # Do not normalize the creation token here: exercise the actual host default.
+    state = tmp_path / "state"
+    prepare_state_storage(state)
+    acl_path(state)
+    child = state / "ambient.json"
+    child.write_text("{}", encoding="utf-8")
+    before = acl_path(child, write=False)
+    if before["owner_sid"] != before["current_sid"]:
+        with pytest.raises(WindowsAclError, match="owned by the current user"):
+            inspect_windows_private_acl(child, directory=False)
+    else:
+        assert inspect_windows_private_acl(child, directory=False).owner_current_user
+    assert acl_path(child, write=False) == before
 
 
 @pytest.mark.parametrize("directory", [True, False])
@@ -181,7 +296,9 @@ def test_real_unprotected_root_is_refused(tmp_path, acl_path):
     acl_path(parent)
     state = parent / "state"
     prepare_state_storage(state)
-    assert acl_path(state, write=False)["protected"] is False
+    # Python 3.12.4+ handles mkdir(0o700) on Windows; explicitly provision this
+    # negative posture instead of assuming mkdir leaves inheritance enabled.
+    assert acl_path(state, protected=False)["protected"] is False
     with pytest.raises(WindowsAclError, match="disable inherited permissions"):
         inspect_windows_private_acl(state, directory=True)
 
@@ -200,7 +317,7 @@ def _state_bytes(state):
 
 @pytest.mark.parametrize("drift_target", ["root", "budget.json"])
 def test_real_acl_drift_blocks_execution_and_read_models_without_repair(
-    tmp_path, acl_path, drift_target
+    tmp_path, acl_path, drift_target, current_owner_creation
 ):
     state = tmp_path / "state"
     workspace = tmp_path / "workspace"
@@ -231,6 +348,7 @@ def test_real_acl_drift_blocks_execution_and_read_models_without_repair(
     rendered = json.dumps(snapshot)
     assert "S-1-" not in rendered
     assert str(state) not in rendered
+    assert json.dumps(str(state))[1:-1] not in rendered
     with pytest.raises(StateIntegrityError, match="state_storage_invalid"):
         harness.handle_call(
             ToolCall(name="read_file", arguments={"path": "workspace/a.txt"}),

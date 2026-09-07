@@ -53,7 +53,7 @@ merely to satisfy this matrix.
 | `test_workspace_integrity.py::test_symlinked_workspace_root_is_rejected` | `directory symlink creation is unavailable` | Directory symlink creation fails |
 | `test_runtime_artifacts.py::test_closed_dependency_roots_reject_hard_links_when_supported` | `hard-link creation is unavailable` | Hard-link creation fails |
 | `test_state_storage.py::test_hard_linked_state_file_is_refused` | `hard-link creation is unavailable` | Hard-link creation fails |
-| `test_windows_acl_native.py` (all ten cases) | `requires real Windows security APIs and NTFS ACLs` | Non-Windows only; Windows provisioning/API failures fail the test |
+| `test_windows_acl_native.py` (all eleven cases) | `requires real Windows security APIs and NTFS ACLs` | Non-Windows only; Windows provisioning/API failures fail the test |
 
 The S1 local Windows run recorded 1,410 passed and 12 skipped. Its skipped
 set was the first twelve rows above: fork, live MCP, FIFO, POSIX modes, and
@@ -132,7 +132,7 @@ than treating the additional CI time budget as a performance guarantee.
 
 ## S2 real Windows private-state ACL coverage
 
-v0.96 adds ten cases in `tests/test_windows_acl_native.py`. They invoke the
+v0.96 adds eleven cases in `tests/test_windows_acl_native.py`. They invoke the
 production `inspect_windows_private_acl` function and its ctypes calls to
 `GetNamedSecurityInfoW`, `GetSecurityDescriptorControl`, `GetAce`, token-user
 lookup, and SID conversion against real disposable Windows filesystem objects.
@@ -171,10 +171,10 @@ Run this coverage directly with:
 python -m pytest -q -rs tests/test_windows_acl_native.py tests/test_windows_acl.py
 ```
 
-The native module has one explicit non-Windows skip marker covering ten cases.
+The native module has one explicit non-Windows skip marker covering eleven cases.
 On the S1 hosted runner configuration, expected totals after this addition and
-the launch-test correction below are 1,429 passed / four skipped on Windows
-and 1,422 passed / eleven skipped on Linux. These are expected counts, not proof
+the launch-test correction below are 1,430 passed / four skipped on Windows
+and 1,422 passed / twelve skipped on Linux. These are expected counts, not proof
 of an executed release run. Inspect
 the actual platform logs and require every check to succeed. In a restricted
 local Windows environment, the eight existing symlink cases may still skip.
@@ -212,6 +212,39 @@ All ten native ACL cases ran; the skips were the same fork, live MCP, FIFO,
 POSIX-mode, and eight symlink cases recorded for the local S1 environment.
 Ruff lint and formatting (112 files) passed. Hosted Windows/Linux and main/tag
 CI must still independently pass before release completion.
+
+### Hosted creation-owner and Python-version findings
+
+The first hosted [branch run](https://github.com/Joefear/Defiant-Agent-Harness/actions/runs/34146200056)
+at `b07fbf2670f603c3842d6b539daed0410377e6c1` reported **4 failed, 1,425 passed,
+4 skipped** on Windows Python 3.12.10. A new child file was actually owned by
+Builtin Administrators, not the current user. Strict startup consequently
+refused its newly created state files. This refusal is required; allowing
+Administrators-owned state would weaken the current-owner contract.
+
+The fixtures now make the creation precondition explicit for the inherited-file
+and healthy-startup cases. A duplicate of the current process token selects
+the same user's SID as default owner and is used only on the current test
+thread. User identity, groups, privileges, process token, other threads, and
+machine policy are unchanged. Existing impersonation is refused; successful
+setup is always reverted and handles closed. No production inspector is
+replaced. Windows documents how the [creation token determines ownership](https://learn.microsoft.com/en-us/windows/win32/secauthz/owner-of-a-new-object)
+and permits [same-identity impersonation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser).
+A separate native case keeps ambient ownership untouched and asserts refusal
+when it is not the current user's, with no repair. This is not a claim that
+an elevated runner's unmodified default ownership satisfies strict mode.
+
+The unprotected-root fixture also no longer assumes `mkdir(0o700)` leaves a
+Windows DACL inherited: [Python 3.12.4 added Windows handling of that mode](https://docs.python.org/3.12/library/os.html#os.mkdir).
+It explicitly provisions and independently checks an unprotected private DACL
+before requiring the inspector to refuse it. No CI account or machine-wide
+security setting changes, production ACL repairs, or additional Windows skips
+are used. The revised ACL modules passed **20 tests** (eleven native plus nine
+evaluator cases) locally in 34.83 seconds. The fresh full Windows Python 3.11
+run then passed **1,422 tests with the same 12 existing skips** in 621.89
+seconds; every native ACL case ran. Ruff lint and formatting remained green.
+Require fresh hosted Windows/Linux and main/tag results at the corrected
+commit before release completion.
 
 These tests establish behavior on the tested Windows filesystem and process
 identity. They do not audit the owner's real pilot directory, simulate a
