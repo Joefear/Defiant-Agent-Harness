@@ -262,6 +262,11 @@ def run(args: argparse.Namespace) -> Path:
         )
         if _status(read_response) != "succeeded":
             raise RuntimeError(f"governed read failed: {read_response}")
+        if (
+            _result_text(read_response)
+            != (SEED / "briefing.txt").read_bytes().decode("utf-8").strip()
+        ):
+            raise RuntimeError("governed read did not return the real seed content")
         print("4. Allowed read:")
         print(f"   {_result_text(read_response).replace(chr(10), ' | ')}")
 
@@ -292,6 +297,8 @@ def run(args: argparse.Namespace) -> Path:
         metadata = pending["result"]["_defiant"]
         if metadata["status"] != "pending_approval":
             raise RuntimeError(f"write was not held for approval: {pending}")
+        if (workspace / "approved-note.txt").exists():
+            raise RuntimeError("held write reached the upstream before approval")
         approval_id = metadata["approval_id"]
         print(f"6. Held write for approval: {approval_id}")
 
@@ -306,6 +313,8 @@ def run(args: argparse.Namespace) -> Path:
         if _status(repeated) != expected:
             raise RuntimeError(f"exact retry produced an unexpected result: {repeated}")
         if not approved:
+            if (workspace / "approved-note.txt").exists():
+                raise RuntimeError("rejected write created a file")
             print("7. Rejected exact retry; no file was written")
         else:
             print("7. Approved exact retry and executed the real upstream write")
@@ -318,6 +327,13 @@ def run(args: argparse.Namespace) -> Path:
             )
             if _status(confirmed) != "succeeded":
                 raise RuntimeError(f"could not read the approved file: {confirmed}")
+            expected_content = write_params["arguments"]["content"]
+            if _result_text(confirmed) != expected_content.strip():
+                raise RuntimeError("proxy read-back differs from the approved content")
+            if (
+                workspace / "approved-note.txt"
+            ).read_bytes() != expected_content.encode("utf-8"):
+                raise RuntimeError("real workspace file differs from approved content")
             print(f"8. Read back: {_result_text(confirmed).splitlines()[0]}")
     finally:
         client.close()

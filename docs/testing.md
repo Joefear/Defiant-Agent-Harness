@@ -30,6 +30,9 @@ matrix change. See `pilot_readiness_arc.md` for the remaining arc gates.
 ## Reviewable skip inventory
 
 This is the inventory of skip sites in the default suite, extended for S2.
+S3 keeps that default offline inventory intact. Its separate live CI job sets
+`DAH_LIVE_MCP=1`; the entry point requires the single real-server test to execute
+without any skip or xfail on both platforms; see `live_mcp_ci.md`.
 Conditional link-creation skips depend on runner permissions and filesystem
 support, not merely its operating-system name. A hosted Windows runner can
 exercise a link test that skips inside a restricted local Windows session.
@@ -40,7 +43,7 @@ merely to satisfy this matrix.
 | Test file and function | Exact reason | Condition |
 | --- | --- | --- |
 | `test_authority_lock.py::test_forked_child_does_not_inherit_reentrant_authority` | `requires POSIX fork` | `os.fork` unavailable; normally Windows |
-| `test_filesystem_live_example.py::test_official_filesystem_server_end_to_end` | `set DAH_LIVE_MCP=1 to download and exercise the official MCP server` | Opt-in variable absent; both CI platforms in S1 |
+| `test_filesystem_live_example.py::test_official_filesystem_server_end_to_end` | `set DAH_LIVE_MCP=1 to download and exercise the official MCP server` | Opt-in variable absent; ordinary CI on both platforms; a skip fails the separate S3 live gate |
 | `test_state_storage.py::test_nonregular_state_file_is_rejected_without_blocking_on_open` | `FIFO creation is unavailable` | `os.mkfifo` unavailable; normally Windows |
 | `test_state_storage.py::test_posix_state_modes_are_private_and_overbroad_file_fails_closed` | `POSIX permission semantics` | Non-POSIX platform; Windows |
 | `test_control_plane_isolation.py::test_direct_and_symlinked_state_targets_are_refused` | `directory symlink creation is unavailable` | Directory symlink creation fails |
