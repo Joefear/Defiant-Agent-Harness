@@ -5,6 +5,19 @@ server:
 
 runner: generic-mcp-client
 
+# Reviewed only for this repository's simulated demo server, not arbitrary MCP.
+method_dispositions:
+  protocol_version: "2025-06-18"
+  reviewed_server:
+    name: defiant-demo
+    commands: [[python, examples/demo_mcp_server.py]]
+  requests:
+    initialize: allow
+    tools/list: allow
+    tools/call: governed
+  notifications:
+    notifications/initialized: allow
+
 # This map is the operator-authored authority boundary. Every callable upstream
 # tool must be classified here. Unmapped tools are refused at tools/call.
 tools:

@@ -10,6 +10,10 @@ server:
 
 runner: generic-mcp-client
 
+# S4 intentionally leaves this placeholder without a reviewed non-tool map.
+# Initialization/non-tool forwarding is denied until the operator inventories
+# the real endpoint and adds method_dispositions; see docs/mcp_method_disposition.md.
+
 # This is the operator-authored authority boundary. Replace these examples
 # with the exact tools and conservative classifications of the remote server.
 tools:

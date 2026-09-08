@@ -64,7 +64,10 @@ on-disk UTF-8 bytes must match the approved content exactly.
 Finally the CLI verifies the evidence chain and prints recent history. These
 checks prove the exercised synthetic tool path, not the later real Codex,
 merchant, non-tool-method, process-kill, or pilot acceptance obligations.
-Command Core and Command Center stay read-only and unchanged. S4 is not begun.
+Command Core and Command Center stay read-only and unchanged. This section
+records S3's scope; S4's later method gate and inventory are documented in
+`mcp_method_disposition.md`. S4 retains this live test's governed purpose and
+adds a real ping assertion rather than weakening any existing assertion.
 
 ## Required proof and release sequence
 

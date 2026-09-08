@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import hashlib
 import sys
-from dataclasses import replace
 from decimal import Decimal
 from functools import partial
 from pathlib import Path
@@ -20,12 +20,15 @@ from ..bounded_io import (
 )
 from ..contracts import (
     ContentRef,
+    Decision,
+    EvidenceRecord,
     HarnessRequest,
     ResultStatus,
     Sensitivity,
     Trust,
     action_sha256_of,
     sha256_of,
+    new_id,
 )
 from ..money import money
 from ..limits import MAX_MCP_MESSAGE_BYTES
@@ -50,11 +53,15 @@ from ..tools.registry import (
     ToolRegistry,
     canonical_workspace_target,
 )
-from .config import McpConfigError, McpProxyConfig, McpToolConfig
+from .config import (
+    MCP_PROTOCOL_VERSION,
+    McpConfigError,
+    McpProxyConfig,
+    McpToolConfig,
+    valid_method_name,
+)
 from .http_session import HttpUpstreamSession
 from .session import MCP_ERROR, MCP_RESULT, McpTransportError, UpstreamSession
-
-MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
 class McpUpstream(Protocol):
@@ -210,6 +217,15 @@ class McpStdioProxy:
                     )
                 ],
                 "dry_run": dry_run,
+                "method_dispositions": (
+                    config.method_dispositions.authority_dict()
+                    if config.method_dispositions is not None
+                    else {
+                        "contract": "exact_client_methods_v1",
+                        "tools/call": "governed",
+                        "otherwise": "deny",
+                    }
+                ),
             }
         )
         owner_kind = "mcp_http" if config.url else "mcp_stdio"
@@ -263,14 +279,152 @@ class McpStdioProxy:
             # JSON-RPC batch would let a nested tools/call bypass interception.
             self.session.emit_message(_rpc_error(None, -32600, "Invalid Request"))
             return
-        if message.get("method") == "initialize" and "id" in message:
+        method = message.get("method")
+        has_id = "id" in message
+        notification = not has_id
+        # This pilot negotiates no server-to-client request capabilities. A
+        # response envelope is not permission to send arbitrary data upstream.
+        if "method" not in message and ("result" in message or "error" in message):
+            self._refuse_method(
+                message,
+                line,
+                "client_response",
+                "Client responses are not enabled",
+                response=False,
+                kind="response",
+            )
+            return
+        if (
+            message.get("jsonrpc") != "2.0"
+            or not valid_method_name(method)
+            or set(message) - {"jsonrpc", "id", "method", "params"}
+            or (has_id and not _valid_request_id(message["id"]))
+        ):
+            self._refuse_method(
+                message,
+                line,
+                "invalid",
+                "Invalid MCP request envelope",
+                code=-32600,
+                response=has_id,
+            )
+            return
+        policy = self.config.method_dispositions
+        disposition = (
+            policy.disposition(method, notification=notification)
+            if policy is not None
+            else "governed"
+            if method == "tools/call" and has_id
+            else "unclassified"
+        )
+        if disposition not in {"allow", "governed"}:
+            self._refuse_method(
+                message,
+                line,
+                disposition,
+                "MCP method/form is not permitted",
+                response=has_id,
+            )
+            return
+        if disposition == "governed":
+            self.session.emit_message(self._handle_tool_request(message))
+            return
+        if "params" in message and not isinstance(message["params"], dict):
+            self._refuse_method(
+                message,
+                line,
+                "invalid",
+                "MCP params must be an object",
+                code=-32602,
+                response=has_id,
+            )
+            return
+        if method == "initialize":
+            params = message.get("params")
+            if (
+                notification
+                or not isinstance(params, dict)
+                or not isinstance(params.get("capabilities"), dict)
+            ):
+                self._refuse_method(
+                    message,
+                    line,
+                    "invalid",
+                    "Invalid initialize request",
+                    code=-32602,
+                    response=has_id,
+                )
+                return
             self.session.forward_raw(_bounded_initialize(message))
             return
-        if not _is_tool_request(message):
-            self.session.forward_raw(line)
-            return
-        response = self._handle_tool_request(message)
-        self.session.emit_message(response)
+        self.session.forward_raw(line)
+
+    def _refuse_method(
+        self,
+        message: dict[str, Any],
+        line: str,
+        disposition: str,
+        reason: str,
+        *,
+        code: int = -32601,
+        response: bool,
+        kind: str = "",
+    ) -> None:
+        """Record a protocol event, not a tool action or an execution grant."""
+        method = message.get("method")
+        event_id = new_id("rpc_event")
+        record = EvidenceRecord(
+            request_id=event_id,
+            action_id=event_id,
+            decision=Decision.BLOCK,
+            result_status=ResultStatus.BLOCKED,
+            agent_runner=self.config.runner_name,
+            model_id=self.config.model_id,
+            user_id=self.user_id,
+            workspace_id=self.workspace_id,
+            tool_name="mcp.protocol",
+            payload_trust=Trust.UNTRUSTED.value,
+            policy_ids=["mcp_method_disposition"],
+            policy_version=self.harness.policy.version,
+            ruleset_hash=self.harness.policy.ruleset_hash,
+            decision_reason=reason,
+            decision_inputs={
+                "event_type": "mcp_method_refusal",
+                "direction": "client_to_upstream",
+                "message_kind": kind
+                or ("request" if "id" in message else "notification"),
+                "method": method
+                if valid_method_name(method)
+                else "<invalid-or-absent>",
+                "method_hash": sha256_of(method),
+                "rpc_id_hash": sha256_of(message["id"]) if "id" in message else "",
+                "server_name": self.config.server_name,
+                "server_fingerprint": self.server_fingerprint,
+                "proxy_fingerprint": self.proxy_fingerprint,
+                "protocol_version": MCP_PROTOCOL_VERSION,
+                "disposition": disposition,
+                "forwarded": False,
+            },
+            payload_hash="sha256:" + hashlib.sha256(line.encode("utf-8")).hexdigest(),
+            result_summary=reason,
+        )
+        # Refusal evidence uses the existing durable chain/checkpoint and writer
+        # lock. Failure propagates; no reply claims recorded refusal on failure.
+        with self.harness.authority_lock.acquire():
+            recorded = self.harness.evidence.append(record)
+        if response:
+            request_id = message.get("id")
+            error = _rpc_error(
+                request_id if _valid_request_id(request_id) else None, code, reason
+            )
+            error["error"]["data"] = {
+                "_defiant": {
+                    "status": "blocked",
+                    "disposition": disposition,
+                    "evidence_record_id": recorded.record_id,
+                }
+            }
+            self.session.emit_message(error)
 
     def _handle_tool_request(self, message: dict[str, Any]) -> dict[str, Any]:
         if "id" not in message:
@@ -475,20 +629,17 @@ def run_stdio_proxy(
         cwd=config.cwd,
         workdir=workdir,
     )
-    effective_config = replace(
-        config, command=assurance.command, cwd=launch_assurance.cwd
-    )
     session = UpstreamSession(
-        effective_config.command,
+        assurance.command,
         output_stream,
-        cwd=effective_config.cwd,
-        timeout_seconds=effective_config.upstream_timeout_seconds,
+        cwd=launch_assurance.cwd,
+        timeout_seconds=config.upstream_timeout_seconds,
         environment=launch_assurance.environment,
         start=False,
     )
     try:
         proxy = McpStdioProxy(
-            effective_config,
+            config,
             session,
             workdir=workdir,
             user_id=user_id,
@@ -506,11 +657,11 @@ def run_stdio_proxy(
             launch_envelope_assurance=launch_assurance,
         )
         reverified = verify_runtime_artifacts(
-            effective_config.command,
-            effective_config.artifact_integrity.artifacts,
+            assurance.command,
+            config.artifact_integrity.artifacts,
             workdir=workdir,
-            cwd=effective_config.cwd,
-            dependency_roots=effective_config.artifact_integrity.dependency_roots,
+            cwd=launch_assurance.cwd,
+            dependency_roots=config.artifact_integrity.dependency_roots,
         )
         require_same_artifact_bundle(assurance, reverified)
         require_launch_target_unchanged(launch_assurance)
@@ -612,8 +763,8 @@ def _call_upstream(
     return result
 
 
-def _is_tool_request(message: Any) -> bool:
-    return isinstance(message, dict) and message.get("method") == "tools/call"
+def _valid_request_id(value: Any) -> bool:
+    return (type(value) is int) or (type(value) is str and 0 < len(value) <= 256)
 
 
 def _authority_params(params: dict[str, Any]) -> dict[str, Any]:
@@ -631,9 +782,12 @@ def _bounded_initialize(message: dict[str, Any]) -> str:
     forwarded = copy.deepcopy(message)
     params = forwarded.get("params")
     if isinstance(params, dict):
-        requested = params.get("protocolVersion")
-        if not isinstance(requested, str) or requested > MCP_PROTOCOL_VERSION:
-            params["protocolVersion"] = MCP_PROTOCOL_VERSION
+        # The reviewed pilot uses command-line directories, not client roots,
+        # sampling, elicitation, or other server-to-client request authority.
+        params["capabilities"] = {}
+        # Offering an unsupported older revision can make an SDK answer with
+        # its newest revision. Offer only the revision covered by this review.
+        params["protocolVersion"] = MCP_PROTOCOL_VERSION
     return json.dumps(forwarded, separators=(",", ":")) + "\n"
 
 

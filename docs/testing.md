@@ -1,5 +1,24 @@
 # Testing and platform coverage
 
+## S4 method disposition
+
+`tests/test_mcp_method_disposition.py` adds offline adversarial config, envelope,
+notification, evidence, authority-binding, and real subprocess wire-receipt
+tests. The upstream records every received message before dispatch, proving
+that refused methods never reach it. Existing subprocess/HTTP fixtures now
+explicitly declare their reviewed method/form maps. No platform skip is added.
+
+Run the focused slice with:
+
+```text
+python -m pytest -q -rs tests/test_mcp_method_disposition.py tests/test_mcp_config.py tests/test_mcp_stdio_proxy.py tests/test_mcp_http_proxy.py
+```
+
+Also run the full suite, Ruff, formatting, wheel/package smoke, and the existing
+`DAH_LIVE_MCP=1` live entry point. Require actual Linux/Windows live execution
+and ordinary CI on the final feature, main, and release-tag commits. The S3
+opt-in and fail-on-skip contract is unchanged; see `mcp_method_disposition.md`.
+
 ## S1 Windows CI
 
 v0.95 adds `windows-latest` with Python 3.12 to the existing `ubuntu-latest`

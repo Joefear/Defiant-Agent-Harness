@@ -261,6 +261,17 @@ server:
     Authorization: TEST_MCP_AUTH
   timeout_seconds: 5
 runner: pytest-http
+method_dispositions:
+  protocol_version: "2025-06-18"
+  reviewed_server:
+    name: http-fixture
+    url: {endpoint}/mcp
+  requests:
+    initialize: allow
+    tools/list: allow
+    tools/call: governed
+  notifications:
+    notifications/initialized: allow
 tools:
   echo:
     side_effect: none
