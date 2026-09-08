@@ -66,10 +66,10 @@ class McpMethodDispositions:
             raise McpConfigError("method dispositions require protocol 2025-06-18")
         if type(self.server_name) is not str or not self.server_name.strip():
             raise McpConfigError("reviewed server name must be non-empty")
-        if type(self.url) is not str or bool(self.commands) == bool(self.url):
-            raise McpConfigError("reviewed server requires exactly commands or url")
         if type(self.commands) is not tuple:
             raise McpConfigError("reviewed commands must be an immutable tuple")
+        if type(self.url) is not str or bool(self.commands) == bool(self.url):
+            raise McpConfigError("reviewed server requires exactly commands or url")
         _bounded_collection_count(self.commands, "reviewed commands")
         seen_commands = set()
         for command in self.commands:
@@ -102,6 +102,12 @@ class McpMethodDispositions:
                 if name in seen:
                     raise McpConfigError("duplicate or conflicting method declaration")
                 seen.add(name)
+                if type(disposition) is not str or disposition not in {
+                    "allow",
+                    "deny",
+                    "governed",
+                }:
+                    raise McpConfigError("unknown method disposition")
                 if disposition == "allow" and (
                     (
                         form == "notifications"
@@ -112,12 +118,6 @@ class McpMethodDispositions:
                     raise McpConfigError(
                         "method allow declaration has the wrong message form"
                     )
-                if type(disposition) is not str or disposition not in {
-                    "allow",
-                    "deny",
-                    "governed",
-                }:
-                    raise McpConfigError("unknown method disposition")
                 if disposition == "governed" and (
                     name != "tools/call" or form != "requests"
                 ):

@@ -412,6 +412,22 @@ def test_duplicate_in_memory_review_and_oversized_config_are_rejected(
         load_body(tmp_path, config_body())
 
 
+@pytest.mark.parametrize("field", ["commands", "requests"])
+def test_review_rejects_callbacks_before_interpreting_values(tmp_path, field):
+    class HostileValue:
+        def __bool__(self):
+            raise AssertionError("unvalidated truthiness callback executed")
+
+        def __eq__(self, other):
+            raise AssertionError("unvalidated equality callback executed")
+
+    policy = load_body(tmp_path, config_body()).method_dispositions
+    value = HostileValue()
+    change = value if field == "commands" else (("ping", value),)
+    with pytest.raises(McpConfigError):
+        replace(policy, **{field: change})
+
+
 @pytest.mark.parametrize("requested", ["2020-01-01", "2025-06-18", "2025-11-25"])
 def test_initialize_offers_only_the_reviewed_revision(tmp_path, requested):
     proxy, session = make_proxy(tmp_path)

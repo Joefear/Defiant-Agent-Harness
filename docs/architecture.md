@@ -107,7 +107,9 @@ An in-flight overrun cannot be prevented. It is always visible, and it reduces t
 
 ## MCP transport boundary in v0.3
 
-The proxy launches one upstream command without a shell. Its stdout is reserved
+The proxy launches one configured upstream argument vector with `shell=False`.
+A reviewed vector may explicitly invoke a shell executable, as the Windows
+filesystem example does for `npx`; this is not OS containment. Its stdout is reserved
 for newline-delimited MCP messages. Since S4, only explicitly reviewed
 method/form pairs pass through; unknown client methods and client response
 envelopes are refused. The review binds exact server identity/command variants

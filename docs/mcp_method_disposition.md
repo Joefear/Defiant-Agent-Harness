@@ -59,8 +59,10 @@ inventory and disposition review, even if its advertised tool names are unchange
 `requests`, and `notifications`. Each form maps exact method names to `allow`,
 `deny`, or `governed`. Missing entries mean unclassified/deny, not inheritance
 from the opposite form. Only `tools/call` requests can use `governed`; declaring
-that method `allow` is invalid. Request-only protocol methods cannot be allowed
-as notifications, nor can `notifications/...` be allowed as requests.
+that method `allow` is invalid. The known core request methods `initialize`,
+`tools/list`, and `ping` cannot be allowed as notifications, nor can
+`notifications/...` be allowed as requests. Other exact allow declarations
+still require operator review of their method's actual message form.
 
 Names are case-sensitive ASCII path-like identifiers, 1–128 characters, with
 letter-led segments and letters, digits, underscore, hyphen, or dot inside a
@@ -72,6 +74,8 @@ governed. Duplicate YAML keys, unknown fields/values, conflicting duplicate
 in-memory entries, malformed maps, ambiguous transport binding, and more than
 4,096 entries in a collection fail closed. Existing YAML byte/node/depth limits
 also apply; accepted review state is immutable and projections are detached.
+In-memory review values are type-checked before comparison or truthiness, so
+unsupported objects cannot execute callbacks during those validation steps.
 
 `reviewed_server` contains `name` and either `commands` (a nonempty list of
 exact argument vectors) or `url`. The filesystem review lists only the Linux
