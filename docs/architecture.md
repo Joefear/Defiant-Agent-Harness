@@ -108,13 +108,20 @@ An in-flight overrun cannot be prevented. It is always visible, and it reduces t
 ## MCP transport boundary in v0.3
 
 The proxy launches one upstream command without a shell. Its stdout is reserved
-for newline-delimited MCP messages. Initialization, discovery, notifications,
-and non-tool requests pass through. `tools/call` is translated to a harness
+for newline-delimited MCP messages. Since S4, only explicitly reviewed
+method/form pairs pass through; unknown client methods and client response
+envelopes are refused. The review binds exact server identity/command variants
+and protocol and participates in the existing proxy/authority fingerprint.
+Refused method events use the durable evidence chain without minting grants.
+`tools/call` is translated to a harness
 action; allowed calls use a private upstream request id and the original
 upstream result or JSON-RPC error is restored under the client's request id with
 `_defiant` evidence metadata.
 
-Protocol negotiation is capped at `2025-06-18`. The `2025-11-25` task
+S4 offers exactly `2025-06-18` and projects client capabilities to `{}`; the
+pilot cannot negotiate client roots, sampling, or elicitation. See
+`mcp_method_disposition.md` for the source-backed inventory and migration.
+The `2025-11-25` task
 augmentation is intentionally not advertised until task creation, durable
 status, cancellation, and result retrieval can all share the same authority and
 evidence model.

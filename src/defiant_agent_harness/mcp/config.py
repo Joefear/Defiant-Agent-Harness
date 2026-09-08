@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from ipaddress import ip_address
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -30,6 +31,134 @@ from ..tools.registry import ToolSpec
 
 class McpConfigError(ValueError):
     """The proxy configuration is unsafe or malformed."""
+
+
+MCP_PROTOCOL_VERSION = "2025-06-18"
+MAX_METHOD_NAME_CHARACTERS = 128
+_METHOD_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]*(?:/[A-Za-z][A-Za-z0-9_.-]*)*")
+
+
+def valid_method_name(value: Any) -> bool:
+    return (
+        type(value) is str
+        and 0 < len(value) <= MAX_METHOD_NAME_CHARACTERS
+        and _METHOD_NAME.fullmatch(value) is not None
+        and not value.startswith("rpc.")
+    )
+
+
+@dataclass(frozen=True)
+class McpMethodDispositions:
+    """One immutable review of exact client methods for an exact upstream."""
+
+    protocol_version: str
+    server_name: str
+    commands: tuple[tuple[str, ...], ...] = ()
+    url: str = ""
+    requests: tuple[tuple[str, str], ...] = ()
+    notifications: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.protocol_version) is not str
+            or self.protocol_version != MCP_PROTOCOL_VERSION
+        ):
+            raise McpConfigError("method dispositions require protocol 2025-06-18")
+        if type(self.server_name) is not str or not self.server_name.strip():
+            raise McpConfigError("reviewed server name must be non-empty")
+        if type(self.url) is not str or bool(self.commands) == bool(self.url):
+            raise McpConfigError("reviewed server requires exactly commands or url")
+        if type(self.commands) is not tuple:
+            raise McpConfigError("reviewed commands must be an immutable tuple")
+        _bounded_collection_count(self.commands, "reviewed commands")
+        seen_commands = set()
+        for command in self.commands:
+            if type(command) is not tuple or not command:
+                raise McpConfigError("each reviewed command must be a non-empty tuple")
+            _bounded_collection_count(command, "reviewed command")
+            if any(type(arg) is not str or not arg for arg in command):
+                raise McpConfigError(
+                    "reviewed commands require exact non-empty strings"
+                )
+            if command in seen_commands:
+                raise McpConfigError("duplicate reviewed command")
+            seen_commands.add(command)
+        if self.url:
+            _validate_http_url(self.url)
+        for form in ("requests", "notifications"):
+            entries = getattr(self, form)
+            if type(entries) is not tuple:
+                raise McpConfigError("method declarations must be immutable tuples")
+            _bounded_collection_count(entries, f"method {form}")
+            seen = set()
+            for entry in entries:
+                if type(entry) is not tuple or len(entry) != 2:
+                    raise McpConfigError(
+                        "method declarations require name and disposition"
+                    )
+                name, disposition = entry
+                if not valid_method_name(name):
+                    raise McpConfigError("invalid exact method name")
+                if name in seen:
+                    raise McpConfigError("duplicate or conflicting method declaration")
+                seen.add(name)
+                if disposition == "allow" and (
+                    (
+                        form == "notifications"
+                        and name in {"initialize", "tools/list", "ping"}
+                    )
+                    or (form == "requests" and name.startswith("notifications/"))
+                ):
+                    raise McpConfigError(
+                        "method allow declaration has the wrong message form"
+                    )
+                if type(disposition) is not str or disposition not in {
+                    "allow",
+                    "deny",
+                    "governed",
+                }:
+                    raise McpConfigError("unknown method disposition")
+                if disposition == "governed" and (
+                    name != "tools/call" or form != "requests"
+                ):
+                    raise McpConfigError("only tools/call requests may be governed")
+                if name == "tools/call" and disposition == "allow":
+                    raise McpConfigError("tools/call cannot bypass governance")
+                if (
+                    form == "notifications"
+                    and name == "tools/call"
+                    and disposition != "deny"
+                ):
+                    raise McpConfigError("tools/call notifications must be denied")
+
+    def require_binding(self, name: str, command: tuple[str, ...], url: str) -> None:
+        if (
+            name != self.server_name
+            or url != self.url
+            or (command and command not in self.commands)
+        ):
+            raise McpConfigError("method disposition reviewed server binding mismatch")
+
+    def disposition(self, method: str, *, notification: bool) -> str:
+        entries = self.notifications if notification else self.requests
+        return next(
+            (value for name, value in entries if name == method), "unclassified"
+        )
+
+    def authority_dict(self) -> dict[str, Any]:
+        return {
+            "contract": "exact_client_methods_v1",
+            "protocol_version": self.protocol_version,
+            "reviewed_server": {
+                "name": self.server_name,
+                "commands": self.commands,
+                "url": self.url,
+            },
+            "requests": dict(self.requests),
+            "notifications": dict(self.notifications),
+            "client_capabilities": "none",
+            "client_responses": "deny",
+        }
 
 
 _RESERVED_HTTP_HEADERS = {
@@ -154,6 +283,7 @@ class McpProxyConfig:
     upstream_timeout_seconds: float = 60.0
     artifact_integrity: McpArtifactIntegrityConfig = McpArtifactIntegrityConfig()
     launch_environment: LaunchEnvironmentConfig | None = None
+    method_dispositions: McpMethodDispositions | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.server_name, str) or not self.server_name.strip():
@@ -210,9 +340,15 @@ class McpProxyConfig:
             raise McpConfigError("server.timeout_seconds must be a positive number")
         if self.upstream_timeout_seconds <= 0:
             raise McpConfigError("server.timeout_seconds must be positive")
+        if self.method_dispositions is not None:
+            if type(self.method_dispositions) is not McpMethodDispositions:
+                raise McpConfigError("invalid method disposition object")
+            self.method_dispositions.require_binding(
+                self.server_name, self.command, self.url
+            )
 
 
-_ROOT_KEYS = {"server", "runner", "model", "tools"}
+_ROOT_KEYS = {"server", "runner", "model", "tools", "method_dispositions"}
 _SERVER_KEYS = {
     "name",
     "command",
@@ -262,6 +398,17 @@ def _preflight_config_collections(
     _bounded_collection_count(command_raw, "server.command")
     _bounded_collection_count(server.get("header_env", {}), "server.header_env")
     _bounded_collection_count(root.get("tools"), "tools")
+    methods = root.get("method_dispositions")
+    if isinstance(methods, dict):
+        for form in ("requests", "notifications"):
+            _bounded_collection_count(methods.get(form), f"method {form}")
+        reviewed = methods.get("reviewed_server")
+        if isinstance(reviewed, dict):
+            commands = reviewed.get("commands")
+            _bounded_collection_count(commands, "reviewed commands")
+            if isinstance(commands, list):
+                for command in commands:
+                    _bounded_collection_count(command, "reviewed command")
 
     dependency_file_count = 0
     artifact_raw = server.get("artifact_integrity")
@@ -541,6 +688,40 @@ def load_proxy_config(
         upstream_timeout_seconds=float(timeout),
         artifact_integrity=artifact_integrity,
         launch_environment=launch_environment,
+        method_dispositions=(
+            _load_method_dispositions(root["method_dispositions"])
+            if "method_dispositions" in root
+            else None
+        ),
+    )
+
+
+def _load_method_dispositions(raw: Any) -> McpMethodDispositions:
+    item = _mapping(raw, "method_dispositions")
+    keys = {"protocol_version", "reviewed_server", "requests", "notifications"}
+    if set(item) != keys:
+        raise McpConfigError(
+            "method_dispositions requires exactly protocol_version, reviewed_server, requests, notifications"
+        )
+    reviewed = _mapping(item["reviewed_server"], "reviewed_server")
+    if set(reviewed) not in ({"name", "commands"}, {"name", "url"}):
+        raise McpConfigError(
+            "reviewed_server requires name and exactly commands or url"
+        )
+    commands = reviewed.get("commands", [])
+    if not isinstance(commands, list) or any(
+        not isinstance(command, list) for command in commands
+    ):
+        raise McpConfigError("reviewed commands must be a list of argument vectors")
+    requests = _mapping(item["requests"], "method requests")
+    notifications = _mapping(item["notifications"], "method notifications")
+    return McpMethodDispositions(
+        protocol_version=item["protocol_version"],
+        server_name=reviewed["name"],
+        commands=tuple(tuple(command) for command in commands),
+        url=reviewed.get("url", ""),
+        requests=tuple(requests.items()),
+        notifications=tuple(notifications.items()),
     )
 
 

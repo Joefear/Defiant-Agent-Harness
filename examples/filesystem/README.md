@@ -74,9 +74,16 @@ have multiple path targets and do not fit the proxy's current single-target
 confinement contract. They remain visible in `tools/list` but Defiant blocks
 them if called. This is fail-closed, not an accidental omission.
 
-The package version is pinned so an upstream release cannot silently change the
-demo's authority boundary. Review and update the tool map before changing that
-pin. The current official package may emit an npm deprecation warning for its
+S4 also declares exact request/notification method dispositions, bound to the
+reviewed command variants and protocol. Unknown methods/forms are denied and
+recorded before forwarding; notifications are dropped without replies. Client
+capabilities are not advertised upstream, preventing client-root replacement
+of configured directories. The demo additionally verifies allowed ping.
+See `../../docs/mcp_method_disposition.md` for the inventory and migration rules.
+
+The package version is load-bearing: re-inventory methods and review both
+dispositions and the tool map before changing that pin. A changed command must
+not reuse its stale review. The current official package may emit an npm deprecation warning for its
 `glob` dependency; that is an upstream diagnostic on stderr and does not corrupt
 the MCP stream. Resolve and lock the complete dependency tree before treating
 this example as a production deployment.

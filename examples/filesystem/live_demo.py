@@ -231,6 +231,11 @@ def run(args: argparse.Namespace) -> Path:
         print(f"\n1. Connected to {server['name']} {server['version']}")
         client.notify("notifications/initialized")
 
+        pong = client.request("ping")
+        if pong.get("result") != {} or "error" in pong:
+            raise RuntimeError(f"reviewed protocol ping failed: {pong}")
+        print("   Reviewed ping completed through the Harness proxy")
+
         listed = client.request("tools/list")
         names = {tool["name"] for tool in listed["result"]["tools"]}
         required = {"read_text_file", "write_file", "create_directory"}

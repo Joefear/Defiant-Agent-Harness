@@ -118,8 +118,8 @@ Getting this wrong is the most likely way to ship a harness that does nothing wh
 
 1. **Mock adapter** — done. Scripted, deterministic, carries the red-team fixtures.
 2. **MCP stdio proxy** — done in v0.2. It sits between a runner and one
-   configured MCP server, preserves ordinary traffic and upstream tool results,
-   and gates `tools/call`.
+   configured MCP server, preserves explicitly reviewed protocol traffic and
+   upstream tool results, and gates `tools/call`. S4 removes implicit forwarding.
 3. **MCP Streamable HTTP upstream** — done in v0.3. The runner still sees a
    local stdio server while Defiant carries governed traffic to a remote HTTPS
    endpoint, including session ids and JSON/SSE responses.
@@ -151,3 +151,23 @@ negotiating the experimental task-augmented `tools/call` shape introduced in
 `2025-11-25` before the harness has a durable task contract. Within the
 supported revision, the full params object—not only `arguments`—is bound and
 forwarded except for the ephemeral `_meta.progressToken`.
+
+## S4 reviewed method boundary
+
+An adapter/upstream configuration must not gain implicit non-tool forwarding.
+`method_dispositions` is security configuration: exact request and notification
+maps distinguish `allow`, `governed`, and `deny`; unclassified forms are denied.
+Only a `tools/call` request can be governed, and it cannot be declared `allow`.
+The reviewed server name, exact command variants or URL, and protocol are
+validated against the effective configuration, including CLI overrides. The
+complete disposition review participates in the existing proxy fingerprint,
+approval identity, and durable authority profile. New upstream methods stay
+denied until explicitly reviewed; a package/version change needs a fresh review.
+
+The pilot offers only `2025-06-18` and suppresses advertised client capabilities.
+It does not support client roots, sampling, elicitation, unsolicited client
+responses, or generic bidirectional MCP. Requests refused by this method gate
+receive an error and durable protocol-event evidence; refused notifications
+receive no JSON-RPC response and are recorded then dropped. No refusal or
+allowed non-tool method creates a tool approval or execution grant. See
+`mcp_method_disposition.md` for schema, migration, evidence, and scope limits.

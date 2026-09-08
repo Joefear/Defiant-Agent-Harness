@@ -9,6 +9,41 @@ server:
 
 runner: live-filesystem-demo
 
+# This review is valid only for these exact launch vectors and protocol.
+# Changing the pin requires a fresh inventory, not merely a new command.
+method_dispositions:
+  protocol_version: "2025-06-18"
+  reviewed_server:
+    name: official-filesystem
+    commands:
+      - [npx, -y, "@modelcontextprotocol/server-filesystem@2026.7.10", workspace]
+      - [cmd, /d, /s, /c, npx, -y, "@modelcontextprotocol/server-filesystem@2026.7.10", workspace]
+  requests:
+    initialize: allow
+    tools/list: allow
+    ping: allow
+    tools/call: governed
+    resources/list: deny
+    resources/templates/list: deny
+    resources/read: deny
+    resources/subscribe: deny
+    resources/unsubscribe: deny
+    prompts/list: deny
+    prompts/get: deny
+    completion/complete: deny
+    logging/setLevel: deny
+    roots/list: deny
+    tasks/get: deny
+    tasks/list: deny
+    tasks/result: deny
+    tasks/cancel: deny
+  notifications:
+    notifications/initialized: allow
+    notifications/roots/list_changed: deny
+    notifications/cancelled: deny
+    notifications/progress: deny
+    tools/call: deny
+
 # This deliberately classifies a useful subset of the official server. Tools
 # omitted from this map remain visible to clients but are blocked if called.
 tools:

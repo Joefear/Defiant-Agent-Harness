@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.97.
+logs. A full trusted-memory/DKE system is not part of v0.98.
 
 ## The invariant
 
@@ -35,23 +35,28 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.97 is
+## What v0.98 is
 
-v0.97 implements S3 of the Pilot Readiness Arc: automatic live integration
-through the Harness proxy to the pinned official filesystem MCP server on
-Linux and Windows. CI opts in on a daily schedule, manual dispatch, and `v*`
-release-tag pushes; ordinary push/PR tests remain offline. A skipped, missing,
-or failed live test fails the live gate. A release tag is not valid until both
-live platforms and ordinary CI pass on its exact commit. See
-`docs/live_mcp_ci.md` for the execution and release contract, `docs/testing.md`
-for platform skips, and `docs/pilot_readiness_arc.md` for remaining gates.
-This is synthetic live-server integration, not real-pilot acceptance or
-production readiness. S1 Windows CI and S2 native ACL coverage remain in place;
-non-tool MCP method disposition belongs to S4 and is not changed here.
+v0.98 implements S4 of the Pilot Readiness Arc: exact, configuration-backed
+dispositions for client JSON-RPC methods. The pinned filesystem configuration
+separates allowed requests, allowed notifications, governed `tools/call`, and
+explicit denials; unclassified methods/forms are refused before forwarding.
+Refusals enter the existing durable evidence chain without granting execution
+authority. The reviewed server command variants, protocol, and dispositions
+are bound to existing authority fingerprints. See
+`docs/mcp_method_disposition.md` for the source-backed inventory, client-roots
+restriction, migration requirements, and limits.
+
+S3 live CI remains in place on Linux and Windows for scheduled, manual, and
+`v*` tag events; ordinary pytest stays offline/opt-in. A release tag is not
+valid until both live platforms and ordinary CI pass on its exact commit.
+See `docs/live_mcp_ci.md`, `docs/testing.md`, and `docs/pilot_readiness_arc.md`.
+This is not arbitrary-MCP safety, real-pilot acceptance, or production readiness.
+S5 process-kill recovery work is not included.
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
-upstream transports. Each local proxy speaks stdio to the agent, transparently
-forwards ordinary protocol traffic, and intercepts `tools/call`. It validates
+upstream transports. Each local proxy speaks stdio to the agent, forwards only
+explicitly reviewed protocol traffic, and intercepts governed `tools/call`. It validates
 an intercepted action against the authoritative operator-authored tool map,
 evaluates deterministic policy, checks budget, holds durably for human
 approval, executes through the gated path, and writes a hash-chained evidence
@@ -968,7 +973,11 @@ client's server configuration rather than run interactively:
 }
 ```
 
-The YAML `tools` map is the authority boundary. Each upstream tool declares its
+The YAML `tools` map and `method_dispositions` define the authority boundary.
+Existing configurations without method dispositions no longer forward non-tool
+traffic, including initialization. Inventory and review the actual upstream
+before adding an exact bound map; there is no permissive migration switch.
+Each upstream tool declares its
 side effect, target argument, conservative cost, dry-run support, target scope,
 and argument provenance. Unknown fields fail configuration loading. Tools the
 upstream advertises but the operator did not map remain visible in `tools/list`
@@ -1006,8 +1015,9 @@ remove ambient child-environment authority. See
 `docs/launch_envelope_integrity.md`; omitted launch settings remain visibly
 `inherited_unrestricted` for compatibility.
 
-v0.3 negotiates at most MCP protocol revision `2025-06-18`. Newer clients are
-downgraded during `initialize` so an upstream server cannot advertise the
+S4 offers only the reviewed MCP protocol revision `2025-06-18` to the upstream.
+Client capabilities are projected to an empty object: the pilot uses configured
+directories, not client roots or server-to-client requests. This avoids enabling the
 experimental task-augmented calls added in `2025-11-25`, which this release
 does not yet govern. The complete core `tools/call` params object is bound into
 the approval fingerprint. Only the ephemeral `_meta.progressToken` is excluded
@@ -1174,7 +1184,8 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.95 — local control loop, generic MCP stdio and Streamable HTTP upstreams,
+v0.98 — explicit reviewed MCP client-method disposition, local control loop,
+generic MCP stdio and Streamable HTTP upstream transports,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator
 reconciliation for approval-backed and approval-free uncertain executions,

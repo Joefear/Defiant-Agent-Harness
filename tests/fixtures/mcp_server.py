@@ -72,6 +72,11 @@ def execute(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 for line in sys.stdin:
     incoming = json.loads(line)
+    # Optional independent wire receipt log for S4 non-reachability proofs.
+    # It records every message before dispatch, including notifications.
+    if len(sys.argv) > 2:
+        with Path(sys.argv[2]).open("a", encoding="utf-8") as traffic:
+            traffic.write(json.dumps(incoming) + "\n")
     if "id" not in incoming:
         continue
     request_id = incoming["id"]
@@ -87,6 +92,8 @@ for line in sys.stdin:
                 "serverInfo": {"name": "fixture", "version": "1"},
             },
         )
+    elif method == "ping":
+        send(request_id, result={})
     elif method == "tools/list":
         send(request_id, result={"tools": tools})
     elif method == "tools/call":

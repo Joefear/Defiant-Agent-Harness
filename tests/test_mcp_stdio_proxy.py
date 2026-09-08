@@ -117,6 +117,17 @@ server:
     - {json.dumps(str(marker))}
   timeout_seconds: 10
 runner: pytest-mcp
+method_dispositions:
+  protocol_version: "2025-06-18"
+  reviewed_server:
+    name: fixture
+    commands: [[{json.dumps(sys.executable)}, {json.dumps(str(SERVER))}, {json.dumps(str(marker))}]]
+  requests:
+    initialize: allow
+    tools/list: allow
+    tools/call: governed
+  notifications:
+    notifications/initialized: allow
 tools:
   echo:
     side_effect: none
@@ -170,14 +181,9 @@ def test_proxy_preserves_protocol_and_governs_real_subprocess(tmp_path, capsys):
     proxy = ProxyProcess(config, state)
     try:
         initialize(proxy, requested_version="2025-11-25")
-        bypass = proxy.raw(
-            {
-                "jsonrpc": "2.0",
-                "method": "tools/call",
-                "params": {"name": "echo", "arguments": {"text": "bypass"}},
-            }
-        )
-        assert bypass["error"]["code"] == -32600
+        # Notifications receive no JSON-RPC reply, even when refused. The next
+        # request is a transport barrier; any erroneous reply would be first.
+        proxy.notify("tools/call", {"name": "echo", "arguments": {"text": "bypass"}})
         batch = proxy.raw(
             [
                 {

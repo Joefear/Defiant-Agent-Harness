@@ -714,6 +714,40 @@ The budget approximates search work rather than measuring CPU. v0.39 separately
 bounds action fingerprints; non-glob context comparisons, process-wide
 resources, and a compromised host remain outside this control.
 
+### 31. Unclassified MCP methods and client-controlled roots
+
+Through S3, client messages other than `tools/call` generally passed upstream
+without a method disposition. For the pinned filesystem server, source review
+found that client roots advertised during initialization or refreshed through
+`notifications/roots/list_changed` could replace its command-line directories.
+The protocol convention alone was therefore not a sufficient boundary.
+
+S4 makes the proxy authoritative for the pilot only for the protocol methods
+and forms covered by its reviewed disposition configuration. `tools/call`
+remains governed through the existing policy, approval, budget, and capability
+path. Explicitly allowed non-tool methods are forwarded because their behavior
+was reviewed for this pinned server and protocol, not because non-tool traffic
+is inherently safe. Unknown/unclassified methods and forms are refused by
+default. Refused requests never reach upstream and receive errors; refused
+notifications are durably recorded and dropped without a JSON-RPC response.
+
+The pilot offers exactly `2025-06-18`, advertises no client capabilities to the
+upstream, refuses roots-change notifications, and drops client response
+envelopes. Reviewed name/command variants or URL must match effective config;
+the review is included in the existing authority fingerprint and profile.
+Omission does not restore permissive forwarding. Refusal events contain only
+bounded method metadata, identifiers/hashes, and decision context, not raw
+params or an invented execution authorization. Evidence failure stops the
+affected path without forwarding or falsely claiming a durable refusal.
+
+This is not proof for arbitrary MCP servers, future server versions, or
+bidirectional server-to-client methods. Updating the pinned
+`@modelcontextprotocol/server-filesystem@2026.7.10` requires re-reviewing its
+inventory and dispositions. npm transitive dependencies remain unlocked;
+operator-authored allow declarations remain trusted configuration, and host,
+dependency, filesystem, and network containment remain external controls.
+See `mcp_method_disposition.md` for inventory sources and non-reachability tests.
+
 ## What we do not defend against
 
 Stated plainly, because a buyer will find these anyway and it is better they hear them from us.
