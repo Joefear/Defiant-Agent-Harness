@@ -19,8 +19,10 @@ const record = (event) => {
 // Resolve the SDK belonging to this installed package, then its ESM implementation
 // (the official entry point imports ESM). Fail closed if the layout changes.
 const require = createRequire(pathToFileURL(entry));
-const sdkPath = require.resolve('@modelcontextprotocol/sdk/server/stdio.js')
+const resolvedPath = require.resolve('@modelcontextprotocol/sdk/server/stdio.js');
+const sdkPath = resolvedPath
   .replace(`${path.sep}dist${path.sep}cjs${path.sep}`, `${path.sep}dist${path.sep}esm${path.sep}`);
+if (sdkPath === resolvedPath) throw new Error('unsupported SDK resolution layout');
 const { StdioServerTransport } = await import(pathToFileURL(sdkPath).href);
 const start = StdioServerTransport.prototype.start;
 StdioServerTransport.prototype.start = async function () {
@@ -30,6 +32,7 @@ StdioServerTransport.prototype.start = async function () {
     record({ event: 'arrival', message });
     return onmessage(message, ...rest);
   };
+  record({ event: 'hooked' });
   return start.call(this);
 };
 record({ event: 'boot', package: `${metadata.name}@${metadata.version}`, entry });

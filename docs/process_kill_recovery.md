@@ -19,7 +19,10 @@ unchanged. It registers no tool handlers, synthesizes no responses, and neither
 forwards requests to a fake server nor substitutes a filesystem implementation.
 The package manifest must match the exact name/version. The real entry point's
 bytes are checked unchanged after the tests. The SDK resolution layout is
-explicit; an incompatible layout fails rather than silently disabling recording.
+explicit; an unchanged CJS-to-ESM path rewrite throws before server startup.
+Each server must record exactly one `hooked` event before any arrival; the
+test also checks the full received-method sequence, so a patch that misses
+the real transport cannot silently pass.
 The npm package pin is not a complete transitive dependency lock.
 
 All requests enter through the Harness proxy. The test-specific reviewed launch
@@ -52,6 +55,9 @@ are asserted. This drain barrier prevents queued bytes being mistaken for no
 dispatch, and proves the original upstream is no longer processing work before
 operator reconciliation. It also detects an orphan that fails to exit; timeout
 is a failure, not an absence assertion.
+The complete receipt log must contain exactly two distinct upstream boots for
+each restartable case, or one for the unsafe torn-append case. Every boot PID
+must have one hook event and ordered EOF/normal-exit records before final counts.
 
 ## Scenarios and expected arrivals
 
@@ -100,6 +106,15 @@ diff review before merge. Require main ordinary and dispatched live success
 before creating v0.99.0, then all tag jobs before declaring release closure.
 
 ## Limits
+
+The process topology differs from the pilot: the proxy uses the base Python
+interpreter, not the pilot's `dah` console-script launcher. The real server is
+started directly with Node and the observer, not the pilot's `npx -y ...` or
+Windows `cmd /d /s /c npx ...` launch vector. This proves interpreter death and
+upstream drain only for the tested topology; it does not prove launcher death
+or EOF propagation through the pilot's additional launcher layers. S9 scenario
+#10 must exercise the pilot's actual proxy and server startup paths on Windows
+and Linux before making that broader process-kill acceptance claim.
 
 These are selected process-death windows, not all crash interleavings, storage
 failure, power loss, disk-controller durability, OS containment, or real pilot

@@ -50,6 +50,26 @@ def receipts(path):
     ]
 
 
+def assert_upstream_lifecycles(records, expected_boots):
+    boots = [r for r in records if r["event"] == "boot"]
+    assert len(boots) == expected_boots, boots
+    pids = {r["pid"] for r in boots}
+    assert len(pids) == expected_boots, "each boot must identify a distinct process"
+    assert {r["pid"] for r in records} == pids, "unidentified upstream process"
+    for pid in pids:
+        lifecycle = [r for r in records if r["pid"] == pid]
+        assert [r["event"] for r in lifecycle if r["event"] != "arrival"] == [
+            "boot",
+            "hooked",
+            "eof",
+            "exit",
+        ], lifecycle
+        assert lifecycle[0]["event"] == "boot"
+        assert lifecycle[1]["event"] == "hooked"
+        assert [r["event"] for r in lifecycle[-2:]] == ["eof", "exit"]
+        assert lifecycle[-1]["code"] == 0
+
+
 @pytest.fixture(scope="module")
 def real_package(tmp_path_factory):
     directory = tmp_path_factory.mktemp("s5-real-package")
@@ -264,6 +284,13 @@ class Run:
             if r["pid"] == pid and r["event"] == "exit"
         ] == [0]
 
+    def drain_all(self, expected_boots):
+        boots = [r for r in receipts(self.receipt) if r["event"] == "boot"]
+        assert len(boots) == expected_boots, boots
+        for boot in boots:
+            self.drain(boot["pid"])
+        assert_upstream_lifecycles(receipts(self.receipt), expected_boots)
+
 
 @pytest.mark.skipif(
     os.environ.get("DAH_LIVE_MCP") != "1",
@@ -290,7 +317,7 @@ def test_real_proxy_process_kill(tmp_path, real_package, point):
         assert approved.returncode == 0, approved.stderr
         client.send("tools/call", run.params)
         marker = client.kill_at_barrier()
-        run.drain(upstream_pid)
+        run.drain_all(1)
         assert run.arrivals() == expected
         observed_methods = [
             r["message"]["method"]
@@ -433,9 +460,8 @@ def test_real_proxy_process_kill(tmp_path, real_package, point):
             assert restarted.request("ping")["result"] == {}
             assert run.arrivals() == expected
             restarted.close()
-            pid = [r for r in receipts(run.receipt) if r["event"] == "boot"][-1]["pid"]
-            run.drain(pid)
-            assert run.arrivals() == expected
+        run.drain_all(1 if point == "during_append" else 2)
+        assert run.arrivals() == expected
         print(
             f"S5_RECEIPTS: {point}: exact arrivals={len(expected)}; real proxy killed; no replay"
         )
@@ -443,3 +469,51 @@ def test_real_proxy_process_kill(tmp_path, real_package, point):
         for client in run.clients:
             if not client.stderr.closed:
                 client.close()
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "extra_boot",
+        "missing_hook",
+        "duplicate_hook",
+        "missing_eof",
+        "missing_exit",
+        "bad_exit",
+        "early_arrival",
+        "late_arrival",
+        "unknown_pid",
+        "reused_pid",
+    ),
+)
+def test_upstream_lifecycle_rejects_incomplete_proof(defect):
+    records = [
+        {"pid": pid, "event": event, **({"code": 0} if event == "exit" else {})}
+        for pid in (101, 102)
+        for event in ("boot", "hooked", "arrival", "eof", "exit")
+    ]
+    assert_upstream_lifecycles(records, 2)
+    if defect == "extra_boot":
+        records.append({"pid": 103, "event": "boot"})
+    elif defect.startswith("missing_"):
+        event = {
+            "missing_hook": "hooked",
+            "missing_eof": "eof",
+            "missing_exit": "exit",
+        }[defect]
+        records = [r for r in records if not (r["pid"] == 101 and r["event"] == event)]
+    elif defect == "duplicate_hook":
+        records.insert(2, {"pid": 101, "event": "hooked"})
+    elif defect == "bad_exit":
+        records[4]["code"] = 1
+    elif defect == "early_arrival":
+        records.insert(1, {"pid": 101, "event": "arrival"})
+    elif defect == "late_arrival":
+        records.append({"pid": 101, "event": "arrival"})
+    elif defect == "unknown_pid":
+        records.append({"pid": 103, "event": "arrival"})
+    elif defect == "reused_pid":
+        for record in records:
+            record["pid"] = 101
+    with pytest.raises(AssertionError):
+        assert_upstream_lifecycles(records, 2)
