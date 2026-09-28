@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.98.
+logs. A full trusted-memory/DKE system is not part of v0.99.
 
 ## The invariant
 
@@ -35,7 +35,16 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.98 is
+## What v0.99 is
+
+v0.99 adds S5 real process-kill recovery tests against the pinned official
+filesystem MCP server. A receipt observer inside the real upstream counts
+exact arrivals across proxy death, restart, retry, and operator reconciliation.
+The four cases cover pre-dispatch uncertainty, a returned but unjournaled
+result, durable known-result recovery, and a torn terminal evidence append.
+The Linux/Windows live CI gate requires every case to execute without skips;
+default pytest remains offline. Independent review and release gates remain
+required. See `docs/process_kill_recovery.md` for the proof and its limits.
 
 v0.98 implements S4 of the Pilot Readiness Arc: exact, configuration-backed
 dispositions for client JSON-RPC methods. The pinned filesystem configuration
@@ -1184,7 +1193,8 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.98 — explicit reviewed MCP client-method disposition, local control loop,
+v0.99 — real process-kill proof with exact upstream receipts, explicit reviewed
+MCP client-method disposition, local control loop,
 generic MCP stdio and Streamable HTTP upstream transports,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
 snapshot, a loopback-only read-only Command Center UI, and crash-safe operator

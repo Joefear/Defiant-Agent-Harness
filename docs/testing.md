@@ -1,5 +1,16 @@
 # Testing and platform coverage
 
+## S5 real process-kill integration
+
+`tests/test_process_kill_recovery.py` adds four opt-in cases against the real
+pinned filesystem MCP server. Default pytest skips them with an explicit
+`DAH_LIVE_MCP=1` reason, before the npm installation fixture runs. The existing
+S3 live opt-in and platform-specific skips remain. No recovery unit assertion
+was removed or weakened. Hosted live jobs execute all four through
+`examples/filesystem/crash_ci.py`; the gate refuses skips and missing cases.
+See `process_kill_recovery.md` for receipts, barriers, and scope. Record actual
+run totals in the review handoff rather than treating expected counts as proof.
+
 ## S4 method disposition
 
 `tests/test_mcp_method_disposition.py` adds offline adversarial config, envelope,

@@ -1,5 +1,12 @@
 # S3 automatic live filesystem MCP integration
 
+S5 extends each existing live job with `examples/filesystem/crash_ci.py` after
+the original S3 gate. Both must pass; event selection and the aggregate gate
+are unchanged. S3 still runs the unmodified demo. S5 separately observes the
+real server and kills real proxy processes at test-only barriers; see
+`process_kill_recovery.md`. The historical S3 completion sequence below remains
+a record of S3, not permission to merge or release S5 without independent review.
+
 The live CI job runs the unmodified
 `@modelcontextprotocol/server-filesystem@2026.7.10` through the Harness stdio
 proxy on `ubuntu-latest` and `windows-latest`, with Python 3.12 and Node 22.
