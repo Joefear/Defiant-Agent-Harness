@@ -1,5 +1,10 @@
 # Crash-safe known-result recovery
 
+S5 adds real proxy process-kill tests against the actual pinned filesystem
+server, with an in-server receipt observer and unmodified CLI restarts.
+See `process_kill_recovery.md`. A write that happened but whose result was not
+journaled remains uncertain; a filesystem effect is not a durable result.
+
 v0.13 closes the local completion window after a tool has returned but before
 Defiant has finished budget settlement, terminal evidence, and approval
 consumption. At that point the tool outcome is known and must not be discarded,

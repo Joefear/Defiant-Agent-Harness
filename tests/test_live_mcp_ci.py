@@ -140,7 +140,8 @@ def test_live_workflow_has_both_platforms_and_fail_closed_event_gate():
     assert live["strategy"]["matrix"]["os"] == ["ubuntu-latest", "windows-latest"]
     assert live["strategy"]["fail-fast"] == "false"
     assert live["env"]["DAH_LIVE_MCP"] == "1"
-    assert live["steps"][-1]["run"] == "python examples/filesystem/live_ci.py"
+    assert live["steps"][-2]["run"] == "python examples/filesystem/live_ci.py"
+    assert live["steps"][-1]["run"] == "python examples/filesystem/crash_ci.py"
     for step in live["steps"]:
         assert "if" not in step and "continue-on-error" not in step
     assert "continue-on-error" not in live

@@ -1,5 +1,11 @@
 # Approval execution reconciliation
 
+The S5 real process-kill tests exercise this procedure with exact receipts from
+the pinned real filesystem server. Missing/blank operator inputs fail; repeated
+identical reconciliation cannot replay the write or double charge. A torn
+evidence chain is not repaired by an outcome assertion. See
+`process_kill_recovery.md` for the test barriers and limits.
+
 Defiant writes `executing` before a governed action can run. If the process
 crashes in that interval, the external side effect may have happened even when
 no terminal evidence was written. Defiant therefore refuses automatic replay
