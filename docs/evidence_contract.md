@@ -151,6 +151,23 @@ export and must be protected with local filesystem access controls.
 `redactions` on a policy rule is reserved for future operator-facing display
 logic. v0.1 does not claim automatic redaction of evidence metadata.
 
+## Preview-hook evidence is not prevention evidence
+
+A late hook allow or deny describes a decision the host did not wait for.
+A hook record written before a deadline kill likewise does not prove that the
+host prevented or executed the action because of that decision. In particular,
+a `native_hook_preview` refusal can coexist with actual execution after the
+host falls back to its own permission flow. A sealed refusal proves the
+recorded Harness decision, not prevention of the native action. Matching post
+evidence is a host-reported result, not independent observation of execution.
+
+Use separate hook and authoritative MCP proxy state roots. Deadline-killed
+preview hooks can leave pending authorizations, stale state-file locks, or
+inconsistent stores; a verified hash chain alone does not establish cross-store
+health. Preserve the affected root and run the read-only state integrity audit
+before deciding recovery. Never infer `not_executed` solely from a refusal or
+timeout. Operator recovery instructions remain an S11 runbook obligation.
+
 ## Reserved for later
 
 `memory_sources_used` is reserved for DKE. It is absent in v0.1 rather than fabricated, so that adding DKE extends the schema rather than changing it.

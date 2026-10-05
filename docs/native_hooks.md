@@ -187,15 +187,46 @@ is still strictly read-only. Post-entrypoint errors return explicit block JSON
 even though the hook protocol's process exit status is zero; this cannot undo
 an external action already completed before the post-event.
 
+A late hook decision describes a decision the host did not wait for. Neither a
+late allow/deny nor a record written before a deadline kill proves prevention
+or execution by that decision. A `native_hook_preview` refusal can coexist
+with actual execution after the host falls back to its own permission flow.
+Hook refusal evidence is therefore not proof that the action was prevented;
+post-event evidence records a host-reported result rather than independently
+observing execution.
+
+Keep hook and proxy state roots separate (the Codex defaults are
+`.dah-codex-hooks` and `.dah-codex-mcp`). Do not point both at one directory:
+a deadline-killed preview hook can strand authorizations or state-file locks,
+and that damage must not contaminate authoritative proxy state. Preserve and
+audit an affected root; do not delete locks or guess outcomes automatically.
+
+Origin labels are cached in a bounded per-Harness cache. New actions reuse the
+required duplicate-action lookup rather than adding a second history scan.
+Cross-process continuation and cache eviction use the first matching origin
+record, closing the stream immediately. Full authority/chain audits are not
+removed; hook work still scales with evidence history.
+
 ## Reproducible latency measurement
 
 Run explicitly from a development checkout with the project installed:
 
 ```powershell
-python examples/hooks/latency.py --rounds 3 --workers 4 --history-pairs 10 --output hook-latency.json
+python examples/hooks/latency.py --rounds 3 --workers 4 --history-records 20 2000 20000 --output hook-latency.json
 ```
 
-This offline benchmark uses disposable synthetic workspace/state directories.
+This offline benchmark uses fresh synthetic workspace/state directories and
+retains every fixture beside the report, including deadline-killed fixtures.
+It refuses to overwrite an existing report. Each history size, hook, mode, and
+phase gets an independent root; a timeout stops that case's remaining rounds.
+Large histories are bulk-seeded hash-valid terminal refusal records (not real
+pilot actions). Matched post authorizations are prepared before seeding; the
+report records actual initial counts and bytes, including those authorizations.
+This avoids quadratic fixture setup without bypassing measured runtime checks.
+The history ceiling is 200,000 seeded records, not the former 1,000-pair cap.
+Use `--modes serial --rounds 1` for a quiet-host history ladder, and run other
+tests separately. The first observed zero-margin history is a sampled bound,
+not an exact universal threshold.
 It launches the actual Python hook `main` entrypoints in fresh subprocesses,
 measuring wall time from process launch through response and exit (including
 Python startup). Both pre and matched post phases run serially, in synchronized
@@ -204,21 +235,32 @@ real authority lock. Held-lock calls must return explicit busy refusals and
 leave evidence unchanged. Ordinary concurrent refusals are counted separately
 from successful allows/seals; errors, malformed output, and deadline expiry
 cannot masquerade as fast successful enforcement. The benchmark checks the
-final evidence chain and records every observation, maximum and remaining
-margin against the unchanged 10-second budget. It is not part of default pytest.
+full cross-store audit and remaining `*.lock` files after each case, even on
+timeout or exception. The persistent OS-lock backing file `authority.lock` is
+listed but is not a stale exclusive-create sentinel. Audits retain pending
+authorization warnings; chain validity alone does not establish state health.
+Every observation, maximum, and remaining margin against the unchanged
+10-second budget is recorded. The benchmark is not part of default pytest;
+only offline tests of its fixture/report mechanics run there.
 
-This is a finite local measurement, not a latency guarantee. State starts with
-20 records and grows during each hook's run; larger histories, slower storage,
+This is a finite local measurement, not a latency guarantee. State grows during
+each case; larger histories, slower storage,
 runner overhead, antivirus, cold caches, and other host load can reduce margin.
-The configured shell wrapper and the actual VS Code/Codex runner are not timed.
+The configured `powershell.exe -NoProfile -Command ...` shell wrapper and the
+actual VS Code/Codex runner are not timed. Reported margins are upper bounds:
+under comparable conditions real runner margin can only be worse once wrapper
+startup and host overhead are included. A missed benchmark deadline measures
+exposure to fail-open risk; it does not directly observe an actual runner's
+fallback or a native tool executing after timeout.
 No timeout is increased, no platform behavior changed, and no network, upstream
 server, or real native tool is invoked. See the S6 review report for the observed
 Windows values; do not substitute those values for a deployment measurement.
 
 ### Observed Windows measurement
 
-In the first run on the owner's Windows 10.0.26100 host with Python 3.11.9,
-the S6 command above completed 108 measured invocations. Each hook started with 20 synthetic evidence
+In the original run on the owner's Windows 10.0.26100 host with Python 3.11.9,
+the earlier runner with `--rounds 3 --workers 4 --history-pairs 10` completed
+108 measured invocations. Each hook started with 20 synthetic evidence
 records and ended with 59. No observed invocation exceeded the budget; all busy
 responses were explicit refusals, and both final chains verified. Times below
 are seconds, rounded to three decimal places.
@@ -236,7 +278,7 @@ Successful means preflight allow or post-event evidence sealed, not execution
 of a real native tool. In particular, quick refusals are not a successful-tool
 throughput result. This run's smallest observed margin was 8.100 seconds.
 
-A second run against the final runtime, while the full regression suite was
+A second run against the original review candidate `f608e79`, while the full regression suite was
 also running on the host, FAILED the timing check. Of 108 invocations, 17 had
 end-to-end elapsed times over 10 seconds: 13 timed out, three returned busy
 refusals late, and one returned an allow late. Codex held-lock post calls had a
@@ -246,9 +288,48 @@ seconds (margin -1.902), and held-lock post calls reached 11.328 seconds
 these numbers do not isolate time spent inside Python hook logic. The precise
 cause of the host delays was not diagnosed. Both final evidence chains verified,
 and held-lock cases left evidence unchanged, but those facts do not erase the
-missed deadlines. Both raw runs are retained in the S6 review evidence.
+missed deadlines. That original runner did not audit cross-store health or
+retain fixtures, so stale locks/inconsistency cannot be retrospectively ruled
+out. Both original raw runs remain retained as historical S6 review evidence.
 
-Therefore latency acceptance is not established. Do not treat the favorable
+Therefore a reliable timing margin is not established. The failed measurement
+satisfies S6's requirement to measure and report risk; S6 has no requirement
+that all preview hook calls fit the deadline. Do not treat the favorable
 first run as a reliable safety margin, raise the configured timeout, or make
 pilot prevention claims from this preview seam. Independent review must consider
-the failed repeat before any S6 release decision.
+the failed repeat and history-scaled corrections before any S6 release decision.
+
+### Corrected history measurement
+
+The corrected benchmark ran on the same owner's Windows 10.0.26100 host with
+Python 3.11.9, without concurrent pytest or another benchmark. Background OS
+and application activity was not controlled; this is a quiet-workload sample,
+not certification of an idle machine. Serial pre/post calls were sampled once
+per hook at 20, 250, 1,000, 2,000, 5,000 and 20,000 seeded terminal records.
+Post cases additionally contain one earlier matching authorization. This
+synthetic history is not a model of all pilot record sizes or lifecycle mixes;
+post origins near the start also understate a late-origin lookup's cost.
+
+At 5,000 records the Codex pre/post maxima were 9.135/9.262 seconds, with
+upper-bound margins of 0.865/0.738 seconds. Copilot took 9.205/8.883 seconds,
+with margins 0.795/1.117. The first sampled negative-margin history was 20,000
+records (20,001 for post): the 10-second subprocess deadline killed the hook.
+Thus the observed crossing is bracketed above 5,000 and at or below 20,000
+seeded records for this sample, not located exactly or guaranteed repeatable.
+The original small-history load-induced failures still stand.
+
+The corrected reports include full before/after cross-store audits, lock-file
+inventories, actual history bytes, and retained fixture paths. A deadline-killed
+20,000-record run left an interrupted authority publication requiring recovery,
+despite no remaining sentinel lock. An audit status of `recovery_required` is
+not the same as a clean state, even where `safe_to_execute` permits exact
+recovery. Uncompleted synthetic pre-authorizations also produce expected
+reconciliation warnings. No retained fixture is automatically repaired.
+
+The separate corrected 20-record contention run completed all 108 calls within
+budget; the slowest was Codex concurrent pre at 7.647 seconds (upper-bound
+margin 2.353). All responses had the expected allow/seal/busy-refusal form,
+all held-lock cases left evidence unchanged, and no stale sentinel or unsafe
+audit result was present. Pending synthetic authorizations still appeared as
+reconciliation warnings. This favorable run does not cancel either the earlier
+load-induced failures or the corrected large-history deadline kills.

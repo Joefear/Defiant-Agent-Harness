@@ -12,6 +12,7 @@ from defiant_agent_harness.evidence.store import EvidenceStore, GENESIS
 from defiant_agent_harness.hooks import codex, copilot
 from defiant_agent_harness.adapters.mock import MockAgentAdapter
 from defiant_agent_harness.orchestrator.harness import build_harness
+from defiant_agent_harness.state_integrity import StateIntegrityError
 
 
 def record(**kwargs):
@@ -39,6 +40,87 @@ def test_legacy_positional_constructor_keeps_model_identity():
     )
     assert legacy.model_id == "old-model"
     assert "enforcement_basis" not in legacy.to_dict()
+
+
+def test_origin_lookup_stops_and_closes_stream(tmp_path, monkeypatch):
+    store = EvidenceStore(tmp_path / "evidence.jsonl")
+    closed = []
+
+    def records():
+        try:
+            yield {"action_id": "other"}
+            yield {"action_id": "wanted", "enforcement_basis": "native_hook_preview"}
+            raise AssertionError("origin lookup decoded later history")
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(store, "_raw", records)
+    assert store.first_by_action("wanted")["enforcement_basis"] == "native_hook_preview"
+    assert closed == [True]
+
+
+def test_same_process_action_reuses_duplicate_check_for_basis(tmp_path, monkeypatch):
+    gate = codex.CodexHookGate(tmp_path, tmp_path / "state")
+    original = gate.harness.evidence.first_by_action
+    lookups = []
+
+    def lookup(action_id):
+        lookups.append(action_id)
+        return original(action_id)
+
+    monkeypatch.setattr(gate.harness.evidence, "first_by_action", lookup)
+    sample = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": "note.txt"},
+        "tool_use_id": "cached",
+    }
+    gate.pre_tool_use(sample)
+    gate.post_tool_use(sample | {"tool_response": "synthetic"})
+    assert len(lookups) == 1  # required duplicate check; no extra S6 basis scan
+    assert {r["enforcement_basis"] for r in gate.harness.evidence.records()} == {
+        "native_hook_preview"
+    }
+
+
+def test_cached_basis_does_not_bypass_full_state_audit(tmp_path):
+    gate = codex.CodexHookGate(tmp_path, tmp_path / "state")
+    sample = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": "note.txt"},
+        "tool_use_id": "tampered",
+    }
+    gate.pre_tool_use(sample)
+    path = gate.harness.evidence.path
+    [raw] = gate.harness.evidence.records()
+    assert raw["action_id"] in gate.harness._action_bases
+    raw["enforcement_basis"] = "mcp_proxy"
+    damaged = json.dumps(raw) + "\n"
+    path.write_text(damaged, encoding="utf-8")
+    with pytest.raises(StateIntegrityError):
+        gate.post_tool_use(sample | {"tool_response": "synthetic"})
+    assert path.read_text(encoding="utf-8") == damaged
+
+
+@pytest.mark.parametrize("basis", ["", "native_hook_preview"])
+def test_cross_process_basis_cache_is_bounded_and_eviction_reloads_origin(
+    tmp_path, monkeypatch, basis
+):
+    harness = build_harness(tmp_path, MockAgentAdapter())
+    lookups = []
+
+    def lookup(action_id):
+        lookups.append(action_id)
+        return {"action_id": action_id, "enforcement_basis": basis}
+
+    monkeypatch.setattr(harness.evidence, "first_by_action", lookup)
+    assert harness._basis_for_action("old") == basis
+    assert harness._basis_for_action("old") == basis
+    assert lookups == ["old"]
+    for index in range(1024):
+        harness._remember_action_basis(str(index), "mcp_proxy")
+    assert len(harness._action_bases) == 1024
+    assert harness._basis_for_action("old") == basis
+    assert lookups == ["old", "old"]
 
 
 @pytest.mark.parametrize(

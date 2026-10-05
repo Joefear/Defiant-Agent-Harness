@@ -96,3 +96,14 @@ S5 review carry-forward requirements (not implementation of later slices):
 Real pilot data, owner walkthroughs, resource approvals, key custody choices,
 and the final tag require owner participation. Stop at those gates rather
 than substituting synthetic results or making the decisions silently.
+
+S6 review carry-forward requirements (not implementation of later slices):
+
+- S11 must cover a hook killed at the deadline: preserve the separate hook
+  root, audit cross-store consistency and stale locks, establish actual outcome
+  independently, and reconcile conservatively. Do not treat a refusal as proof
+  of prevention or automatically erase stranded locks.
+- Future handoffs must preserve the authority ceiling: preview-hook deadlines
+  have been missed under measured load; history worsens margin; host fail-open
+  behavior cannot be closed within the Harness. MCP remains authoritative only
+  for traffic routed through it. S6 measurements do not establish pilot readiness.

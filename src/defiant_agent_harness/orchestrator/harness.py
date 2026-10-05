@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from functools import wraps
@@ -168,6 +169,9 @@ class Harness:
         self.dry_run = dry_run
         self.execution_disabled = execution_disabled
         self.evidence_basis = enforcement_basis(evidence_basis)
+        # Optimization only: never replaces the full state/chain audit. Bound
+        # memory in long-running proxies; evictions fall back to origin lookup.
+        self._action_bases: OrderedDict[str, str] = OrderedDict()
 
     # -- entry points -------------------------------------------------
 
@@ -248,7 +252,16 @@ class Harness:
         self.recover_operation()
         self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
-        if self.evidence.by_action(action.action_id):
+        prior = self.evidence.first_by_action(action.action_id)
+        # Reuse the existing duplicate-action check: a new action needs no
+        # second scan when its first (or subsequent) evidence is prepared.
+        self._remember_action_basis(
+            action.action_id,
+            prior.get("enforcement_basis", "")
+            if prior is not None
+            else self.evidence_basis,
+        )
+        if prior is not None:
             decision = self._control_decision(
                 action,
                 Decision.BLOCK,
@@ -1136,6 +1149,26 @@ class Harness:
             )
         )
 
+    def _remember_action_basis(self, action_id: str, basis: str) -> str:
+        basis = enforcement_basis(basis)
+        self._action_bases[action_id] = basis
+        self._action_bases.move_to_end(action_id)
+        if len(self._action_bases) > 1024:
+            self._action_bases.popitem(last=False)
+        return basis
+
+    def _basis_for_action(self, action_id: str) -> str:
+        if action_id in self._action_bases:
+            self._action_bases.move_to_end(action_id)
+            return self._action_bases[action_id]
+        prior = self.evidence.first_by_action(action_id)
+        return self._remember_action_basis(
+            action_id,
+            prior.get("enforcement_basis", "")
+            if prior is not None
+            else self.evidence_basis,
+        )
+
     def _make_record(
         self,
         action: ProposedAction,
@@ -1154,8 +1187,7 @@ class Harness:
         # Operator decisions and later lifecycle records retain the original
         # action's basis, including absent legacy labels. Never upgrade history
         # using the current runner or an operator CLI's local adapter.
-        prior = self.evidence.by_action(action.action_id)
-        basis = prior[0].get("enforcement_basis", "") if prior else self.evidence_basis
+        basis = self._basis_for_action(action.action_id)
         return EvidenceRecord(
             request_id=request.request_id,
             action_id=action.action_id,
