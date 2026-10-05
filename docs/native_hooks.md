@@ -4,7 +4,11 @@
 
 Some runners expose built-in file, terminal, browser, and subagent tools that
 cannot be removed from their agent UI. Those calls never cross an MCP proxy.
-The native hook adapter covers that second authority boundary.
+The native hook adapter adds secondary preview checks on that path. It is not
+an authoritative enforcement boundary: preview hook decisions do not support
+pilot deployment claims. Supported events, successful invocation, and a timely
+response are all host-runner dependencies; a fail-closed JSON response from
+Defiant cannot defeat a host's fail-open timeout.
 
 VS Code and Copilot CLI emit a structured `PreToolUse` event before a supported
 tool call and a `PostToolUse` event after success. Defiant converts the pre
@@ -161,5 +165,90 @@ sanitized diagnostic; raw event content is not copied into that response.
 - Operator or administrator changes to hook configuration remain trusted.
 
 Production deployment still needs OS, process, and network containment around
-the runner. The hook materially closes the native-tool gap; it does not erase
-the outer sandbox requirement.
+the runner. The MCP proxy is the authority boundary for traffic actually routed
+through it. Keeping hooks enabled is useful defense in depth, not proof that
+native tools cannot bypass that routing.
+
+## S6 enforcement basis
+
+New Codex and Copilot hook records carry the hash-covered field
+`enforcement_basis: native_hook_preview`, including denials, preflight allows,
+post-event completion, and outer delegation to a Defiant MCP tool. A delegated
+tool name does not upgrade the outer record; only the inner proxy writes
+`mcp_proxy`. Other local Harness execution writes `harness_control_loop`.
+None of these labels by itself proves pilot readiness or successful execution.
+
+The label is chosen by trusted runtime construction, not caller event metadata
+or configurable runner identity. Operator reconciliation and later lifecycle
+records preserve the originating label. Old evidence and prepared recovery
+journals with no label retain their original serialization and hashes; CLI
+history and Command Center display them as `legacy_unspecified`. The dashboard
+is still strictly read-only. Post-entrypoint errors return explicit block JSON
+even though the hook protocol's process exit status is zero; this cannot undo
+an external action already completed before the post-event.
+
+## Reproducible latency measurement
+
+Run explicitly from a development checkout with the project installed:
+
+```powershell
+python examples/hooks/latency.py --rounds 3 --workers 4 --history-pairs 10 --output hook-latency.json
+```
+
+This offline benchmark uses disposable synthetic workspace/state directories.
+It launches the actual Python hook `main` entrypoints in fresh subprocesses,
+measuring wall time from process launch through response and exit (including
+Python startup). Both pre and matched post phases run serially, in synchronized
+four-process batches sharing a state directory, and while the parent holds the
+real authority lock. Held-lock calls must return explicit busy refusals and
+leave evidence unchanged. Ordinary concurrent refusals are counted separately
+from successful allows/seals; errors, malformed output, and deadline expiry
+cannot masquerade as fast successful enforcement. The benchmark checks the
+final evidence chain and records every observation, maximum and remaining
+margin against the unchanged 10-second budget. It is not part of default pytest.
+
+This is a finite local measurement, not a latency guarantee. State starts with
+20 records and grows during each hook's run; larger histories, slower storage,
+runner overhead, antivirus, cold caches, and other host load can reduce margin.
+The configured shell wrapper and the actual VS Code/Codex runner are not timed.
+No timeout is increased, no platform behavior changed, and no network, upstream
+server, or real native tool is invoked. See the S6 review report for the observed
+Windows values; do not substitute those values for a deployment measurement.
+
+### Observed Windows measurement
+
+In the first run on the owner's Windows 10.0.26100 host with Python 3.11.9,
+the S6 command above completed 108 measured invocations. Each hook started with 20 synthetic evidence
+records and ended with 59. No observed invocation exceeded the budget; all busy
+responses were explicit refusals, and both final chains verified. Times below
+are seconds, rounded to three decimal places.
+
+| Hook | Mode | Pre maximum / margin | Post maximum / margin | Outcomes per phase |
+|---|---|---|---|---|
+| Codex | Serial | 1.510 / 8.490 | 1.450 / 8.550 | 3 successful |
+| Codex | Four concurrent | 1.900 / 8.100 | 1.871 / 8.129 | 3 successful, 9 busy refusals |
+| Codex | Held authority lock | 0.715 / 9.285 | 0.782 / 9.218 | 12 busy refusals |
+| Copilot | Serial | 1.450 / 8.550 | 1.503 / 8.497 | 3 successful |
+| Copilot | Four concurrent | 1.782 / 8.218 | 1.870 / 8.130 | 3 successful, 9 busy refusals |
+| Copilot | Held authority lock | 0.725 / 9.275 | 0.739 / 9.261 | 12 busy refusals |
+
+Successful means preflight allow or post-event evidence sealed, not execution
+of a real native tool. In particular, quick refusals are not a successful-tool
+throughput result. This run's smallest observed margin was 8.100 seconds.
+
+A second run against the final runtime, while the full regression suite was
+also running on the host, FAILED the timing check. Of 108 invocations, 17 had
+end-to-end elapsed times over 10 seconds: 13 timed out, three returned busy
+refusals late, and one returned an allow late. Codex held-lock post calls had a
+16.654-second maximum (margin -6.654); Copilot serial pre calls reached 11.902
+seconds (margin -1.902), and held-lock post calls reached 11.328 seconds
+(margin -1.328). Elapsed time includes process creation and timeout cleanup;
+these numbers do not isolate time spent inside Python hook logic. The precise
+cause of the host delays was not diagnosed. Both final evidence chains verified,
+and held-lock cases left evidence unchanged, but those facts do not erase the
+missed deadlines. Both raw runs are retained in the S6 review evidence.
+
+Therefore latency acceptance is not established. Do not treat the favorable
+first run as a reliable safety margin, raise the configured timeout, or make
+pilot prevention claims from this preview seam. Independent review must consider
+the failed repeat before any S6 release decision.

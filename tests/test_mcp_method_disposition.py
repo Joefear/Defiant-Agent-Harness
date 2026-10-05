@@ -182,6 +182,7 @@ def test_refused_request_has_durable_non_authorizing_evidence(
     assert inputs["proxy_fingerprint"] == proxy.proxy_fingerprint
     assert inputs["rpc_id_hash"] == sha256_of("PRIVATE-WIRE-ID")
     assert record["decision"] == "block" and record["result_status"] == "blocked"
+    assert record["enforcement_basis"] == "mcp_proxy"
     assert record["timestamp"] and record["decision_reason"]
     assert record["cost_usd"] == "0" and not record["authorization_hash"]
     assert record["request_id"].startswith("rpc_event_")

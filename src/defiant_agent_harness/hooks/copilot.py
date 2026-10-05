@@ -319,6 +319,7 @@ class CopilotHookGate:
         self.harness = build_harness(
             self.state_root,
             self.adapter,
+            evidence_basis="native_hook_preview",
             policy_packs=[policy_pack],
             tools=self.registry,
             workspace_root=self.workspace_root,

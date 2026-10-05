@@ -13,7 +13,7 @@ from typing import Any
 
 from ..approvals.store import APPROVAL_STATUSES, ApprovalError, PendingApproval
 from ..budgets.ledger import BudgetError, BudgetLedger
-from ..contracts import Decision, ResultStatus, utc_now
+from ..contracts import Decision, ResultStatus, enforcement_basis, utc_now
 from ..evidence.store import ChainStatus, EvidenceError, EvidenceStore
 from ..evidence_witness import EvidenceWitnessError
 from ..authority_publication_witness import AuthorityPublicationWitnessError
@@ -875,6 +875,8 @@ def _recent_record(record: dict[str, Any]) -> dict[str, Any]:
         "request_id": record["request_id"],
         "action_id": record["action_id"],
         "agent_runner": record.get("agent_runner", ""),
+        "enforcement_basis": enforcement_basis(record.get("enforcement_basis", ""))
+        or "legacy_unspecified",
         "workspace_id": record.get("workspace_id", ""),
         "tool_name": record.get("tool_name", ""),
         "decision": record["decision"],

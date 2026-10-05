@@ -35,6 +35,7 @@ from ..contracts import (
     HarnessRequest,
     ProposedAction,
     ResultStatus,
+    enforcement_basis,
     sha256_of,
     utc_now,
 )
@@ -151,6 +152,7 @@ class Harness:
         dry_run: bool = False,
         authority_lock: AuthorityTransactionLock | None = None,
         execution_disabled: bool = False,
+        evidence_basis: str = "harness_control_loop",
     ):
         self.policy = policy
         self.tools = tools
@@ -165,6 +167,7 @@ class Harness:
         )
         self.dry_run = dry_run
         self.execution_disabled = execution_disabled
+        self.evidence_basis = enforcement_basis(evidence_basis)
 
     # -- entry points -------------------------------------------------
 
@@ -1148,12 +1151,18 @@ class Harness:
         reconciliation_note: str = "",
         budget_remaining_usd: Decimal | None = None,
     ) -> EvidenceRecord:
+        # Operator decisions and later lifecycle records retain the original
+        # action's basis, including absent legacy labels. Never upgrade history
+        # using the current runner or an operator CLI's local adapter.
+        prior = self.evidence.by_action(action.action_id)
+        basis = prior[0].get("enforcement_basis", "") if prior else self.evidence_basis
         return EvidenceRecord(
             request_id=request.request_id,
             action_id=action.action_id,
             decision=decision.decision,
             result_status=status,
             agent_runner=self.adapter.runner_name,
+            enforcement_basis=basis,
             model_id=self.adapter.model_id,
             user_id=request.user_id,
             workspace_id=request.workspace_id,
@@ -1206,6 +1215,7 @@ class Harness:
             decision=authority["decision"],
             result_status=status,
             agent_runner=authority.get("agent_runner", ""),
+            enforcement_basis=authority.get("enforcement_basis", ""),
             model_id=authority.get("model_id", ""),
             user_id=authority.get("user_id", ""),
             workspace_id=authority.get("workspace_id", ""),
@@ -1508,6 +1518,7 @@ def build_harness(
     trusted_authority_publication_witness_keys: list[str] | None = None,
     require_windows_private_state_acl: bool = False,
     _operator_control: bool = False,
+    evidence_basis: str = "harness_control_loop",
 ) -> Harness:
     from ..control_plane_isolation import (
         ControlPlaneIsolationStateStore,
@@ -1976,6 +1987,7 @@ def build_harness(
             authority_lock=authority_lock,
             dry_run=dry_run,
             execution_disabled=_operator_control,
+            evidence_basis=evidence_basis,
         )
         harness.recover_operation()
         harness.reconcile_expired_approvals()

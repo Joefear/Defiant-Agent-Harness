@@ -15,6 +15,7 @@ Format is JSON Lines: one record per line, append-only, UTF-8. A consultant can 
 | `request_id` | string | links every record produced for one user request |
 | `action_id` | string | links the records produced for one proposed action |
 | `agent_runner` | string | `hermes`, `openclaw`, `claude-code`, `codex`, `mock`, ... |
+| `enforcement_basis` | optional string | `native_hook_preview`, `mcp_proxy`, or `harness_control_loop`; absent historical values remain unspecified |
 | `model_id` | string | model identity when the runner exposes it |
 | `user_id` | string | operator identity |
 | `workspace_id` | string | client or project workspace |
@@ -57,6 +58,17 @@ post-settlement available balance are fixed before cross-store completion. The
 raw tool response is not added to the journal.
 
 ## Hashing
+
+S6 adds an optional, hash-covered enforcement-basis field without rewriting
+historical records or prepared journals. Empty/absent values serialize in the
+legacy form (no field); readers display `legacy_unspecified`. Labels are selected
+by trusted runtime construction, never by event metadata, tool names, or runner
+identity. Hook delegation to a proxy is still hook-preview evidence, not proxy
+evidence. Later action records and operator reconciliation retain the originating
+record's basis, including historical absence. Journal recovery preserves the
+prepared record exactly. A label is descriptive, not a capability grant or proof
+that an effect happened; result status, dry-run state, chain integrity, and the
+deployment's actual routing/isolation requirements still apply.
 
 All hashes are `"sha256:" + sha256(canonical_json(value))`, where canonical
 JSON uses sorted keys and compact separators. Enums serialize to string values,

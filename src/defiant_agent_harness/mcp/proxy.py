@@ -242,6 +242,7 @@ class McpStdioProxy:
         self.harness = build_harness(
             workdir,
             self.adapter,
+            evidence_basis="mcp_proxy",
             policy_packs=policy_packs,
             dry_run=dry_run,
             tools=registry,
@@ -379,6 +380,7 @@ class McpStdioProxy:
             decision=Decision.BLOCK,
             result_status=ResultStatus.BLOCKED,
             agent_runner=self.config.runner_name,
+            enforcement_basis="mcp_proxy",
             model_id=self.config.model_id,
             user_id=self.user_id,
             workspace_id=self.workspace_id,

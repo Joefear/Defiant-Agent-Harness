@@ -7,6 +7,12 @@ and recent activity in a browser.
 
 It is deliberately an observation surface, not an authority surface.
 
+S6 adds an Enforcement basis column to recent activity. Native hook records
+are visibly labeled "preview only"; proxy records and local Harness control
+loop records have distinct labels. Unlabeled history remains unspecified.
+An intact evidence chain does not make hook evidence authoritative for pilot
+deployment. This display adds no mutation controls or endpoints.
+
 ## Run it
 
 ```bash

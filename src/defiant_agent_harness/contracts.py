@@ -48,6 +48,18 @@ from .money import ZERO, money, money_text
 # ---------------------------------------------------------------------------
 
 
+def enforcement_basis(value: str) -> str:
+    """Validate a runtime-origin label; empty means historical/unspecified.
+
+    This is descriptive evidence, never an execution grant. Do not derive it
+    from runner identities, tool names, or caller-supplied event metadata.
+    """
+    value = _exact_text(value, "enforcement_basis")
+    if value not in {"", "native_hook_preview", "mcp_proxy", "harness_control_loop"}:
+        raise ValueError("invalid enforcement_basis")
+    return value
+
+
 def utc_now() -> str:
     """RFC3339 UTC timestamp. Single source of time for the whole harness."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -872,6 +884,8 @@ class EvidenceRecord:
     # chain
     previous_record_hash: str = ""
     record_hash: str = ""
+    # Appended to preserve the positional constructor used before S6.
+    enforcement_basis: str = ""
 
     def __post_init__(self) -> None:
         self._validate_contract()
@@ -879,6 +893,7 @@ class EvidenceRecord:
     def _validate_contract(self) -> None:
         self.request_id = _require_text(self.request_id, "request_id")
         self.action_id = _require_text(self.action_id, "action_id")
+        self.enforcement_basis = enforcement_basis(self.enforcement_basis)
         if not isinstance(self.decision, Decision):
             self.decision = Decision(self.decision)
         if not isinstance(self.result_status, ResultStatus):
@@ -955,6 +970,9 @@ class EvidenceRecord:
             )
         d = _enum_safe(d)
         d.pop("record_hash", None)
+        if not self.enforcement_basis:
+            # Preserve pre-S6 bytes/hashes and prepared-journal idempotency.
+            d.pop("enforcement_basis")
         return d
 
     def seal(self, previous_record_hash: str) -> "EvidenceRecord":
@@ -971,6 +989,8 @@ class EvidenceRecord:
             d["budget_remaining_usd"] = _bounded_signed_decimal_text(
                 self.budget_remaining_usd
             )
+        if not self.enforcement_basis:
+            d.pop("enforcement_basis")
         return _enum_safe(d)
 
 

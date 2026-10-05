@@ -1,5 +1,21 @@
 # Testing and platform coverage
 
+## S6 preview hook basis and latency
+
+`tests/test_enforcement_basis.py` exercises sealed labels, unchanged legacy
+serialization and positional construction, prepared-record idempotency,
+invalid labels, caller-metadata spoofing, delegated hook calls, operator
+reconciliation/rejection, read-only projections, and both hook entrypoints'
+pre/post error responses. Existing real subprocess MCP and protocol-refusal
+tests also assert proxy-origin labeling. No default-suite network or new skip
+is introduced, and the S3/S5 live gates remain unchanged.
+
+Run the separate offline contention benchmark explicitly with
+`python examples/hooks/latency.py --output hook-latency.json`. It measures the
+actual Python entrypoints against disposable state, not the runner's shell
+wrapper or a real pilot. See `native_hooks.md` for observed values and limits.
+Independent Claude review remains required before S6 merge or release.
+
 ## S5 real process-kill integration
 
 `tests/test_process_kill_recovery.py` adds four opt-in cases against the real

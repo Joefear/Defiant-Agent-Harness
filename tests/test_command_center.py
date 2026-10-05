@@ -95,6 +95,9 @@ def test_server_packages_dashboard_assets_and_supports_head(tmp_path):
 
     assert status == head_status == css_status == js_status == 200
     assert b"Operational truth" in body
+    assert b"Enforcement basis" in body
+    assert b"Native hook" in javascript and b"preview only" in javascript
+    assert b"record.enforcement_basis" in javascript
     assert b"Operator queue" in body
     assert b"Operator reconciliation required" in body
     assert b"State integrity alert" in body
