@@ -1,7 +1,7 @@
 # Codex runner integration
 
-The repository includes a project-scoped Codex shim with two enforcement
-boundaries:
+The repository includes a project-scoped Codex shim with an MCP execution
+boundary and a secondary native-hook preview seam:
 
 1. `.codex/hooks.json` sends supported local tool calls through Defiant before
    execution and seals the result afterward.
@@ -14,6 +14,12 @@ evidence machinery. They use separate durable state:
 
 - `.dah-codex-hooks/` for native Codex lifecycle events
 - `.dah-codex-mcp/` for the governed filesystem MCP server
+
+S6 labels hook-origin evidence `native_hook_preview`, never `mcp_proxy` even
+when the hook delegates a tool to the inner proxy. Preview hook decisions do
+not support pilot deployment claims. Host timeout behavior and actions that
+emit no event remain outside this seam's control. See `native_hooks.md` for
+the measured 10-second-budget margin and its limitations.
 
 ## Start a governed Codex session
 

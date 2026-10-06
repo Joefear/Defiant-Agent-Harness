@@ -48,7 +48,7 @@ from ..authority_publication_witness import (
 )
 from ..command.core import CommandCore, CommandError
 from ..command.server import CommandCenterError, CommandCenterServer, command_center_url
-from ..contracts import HarnessRequest, Sensitivity
+from ..contracts import HarnessRequest, Sensitivity, enforcement_basis
 from ..evidence.signing import (
     EvidenceSigningError,
     encode_export,
@@ -373,6 +373,10 @@ def cmd_history(args) -> int:
             Path(args.workdir) / "evidence.jsonl"
         ) as records:
             for record in records:
+                try:
+                    basis = enforcement_basis(record.get("enforcement_basis", ""))
+                except (TypeError, ValueError) as exc:
+                    raise EvidenceError("invalid evidence enforcement_basis") from exc
                 for field in (
                     "timestamp",
                     "tool_name",
@@ -393,6 +397,7 @@ def cmd_history(args) -> int:
                     f"{_terminal_text(record['tool_name'], 13):<14} "
                     f"{_terminal_text(record['decision'], 18):<18} "
                     f"{_c(_terminal_text(record['result_status'], 20)):<29} "
+                    f"{basis or 'legacy_unspecified':<20} "
                     f"{_terminal_text(record['record_id'], 80)}"
                 )
                 if len(rows) > args.limit:
@@ -406,7 +411,10 @@ def cmd_history(args) -> int:
     if args.limit == 0:
         print("no evidence selected.")
         return 0
-    print(f"\n{'time':<22} {'tool':<14} {'decision':<18} {'status':<20} record")
+    print(
+        f"\n{'time':<22} {'tool':<14} {'decision':<18} {'status':<20} "
+        f"{'enforcement basis':<20} record"
+    )
     print("-" * 100)
     for row in rows:
         print(row)

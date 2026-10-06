@@ -613,6 +613,12 @@ function renderActivity(activity) {
     decision.append(statusChip(record.decision));
     const result = document.createElement("td");
     result.append(statusChip(record.result_status));
+    const basis = document.createElement("td");
+    basis.textContent = {
+      native_hook_preview: "Native hook · preview only",
+      mcp_proxy: "MCP proxy",
+      harness_control_loop: "Harness control loop",
+    }[record.enforcement_basis] || "Legacy / unspecified";
     const identifiers = document.createElement("td");
     identifiers.className = "mono-pair";
     identifiers.textContent = `${shortId(record.request_id)} / ${shortId(record.action_id)}`;
@@ -620,7 +626,7 @@ function renderActivity(activity) {
     const cost = document.createElement("td");
     cost.className = "number-cell";
     cost.textContent = money(record.cost_usd);
-    row.append(timestamp, tool, decision, result, identifiers, cost);
+    row.append(timestamp, tool, decision, result, basis, identifiers, cost);
     elements.activityBody.append(row);
   }
 }

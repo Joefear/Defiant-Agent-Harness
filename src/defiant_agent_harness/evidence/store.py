@@ -409,6 +409,18 @@ class EvidenceStore:
             record for record in self._raw() if record.get("action_id") == action_id
         ]
 
+    def first_by_action(self, action_id: str) -> dict | None:
+        """Find an action's origin without retaining/decoding later records.
+
+        This is a lookup, not chain verification. Authority callers still audit
+        the complete state before using it. Close the stream on early return.
+        """
+        with closing(self._raw()) as records:
+            for record in records:
+                if record.get("action_id") == action_id:
+                    return record
+        return None
+
     def get(self, record_id: str) -> dict | None:
         for record in self._raw():
             if record.get("record_id") == record_id:

@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.99.
+logs. A full trusted-memory/DKE system is not part of v0.100.
 
 ## The invariant
 
@@ -35,7 +35,13 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.99 is
+## What v0.100 is
+
+v0.100 adds S6: native hooks are a secondary, measured preview seam. Sealed
+evidence distinguishes hook checks from proxy execution, and CLI history and
+the read-only dashboard expose that distinction. Historical evidence is not
+relabeled. Offline contention measurements record the observed margin against
+the unchanged 10-second hook budget; they do not establish pilot readiness.
 
 v0.99 adds S5 real process-kill recovery tests against the pinned official
 filesystem MCP server. A receipt observer inside the real upstream counts
@@ -61,7 +67,7 @@ S3 live CI remains in place on Linux and Windows for scheduled, manual, and
 valid until both live platforms and ordinary CI pass on its exact commit.
 See `docs/live_mcp_ci.md`, `docs/testing.md`, and `docs/pilot_readiness_arc.md`.
 This is not arbitrary-MCP safety, real-pilot acceptance, or production readiness.
-S5 process-kill recovery work is not included.
+S5 process-kill recovery is included; later pilot slices remain separate gates.
 
 A headless local control loop plus generic MCP stdio and Streamable HTTP
 upstream transports. Each local proxy speaks stdio to the agent, forwards only
@@ -81,8 +87,18 @@ The repository also includes preview native-agent hook adapters for current
 VS Code, Copilot CLI, and Codex sessions. `PreToolUse` sends native read, write,
 search, terminal, subagent, and unknown-tool attempts through the same policy
 and approval path. `PostToolUse` seals successful external execution into
-evidence. This closes the principal bypass exposed by runners whose built-in
-tools cannot be removed from their UI.
+evidence from the runner's report. These hooks are secondary, non-authoritative
+preview seams: they do not establish that every native action was intercepted,
+and preview hook decisions do not support pilot deployment claims. A hook
+timeout can fail open in the host runner. The MCP proxy remains the execution
+boundary for calls routed through it; OS/network isolation remains necessary.
+
+S6 (v0.100.0) adds a sealed `enforcement_basis` to new runtime evidence:
+`native_hook_preview`, `mcp_proxy`, or `harness_control_loop`. CLI history and
+the read-only Command Center show the distinction. Unlabeled historical records
+remain unspecified, never inferred from a runner name. Operator reconciliation
+preserves the original basis. See `docs/native_hooks.md` for the opt-in offline
+latency measurement and its limits against the unchanged 10-second hook budget.
 
 v0.4 added the first thin **Command Core** read model. It verifies the complete
 evidence chain and emits a safe operational snapshot containing decision and
@@ -1082,13 +1098,13 @@ held for exact human approval and completed by a matching `PostToolUse`.
 
 Open the repository folder in VS Code and follow
 `examples/vscode_agent/README.md`. It documents both proofs: the MCP transport
-boundary and the stronger native hook path.
+boundary and the secondary preview native-hook path.
 
 ### Connect Codex
 
 The project-scoped `.codex/config.toml` connects Codex to the Defiant filesystem
-proxy, while `.codex/hooks.json` governs supported native Codex tools. The
-integration uses separate `codex-hook` and `codex-mcp` runner identities,
+proxy, while `.codex/hooks.json` adds preview checks for supported native Codex
+tools. The integration uses separate `codex-hook` and `codex-mcp` runner identities,
 model-bound exact approvals, repository-root discovery from nested working
 directories, and Codex's official hook output dialect.
 
@@ -1193,7 +1209,8 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.99 — real process-kill proof with exact upstream receipts, explicit reviewed
+v0.100 — explicit preview-hook enforcement basis and measured contention latency,
+real process-kill proof with exact upstream receipts, explicit reviewed
 MCP client-method disposition, local control loop,
 generic MCP stdio and Streamable HTTP upstream transports,
 preview native VS Code/Copilot and Codex hook adapters, a read-only Command Core
@@ -1292,7 +1309,7 @@ fixed bounded and sealed pre-adapter tool-call translation,
 fixed bounded and sealed post-execution tool-result capture,
 offline-verifiable signed evidence exports, signed operator authority, and
 durable downgrade-resistant operator trust enrollment. Not a hosted platform.
-The hook controls tool calls that emit supported lifecycle events. Direct
+The preview hook checks tool calls that emit supported lifecycle events. Direct
 process activity outside those events, and the documented fail-open
 hook-timeout behavior, still require OS/network isolation. See
 `docs/architecture.md`, `docs/approval_reconciliation.md`,

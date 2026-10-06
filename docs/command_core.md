@@ -1,5 +1,11 @@
 # Command Core
 
+S6 adds `enforcement_basis` to read-only `recent_activity`: `native_hook_preview`,
+`mcp_proxy`, `harness_control_loop`, or `legacy_unspecified`. This does not change
+snapshot integrity's `authoritative` flag into a deployment assurance claim.
+Preview-hook evidence remains non-authoritative for pilot deployment, even when
+the snapshot and evidence chain are intact. No write or execution API is added.
+
 Command Core is the read-only bridge between Defiant Agent Harness state and
 Defiant Command surfaces. It does not approve, execute, classify, or alter an
 action. Its only job is to validate local records and project a small

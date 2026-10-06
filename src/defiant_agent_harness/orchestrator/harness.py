@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from functools import wraps
@@ -35,6 +36,7 @@ from ..contracts import (
     HarnessRequest,
     ProposedAction,
     ResultStatus,
+    enforcement_basis,
     sha256_of,
     utc_now,
 )
@@ -151,6 +153,7 @@ class Harness:
         dry_run: bool = False,
         authority_lock: AuthorityTransactionLock | None = None,
         execution_disabled: bool = False,
+        evidence_basis: str = "harness_control_loop",
     ):
         self.policy = policy
         self.tools = tools
@@ -165,6 +168,10 @@ class Harness:
         )
         self.dry_run = dry_run
         self.execution_disabled = execution_disabled
+        self.evidence_basis = enforcement_basis(evidence_basis)
+        # Optimization only: never replaces the full state/chain audit. Bound
+        # memory in long-running proxies; evictions fall back to origin lookup.
+        self._action_bases: OrderedDict[str, str] = OrderedDict()
 
     # -- entry points -------------------------------------------------
 
@@ -245,7 +252,16 @@ class Harness:
         self.recover_operation()
         self.reconcile_expired_approvals()
         self.state_integrity.require_safe()
-        if self.evidence.by_action(action.action_id):
+        prior = self.evidence.first_by_action(action.action_id)
+        # Reuse the existing duplicate-action check: a new action needs no
+        # second scan when its first (or subsequent) evidence is prepared.
+        self._remember_action_basis(
+            action.action_id,
+            prior.get("enforcement_basis", "")
+            if prior is not None
+            else self.evidence_basis,
+        )
+        if prior is not None:
             decision = self._control_decision(
                 action,
                 Decision.BLOCK,
@@ -447,6 +463,11 @@ class Harness:
             raise ToolContractError(
                 "external completion has no matching sealed authorization"
             )
+        # Reuse the authorization lookup in a fresh post-hook process. Preserve
+        # the first record's origin, including an absent legacy label.
+        self._remember_action_basis(
+            action.action_id, records[0].get("enforcement_basis", "")
+        )
         if authorization.get("request_id") != request.request_id:
             raise ToolContractError("external completion request does not match")
         if authorization.get("decision") != decision.decision.value:
@@ -1133,6 +1154,26 @@ class Harness:
             )
         )
 
+    def _remember_action_basis(self, action_id: str, basis: str) -> str:
+        basis = enforcement_basis(basis)
+        self._action_bases[action_id] = basis
+        self._action_bases.move_to_end(action_id)
+        if len(self._action_bases) > 1024:
+            self._action_bases.popitem(last=False)
+        return basis
+
+    def _basis_for_action(self, action_id: str) -> str:
+        if action_id in self._action_bases:
+            self._action_bases.move_to_end(action_id)
+            return self._action_bases[action_id]
+        prior = self.evidence.first_by_action(action_id)
+        return self._remember_action_basis(
+            action_id,
+            prior.get("enforcement_basis", "")
+            if prior is not None
+            else self.evidence_basis,
+        )
+
     def _make_record(
         self,
         action: ProposedAction,
@@ -1148,12 +1189,17 @@ class Harness:
         reconciliation_note: str = "",
         budget_remaining_usd: Decimal | None = None,
     ) -> EvidenceRecord:
+        # Operator decisions and later lifecycle records retain the original
+        # action's basis, including absent legacy labels. Never upgrade history
+        # using the current runner or an operator CLI's local adapter.
+        basis = self._basis_for_action(action.action_id)
         return EvidenceRecord(
             request_id=request.request_id,
             action_id=action.action_id,
             decision=decision.decision,
             result_status=status,
             agent_runner=self.adapter.runner_name,
+            enforcement_basis=basis,
             model_id=self.adapter.model_id,
             user_id=request.user_id,
             workspace_id=request.workspace_id,
@@ -1206,6 +1252,7 @@ class Harness:
             decision=authority["decision"],
             result_status=status,
             agent_runner=authority.get("agent_runner", ""),
+            enforcement_basis=authority.get("enforcement_basis", ""),
             model_id=authority.get("model_id", ""),
             user_id=authority.get("user_id", ""),
             workspace_id=authority.get("workspace_id", ""),
@@ -1508,6 +1555,7 @@ def build_harness(
     trusted_authority_publication_witness_keys: list[str] | None = None,
     require_windows_private_state_acl: bool = False,
     _operator_control: bool = False,
+    evidence_basis: str = "harness_control_loop",
 ) -> Harness:
     from ..control_plane_isolation import (
         ControlPlaneIsolationStateStore,
@@ -1976,6 +2024,7 @@ def build_harness(
             authority_lock=authority_lock,
             dry_run=dry_run,
             execution_disabled=_operator_control,
+            evidence_basis=evidence_basis,
         )
         harness.recover_operation()
         harness.reconcile_expired_approvals()

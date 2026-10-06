@@ -291,6 +291,10 @@ def test_proxy_preserves_protocol_and_governs_real_subprocess(tmp_path, capsys):
     assert approval.status == "consumed"
     assert BudgetLedger(state / "budget.json").summary()["total_spent_usd"] == "1.25"
     assert EvidenceStore(state / "evidence.jsonl").verify().ok
+    assert {
+        record["enforcement_basis"]
+        for record in EvidenceStore(state / "evidence.jsonl").records()
+    } == {"mcp_proxy"}
 
 
 def test_repeated_pending_call_reuses_one_exact_action(tmp_path):
