@@ -169,8 +169,10 @@ def measure(
         gate = gate_type(workspace, state)
         count = 1 if mode == "serial" else workers
         batches = [[event(workspace) for _ in range(count)] for _ in range(rounds)]
-        # Prepare matched post events before large-history seeding, outside the
-        # timer. All history is present for each measured production entrypoint.
+        seed_history(gate, history_records)
+        # Prepare matched post events through the real gate AFTER seeding,
+        # outside the timer. Origins must be at the history tail, as in normal
+        # pre/post process lifecycles, not artificially near the first record.
         if phase == "post":
             for batch in batches:
                 for sample in batch:
@@ -178,7 +180,6 @@ def measure(
                     if response["hookSpecificOutput"]["permissionDecision"] != "allow":
                         raise RuntimeError("post fixture preflight was not allowed")
                     sample["tool_response"] = "synthetic"
-        seed_history(gate, history_records)
         result["initial_history_records"] = len(gate.harness.evidence.records())
         result["initial_history_bytes"] = gate.harness.evidence.path.stat().st_size
         result["initial_state"] = inspect_state(state)
@@ -282,6 +283,9 @@ def main(argv=None) -> int:
         choices=("serial", "concurrent", "held_authority_lock"),
         default=["serial", "concurrent", "held_authority_lock"],
     )
+    parser.add_argument(
+        "--phases", nargs="+", choices=("pre", "post"), default=["pre", "post"]
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     sizes = (
@@ -323,7 +327,7 @@ def main(argv=None) -> int:
     for size in sizes:
         for kind in args.hooks:
             for mode in args.modes:
-                for phase in ("pre", "post"):
+                for phase in args.phases:
                     case = measure(
                         kind,
                         rounds=args.rounds,

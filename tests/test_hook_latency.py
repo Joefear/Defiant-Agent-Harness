@@ -78,3 +78,33 @@ def test_cli_preserves_existing_report(tmp_path):
     with pytest.raises(SystemExit):
         latency.main(["--output", str(report)])
     assert report.read_text() == "historical report"
+
+
+def test_post_benchmark_places_origin_after_history(tmp_path, monkeypatch):
+    observed = []
+
+    def post(kind, phase, document, workspace, environment, barrier):
+        from defiant_agent_harness.evidence.store import EvidenceStore
+
+        records = EvidenceStore(
+            Path(environment["DAH_HOOK_WORKDIR"]) / "evidence.jsonl"
+        ).records()
+        assert len(records) == 5
+        assert all(r["result_status"] == "blocked" for r in records[:4])
+        assert records[-1]["result_status"] == "skipped"
+        assert records[-1]["enforcement_basis"] == "native_hook_preview"
+        observed.append(True)
+        return {"seconds": 0.1, "outcome": "sealed"}
+
+    monkeypatch.setattr(latency, "invoke", post)
+    case = latency.measure(
+        "codex",
+        rounds=1,
+        workers=2,
+        history_records=4,
+        mode="serial",
+        phase="post",
+        fixture_parent=tmp_path,
+    )
+    assert observed == [True]
+    assert case["responses_valid"] and case["initial_history_records"] == 5

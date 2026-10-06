@@ -2,6 +2,8 @@
 
 import io
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -99,6 +101,70 @@ def test_cached_basis_does_not_bypass_full_state_audit(tmp_path):
     with pytest.raises(StateIntegrityError):
         gate.post_tool_use(sample | {"tool_response": "synthetic"})
     assert path.read_text(encoding="utf-8") == damaged
+
+
+@pytest.mark.parametrize("kind", ["codex", "copilot"])
+@pytest.mark.parametrize("basis", ["native_hook_preview", ""])
+def test_fresh_post_process_reuses_authorization_scan(tmp_path, kind, basis):
+    gate_type = codex.CodexHookGate if kind == "codex" else copilot.CopilotHookGate
+    state = tmp_path / "state"
+    gate = gate_type(tmp_path, state)
+    # Empty basis simulates a genuine pre-S6 origin without rewriting history.
+    gate.harness.evidence_basis = basis
+    for index in range(3):
+        gate.harness.evidence.append(
+            EvidenceRecord(
+                request_id=f"history-{index}",
+                action_id=f"history-{index}",
+                decision=Decision.BLOCK,
+                result_status=ResultStatus.BLOCKED,
+            )
+        )
+    sample = {
+        "tool_name": "Read",
+        "tool_input": {"file_path": "note.txt"},
+        "tool_use_id": "fresh-post",
+    }
+    gate.pre_tool_use(sample)
+    child = r"""
+import importlib, json, sys
+from pathlib import Path
+module = importlib.import_module("defiant_agent_harness.hooks." + sys.argv[1])
+gate_type = module.CodexHookGate if sys.argv[1] == "codex" else module.CopilotHookGate
+gate = gate_type(Path(sys.argv[2]), Path(sys.argv[3]))
+assert not gate.harness._action_bases
+original = gate.harness.evidence._raw
+scans = []
+def counted():
+    scans.append(sys._getframe(1).f_code.co_name)
+    return original()
+def redundant(*args):
+    raise AssertionError("post completion performed an extra origin lookup")
+gate.harness.evidence._raw = counted
+gate.harness.evidence.first_by_action = redundant
+response = gate.post_tool_use(json.loads(sys.stdin.read()))
+print(json.dumps({"scans": scans, "response": response}))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", child, kind, str(tmp_path), str(state)],
+        input=json.dumps(sample | {"tool_response": "synthetic"}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    proof = json.loads(completed.stdout)
+    # Two existing action-history scans, with no additional origin scan.
+    # Verification, checkpoint, append/recovery and record lookup reads remain:
+    # "two scans" must not be presented as two total reads of durable history.
+    assert proof["scans"].count("by_action") == 2
+    assert "first_by_action" not in proof["scans"]
+    assert len(proof["scans"]) == 8
+    assert (
+        "Defiant sealed" in proof["response"]["hookSpecificOutput"]["additionalContext"]
+    )
+    lifecycle = gate.harness.evidence.records()[-2:]
+    assert all(item.get("enforcement_basis", "") == basis for item in lifecycle)
 
 
 @pytest.mark.parametrize("basis", ["", "native_hook_preview"])

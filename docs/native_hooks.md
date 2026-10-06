@@ -204,8 +204,12 @@ audit an affected root; do not delete locks or guess outcomes automatically.
 Origin labels are cached in a bounded per-Harness cache. New actions reuse the
 required duplicate-action lookup rather than adding a second history scan.
 Cross-process continuation and cache eviction use the first matching origin
-record, closing the stream immediately. Full authority/chain audits are not
-removed; hook work still scales with evidence history.
+record, closing the stream immediately. Fresh post-hook completion also reuses
+the first origin in its already-loaded authorization history; it does not
+perform a second origin lookup. Two existing `by_action` scans remain in post
+completion, as do additional integrity/checkpoint/recovery reads. Full
+authority/chain audits are not removed; hook work still scales with evidence
+history.
 
 ## Reproducible latency measurement
 
@@ -220,7 +224,8 @@ retains every fixture beside the report, including deadline-killed fixtures.
 It refuses to overwrite an existing report. Each history size, hook, mode, and
 phase gets an independent root; a timeout stops that case's remaining rounds.
 Large histories are bulk-seeded hash-valid terminal refusal records (not real
-pilot actions). Matched post authorizations are prepared before seeding; the
+pilot actions). Matched post authorizations are prepared through the real gate
+after seeding, outside the timer, so origins are at the history tail. The
 report records actual initial counts and bytes, including those authorizations.
 This avoids quadratic fixture setup without bypassing measured runtime checks.
 The history ceiling is 200,000 seeded records, not the former 1,000-pair cap.
@@ -299,9 +304,9 @@ first run as a reliable safety margin, raise the configured timeout, or make
 pilot prevention claims from this preview seam. Independent review must consider
 the failed repeat and history-scaled corrections before any S6 release decision.
 
-### Corrected history measurement
+### Earlier history measurement
 
-The corrected benchmark ran on the same owner's Windows 10.0.26100 host with
+The earlier corrected candidate `287fbf1` ran on the same owner's Windows 10.0.26100 host with
 Python 3.11.9, without concurrent pytest or another benchmark. Background OS
 and application activity was not controlled; this is a quiet-workload sample,
 not certification of an idle machine. Serial pre/post calls were sampled once
@@ -310,13 +315,12 @@ Post cases additionally contain one earlier matching authorization. This
 synthetic history is not a model of all pilot record sizes or lifecycle mixes;
 post origins near the start also understate a late-origin lookup's cost.
 
-At 5,000 records the Codex pre/post maxima were 9.135/9.262 seconds, with
-upper-bound margins of 0.865/0.738 seconds. Copilot took 9.205/8.883 seconds,
-with margins 0.795/1.117. The first sampled negative-margin history was 20,000
-records (20,001 for post): the 10-second subprocess deadline killed the hook.
-Thus the observed crossing is bracketed above 5,000 and at or below 20,000
-seeded records for this sample, not located exactly or guaranteed repeatable.
-The original small-history load-induced failures still stand.
+These earlier post figures and their proposed failure bracket are superseded
+by the tail-origin measurements below. Raw earlier runs remain preserved;
+they must not be used as realistic post-hook timing. The earlier pre figures
+remain 9.135 seconds for Codex and 9.205 for Copilot at 5,000 records; both
+20,000-record pre calls timed out. Those are sampled observations, not a
+universal threshold. The original small-history load-induced failures stand.
 
 The corrected reports include full before/after cross-store audits, lock-file
 inventories, actual history bytes, and retained fixture paths. A deadline-killed
@@ -326,10 +330,49 @@ not the same as a clean state, even where `safe_to_execute` permits exact
 recovery. Uncompleted synthetic pre-authorizations also produce expected
 reconciliation warnings. No retained fixture is automatically repaired.
 
-The separate corrected 20-record contention run completed all 108 calls within
+All four earlier 20,000-record invocations left the evidence count unchanged:
+they were killed during startup without producing a new decision record.
+Thus this seam can lose both timely decisions and evidence, not merely produce
+late refusals. This is a finite observation, not proof that every future call
+above a precise threshold behaves identically. Pilot hook operation requires
+an explicit owner choice in light of this limit; no retirement/replacement
+mechanism or changed hook configuration is introduced here.
+
+That candidate's separate 20-record contention run completed all 108 calls within
 budget; the slowest was Codex concurrent pre at 7.647 seconds (upper-bound
 margin 2.353). All responses had the expected allow/seal/busy-refusal form,
 all held-lock cases left evidence unchanged, and no stale sentinel or unsafe
 audit result was present. Pending synthetic authorizations still appeared as
 reconciliation warnings. This favorable run does not cancel either the earlier
 load-induced failures or the corrected large-history deadline kills.
+
+### Corrected tail-origin post measurement
+
+After reusing the authorization lookup for origin inheritance, the post ladder
+was rerun on the owner's Windows 10.0.26100 host with Python 3.11.9, separately
+from pytest and other benchmarks. Each case first seeds the terminal history,
+then obtains one matching authorization through the real pre gate, outside the
+timer. Thus the origin is the last record when the fresh post process starts.
+
+```powershell
+python examples/hooks/latency.py --rounds 1 --history-records 250 1000 2000 5000 --modes serial --phases post --output S6-post-tail-ladder.json
+```
+
+| Seeded records | Actual initial records | Codex post / margin | Copilot post / margin |
+|---|---|---|---|
+| 250 | 251 | 1.721 / 8.279 | 1.748 / 8.252 |
+| 1,000 | 1,001 | 2.714 / 7.286 | 2.676 / 7.324 |
+| 2,000 | 2,001 | 3.878 / 6.122 | 3.913 / 6.087 |
+| 5,000 | 5,001 | 7.535 / 2.465 | 7.572 / 2.428 |
+
+Times are seconds, rounded to three decimals; each cell is one observation,
+not a percentile or guaranteed maximum. Margins remain upper bounds excluding
+the shell wrapper and actual host runner. All eight calls returned a valid
+sealed response and appended exactly one terminal record. Final cross-store
+audits were healthy with no pending authorizations or sentinel locks. Full raw
+audits, counts, bytes, timings and all fixtures are retained beside the report.
+
+These figures supersede the earlier post ladder, not the earlier pre or
+contention measurements. This rerun did not measure 20,000 records or establish
+a post failure threshold. It does not cancel the retained deadline failures,
+evidence-loss observations or the need for an explicit pilot hook decision.

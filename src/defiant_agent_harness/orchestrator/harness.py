@@ -463,6 +463,11 @@ class Harness:
             raise ToolContractError(
                 "external completion has no matching sealed authorization"
             )
+        # Reuse the authorization lookup in a fresh post-hook process. Preserve
+        # the first record's origin, including an absent legacy label.
+        self._remember_action_basis(
+            action.action_id, records[0].get("enforcement_basis", "")
+        )
         if authorization.get("request_id") != request.request_id:
             raise ToolContractError("external completion request does not match")
         if authorization.get("decision") != decision.decision.value:

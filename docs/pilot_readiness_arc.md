@@ -107,3 +107,11 @@ S6 review carry-forward requirements (not implementation of later slices):
   have been missed under measured load; history worsens margin; host fail-open
   behavior cannot be closed within the Harness. MCP remains authoritative only
   for traffic routed through it. S6 measurements do not establish pilot readiness.
+- The earlier four 20,000-record calls produced no new decision evidence and
+  left publication recovery required. Pilot hook operation needs an explicit
+  owner choice; do not silently disable it or invent store rotation. Preserve
+  this evidence-loss limit in the next handoff's authority ceiling when S6 closes.
+- S10 must measure authoritative proxy per-call latency against evidence size
+  on the pilot host and compare it with the real runner's MCP tool-call timeout.
+  Hook timings are not proxy measurements. Any incremental-audit change needs
+  a separate owner-approved scope decision; no such implementation is added here.
