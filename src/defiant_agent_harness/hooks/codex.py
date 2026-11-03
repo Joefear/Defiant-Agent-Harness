@@ -10,6 +10,7 @@ from typing import Any
 
 from ..bounded_io import read_bounded_text
 from ..limits import MAX_HOOK_EVENT_BYTES
+from ..runtime_lease import leased_runtime
 from ..strict_json import loads_strict_json
 from .copilot import (
     CopilotHookGate,
@@ -62,6 +63,7 @@ class CodexHookGate(CopilotHookGate):
         return _codex_post_output(super().post_tool_use(event))
 
 
+@leased_runtime("state_root")
 def run_hook(
     phase: str,
     event: dict[str, Any],

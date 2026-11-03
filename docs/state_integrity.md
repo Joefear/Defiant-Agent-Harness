@@ -1,5 +1,14 @@
 # State integrity auditing
 
+S7 adds a conservative [snapshot/restore procedure](operator_runbook.md).
+An incomplete restore candidate reports critical `restore_incomplete` and is
+refused before startup recovery. A complete copied root still reports its root
+identity mismatch until explicit operator profile rotation activates it.
+Restored approved approvals report the existing `execution_recovery_required`
+state; their outcomes remain unknown and reservations remain held. Command
+Core and Command Center continue to be read-only. Neither can initiate restore,
+rotation or reconciliation.
+
 v0.7 adds a read-only, cross-store audit over `evidence.jsonl`,
 `approvals.json`, and `budget.json`. v0.10 extends it to durable
 `operator_trust.json`, v0.11 adds the deterministic local

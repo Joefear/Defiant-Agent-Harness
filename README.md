@@ -5,7 +5,7 @@ Control, approvals, budgets, memory discipline, and audit evidence for business-
 Defiant Agent Harness wraps MCP-capable and other agentic AI systems with
 business-grade controls: tool permissions, human approval gates, budget limits,
 provenance discipline, prompt-injection resistance, and Command-ready evidence
-logs. A full trusted-memory/DKE system is not part of v0.100.
+logs. A full trusted-memory/DKE system is not part of v0.101.
 
 ## The invariant
 
@@ -35,7 +35,18 @@ into the proposed action. Policy can then refuse outbound actions derived from
 untrusted material. The mock adapter proves this path; every real adapter must
 be reviewed and tested for provenance quality.
 
-## What v0.100 is
+## What v0.101 is
+
+v0.101 adds the S7 operator snapshot and separate-root restore procedure.
+Supported runtime entry points hold a lifetime lease; maintenance refuses an
+active proxy even when its transaction lock is free. A restored approved action
+becomes uncertain before startup can expire it, release its reservation or replay
+it. Activation requires explicit profile rotation and reconciliation requires an
+operator outcome, identity and investigation note. The original is retained.
+Unverifiable originals, incompatible required witnesses and unrepresentable
+post-snapshot authorizations are refused. Read the [operator procedure](docs/operator_runbook.md)
+for support limits and separate hook/proxy handling. Owner walkthrough and
+release gates remain pending; this does not claim pilot readiness.
 
 v0.100 adds S6: native hooks are a secondary, measured preview seam. Sealed
 evidence distinguishes hook checks from proxy execution, and CLI history and
@@ -1209,7 +1220,9 @@ official filesystem server to a test run.
 
 ## Status
 
-v0.100 — explicit preview-hook enforcement basis and measured contention latency,
+v0.101 — conservative operator snapshot/restore with explicit activation and
+uncertainty preservation (owner walkthrough and release gates pending),
+explicit preview-hook enforcement basis and measured contention latency,
 real process-kill proof with exact upstream receipts, explicit reviewed
 MCP client-method disposition, local control loop,
 generic MCP stdio and Streamable HTTP upstream transports,

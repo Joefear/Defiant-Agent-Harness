@@ -709,6 +709,39 @@ def cmd_command(args) -> int:
     return 0 if snapshot["authoritative"] else 1
 
 
+def cmd_snapshot_restore(args) -> int:
+    from ..backup import restore, snapshot
+
+    try:
+        _validate_trusted_operator_paths(args)
+        if args.evidence_head_witness or args.authority_publication_witness:
+            raise PersistenceError("S7 does not migrate externally witnessed state")
+        common = dict(
+            workspace=args.workspace_root,
+            operator=args.operator,
+            note=args.note,
+            trusted_operator_keys=args.trusted_operator_key or [],
+        )
+        if getattr(args, "snapshot", None):
+            result = restore(
+                args.workdir,
+                args.snapshot,
+                args.target,
+                expected_manifest_sha256=args.expect_manifest_sha256,
+                **common,
+            )
+        else:
+            result = snapshot(args.workdir, args.output, **common)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(
+            json.dumps({"ok": False, "detail": str(exc), "original_preserved": True}),
+            file=sys.stderr,
+        )
+        return 1
+    print(json.dumps({"ok": True, **result}, indent=2, sort_keys=True))
+    return 0
+
+
 def cmd_doctor(args) -> int:
     try:
         trust = _operator_trust(args, authority=False)
@@ -1369,6 +1402,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="trusted Ed25519 publication witness key PEM (repeatable)",
     )
     verify_publication_witness.set_defaults(fn=cmd_verify_authority_publication_witness)
+
+    for verb in ("snapshot", "restore"):
+        maintenance = sub.add_parser(
+            verb, help="operator-controlled, quiescent state " + verb
+        )
+        maintenance.add_argument("--operator", required=True)
+        maintenance.add_argument(
+            "--note",
+            required=True,
+            help="shutdown, upstream-exit and original-retirement evidence",
+        )
+        _add_operator_trust(maintenance)
+        if verb == "snapshot":
+            maintenance.add_argument("--output", required=True)
+        else:
+            maintenance.add_argument("--snapshot", required=True)
+            maintenance.add_argument("--target", required=True)
+            maintenance.add_argument("--expect-manifest-sha256", required=True)
+        maintenance.set_defaults(fn=cmd_snapshot_restore)
 
     doctor = sub.add_parser(
         "doctor",

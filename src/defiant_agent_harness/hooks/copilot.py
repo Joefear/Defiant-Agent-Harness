@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..runtime_lease import leased_runtime
+
 import json
 import os
 import sys
@@ -804,6 +806,7 @@ def _post_failure(reason: str) -> dict[str, Any]:
     }
 
 
+@leased_runtime("state_root")
 def run_hook(
     phase: str,
     event: dict[str, Any],

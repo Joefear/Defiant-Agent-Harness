@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
@@ -236,6 +237,14 @@ class StateIntegrityAuditor:
 
     def audit(self) -> StateIntegrityReport:
         report = StateIntegrityReport()
+        if os.path.lexists(self.workdir / "restore_incomplete.json"):
+            self._issue(
+                report,
+                "restore_incomplete",
+                "critical",
+                "restore",
+                "incomplete restore candidate; preserve and do not activate",
+            )
         storage_file_count = self._audit_state_storage(report)
         self._audit_locks(report)
         trust_generation = self._audit_operator_trust(report)

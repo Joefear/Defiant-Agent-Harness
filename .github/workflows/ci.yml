@@ -39,6 +39,8 @@ jobs:
         run: python examples/filesystem/live_ci.py
       - name: Kill real proxies and verify exact real upstream receipts (no skips permitted)
         run: python examples/filesystem/crash_ci.py
+      - name: Restore across a real pinned-server write (no skips permitted)
+        run: python examples/filesystem/restore_ci.py
 
   live-mcp-gate:
     # always() makes a failed/skipped/cancelled matrix invalidate the gate.

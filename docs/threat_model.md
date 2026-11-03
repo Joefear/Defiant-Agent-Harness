@@ -1,5 +1,17 @@
 # Threat model
 
+S7's authorized restore procedure is a constrained operator rollback, not a
+defence against an operator replacing all local history. It requires a pinned
+snapshot digest, verifiable retained original, quiescence and original retirement,
+post-snapshot accounting, restored uncertainty, and explicit profile activation.
+It does not permit silent witness rollback or migrate required witnesses. An
+unreadable original or unrepresentable newer authorization causes refusal.
+The lifetime lease covers supported entry points on one root, not older software,
+another root, or host tools outliving a native hook. Restore does not encrypt
+backups, fence separate authorities, repair torn state or infer external outcomes.
+These limits and the owner walkthrough are explicit in the
+[operator procedure](operator_runbook.md).
+
 The harness assumes the agent is capable, useful, and completely untrustworthy as a source of authority. Not because models are bad, but because the failure modes below do not require the model to be bad.
 
 ## What we defend against

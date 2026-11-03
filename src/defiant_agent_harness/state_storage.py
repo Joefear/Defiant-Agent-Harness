@@ -49,6 +49,8 @@ _DIRECTORY_SYNC = {"required", "best_effort"}
 _MAX_STATE_BYTES = MAX_STATE_STORAGE_STATE_BYTES
 KNOWN_STATE_FILENAMES = (
     "approvals.json",
+    "runtime.lease",
+    "restore_receipt.json",
     "authority.lock",
     "authority_publication_continuity.json",
     "authority_publication_witness_policy.json",

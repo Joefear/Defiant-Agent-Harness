@@ -1567,6 +1567,9 @@ def build_harness(
         prepare_workspace_root,
     )
 
+    from ..runtime_lease import require_complete_restore
+
+    require_complete_restore(workdir)
     loaded_policy_packs = PolicyEngine.load_default(policy_packs)
     state_storage = prepare_state_storage(
         workdir,
