@@ -950,6 +950,30 @@ class ApprovalStore:
         self._require_decision_identity(approval)
         return approval
 
+    def quarantine_restored_approvals(self, approval_ids: list[str]) -> None:
+        """Remove execution eligibility from restored approvals, even if expired.
+
+        This cannot authorize or dispatch a tool, release a reservation or infer
+        an outcome. Original decisions/signatures remain unchanged. The caller
+        must use this only on an isolated complete restore candidate before its
+        activation, retaining the operator restore receipt separately.
+        """
+        with exclusive_file_lock(self.path):
+            data = self._read_all()
+            for approval_id in approval_ids:
+                approval = data.get(approval_id)
+                if approval is None or approval.status not in {"approved", "executing"}:
+                    raise ApprovalError(
+                        "restore quarantine requires an approved or executing record"
+                    )
+                self._require_decision_identity(approval)
+                if not approval.decided_by or approval.reconciliation_outcome:
+                    raise ApprovalError(
+                        "restore cannot fabricate a decision or alter reconciliation"
+                    )
+                data[approval_id] = approval.with_updates(status="executing")
+            self._write_all(data)
+
     def begin_execution(
         self,
         approval_id: str,

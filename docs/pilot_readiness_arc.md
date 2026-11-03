@@ -1,8 +1,8 @@
 # Pilot Readiness Arc
 
-This arc follows the owner's Master Handoff v1.1, Pilot Readiness Arc,
-with the current S6 baseline v0.99.0 at
-`2bbd0d420cad469512f10ce4981b1d82590476ca`. The evidence inspection and export
+This arc follows the owner's Master Handoff v1.2, Pilot Readiness Arc,
+with the current S7 baseline v0.100.0 at
+`8a8c45765d14e30e5b67e8e30cd85a642f899230`. The evidence inspection and export
 bounding arc (v0.85 through v0.94) is closed. This file tracks implementation;
 it does not replace the source handoff or independently verify all of its
 baseline assessments.
@@ -39,8 +39,8 @@ the next handoff be requested. Do not invent an additional arc.
 | S3 | Automated live pinned filesystem MCP integration | S1 | Implemented for v0.97.0; completion requires both-platform negative proof, final branch/main/tag green gates, and cold review; see `live_mcp_ci.md` |
 | S4 | Explicit disposition of non-tool MCP methods | S3 | Implemented for v0.98.0; requires non-forwarding proof, cold review, and exact branch/main/tag CI gates; see `mcp_method_disposition.md` |
 | S5 | Real process-kill crash recovery | S3 | Closed at v0.99.0 / `2bbd0d4`; independent review corrections and exact branch/main/tag gates complete; see `process_kill_recovery.md` |
-| S6 | Distinguishable preview-hook enforcement basis and measured latency | S1 | Implemented toward v0.100.0; independent Claude review and release gates pending; see `native_hooks.md` |
-| S7 | Exercised consistent backup and restore | S1 | Not started |
+| S6 | Distinguishable preview-hook enforcement basis and measured latency | S1 | Closed at v0.100.0 / `8a8c457`; independent review corrections and release gates complete; see `native_hooks.md` |
+| S7 | Exercised consistent backup and restore | S1 | In progress toward v0.101.0; implementation, exact-SHA review, hosted proof and owner walkthrough pending |
 | S8 | Real merchant review workspace and policy workflow | S3, S4 | Not started |
 | S9 | Eighteen-scenario Windows pilot acceptance target | S2, S4, S5, S7, S8 | Not started |
 | S10 | Measured resources and owner-proposed ceilings | S9 | Not started |
@@ -51,7 +51,8 @@ the next handoff be requested. Do not invent an additional arc.
 S1 targets v0.95.0. Later target labels in the source handoff are ordering
 hints, not authorization to declare a stable release. The owner selected
 v0.100.0 for S6 rather than the source's `v1.00.0`; subsequent labels and the
-final arc tag remain owner decisions. The source's introductory safety/readiness
+final arc tag remain owner decisions. The v1.2 targets are v0.101.0 for S7
+through v0.106.0 for S12. The source's introductory safety/readiness
 grouping differs from S7's explicit readiness classification; use the concrete
 slice goals and acceptance criteria, not the grouping, to track completion.
 
@@ -96,6 +97,20 @@ S5 review carry-forward requirements (not implementation of later slices):
 Real pilot data, owner walkthroughs, resource approvals, key custody choices,
 and the final tag require owner participation. Stop at those gates rather
 than substituting synthetic results or making the decisions silently.
+
+S7's four v1.2 criteria remain mandatory: external effects stay uncertain;
+post-snapshot authorizations remain visible or restore is refused; hook and
+proxy roots are handled independently; interrupted originals are preserved
+without silent repair. A successful real pinned-MCP write across restore must
+retain the exact upstream receipt count through operator reconciliation.
+
+On 2026-11-03 the owner approved the specification-review clarification:
+execution-lifetime/maintenance exclusion and a restore-specific uncertainty
+transition are in scope. Activation uses explicit authority-profile rotation.
+Restore refuses unverifiable originals and incompatible external-witness
+requirements rather than bypassing accounting, root identity or anti-rollback
+protections. These limits must be documented and tested. A refusal-only
+implementation cannot close S7. Command Center stays read-only; no S8 work.
 
 S6 review carry-forward requirements (not implementation of later slices):
 

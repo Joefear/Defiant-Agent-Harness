@@ -213,6 +213,11 @@ history.
 
 ## Reproducible latency measurement
 
+The S6 measurements below predate S7's invocation-wide `runtime.lease` and
+have not been re-measured with it. Overlapping supported hook invocations now
+refuse promptly when that lease is busy. Do not treat the historical figures
+as measured S7 latency or deadline acceptance.
+
 Run explicitly from a development checkout with the project installed:
 
 ```powershell

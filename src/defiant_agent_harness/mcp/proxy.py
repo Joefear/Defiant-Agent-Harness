@@ -33,6 +33,7 @@ from ..contracts import (
 from ..money import money
 from ..limits import MAX_MCP_MESSAGE_BYTES
 from ..orchestrator.harness import ActionOutcome, build_harness
+from ..runtime_lease import runtime_session
 from ..strict_json import StrictJsonError, loads_strict_json
 from ..launch_envelope import (
     LaunchEnvelopeAssurance,
@@ -631,49 +632,50 @@ def run_stdio_proxy(
         cwd=config.cwd,
         workdir=workdir,
     )
-    session = UpstreamSession(
-        assurance.command,
-        output_stream,
-        cwd=launch_assurance.cwd,
-        timeout_seconds=config.upstream_timeout_seconds,
-        environment=launch_assurance.environment,
-        start=False,
-    )
-    try:
-        proxy = McpStdioProxy(
-            config,
-            session,
-            workdir=workdir,
-            user_id=user_id,
-            workspace_id=workspace_id,
-            workspace_root=workspace_root,
-            policy_packs=policy_packs,
-            sensitivity=sensitivity,
-            dry_run=dry_run,
-            trusted_operator_keys=trusted_operator_keys,
-            evidence_head_witness=evidence_head_witness,
-            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
-            max_unwitnessed_records=max_unwitnessed_records,
-            require_windows_private_state_acl=require_windows_private_state_acl,
-            runtime_artifact_assurance=assurance,
-            launch_envelope_assurance=launch_assurance,
-        )
-        reverified = verify_runtime_artifacts(
+    with runtime_session(workdir):
+        session = UpstreamSession(
             assurance.command,
-            config.artifact_integrity.artifacts,
-            workdir=workdir,
+            output_stream,
             cwd=launch_assurance.cwd,
-            dependency_roots=config.artifact_integrity.dependency_roots,
+            timeout_seconds=config.upstream_timeout_seconds,
+            environment=launch_assurance.environment,
+            start=False,
         )
-        require_same_artifact_bundle(assurance, reverified)
-        require_launch_target_unchanged(launch_assurance)
-        session.start()
-        for line in _client_lines(input_stream):
-            if line.strip():
-                proxy.accept_line(line)
-    finally:
-        session.close()
-    return 0
+        try:
+            proxy = McpStdioProxy(
+                config,
+                session,
+                workdir=workdir,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                workspace_root=workspace_root,
+                policy_packs=policy_packs,
+                sensitivity=sensitivity,
+                dry_run=dry_run,
+                trusted_operator_keys=trusted_operator_keys,
+                evidence_head_witness=evidence_head_witness,
+                trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+                max_unwitnessed_records=max_unwitnessed_records,
+                require_windows_private_state_acl=require_windows_private_state_acl,
+                runtime_artifact_assurance=assurance,
+                launch_envelope_assurance=launch_assurance,
+            )
+            reverified = verify_runtime_artifacts(
+                assurance.command,
+                config.artifact_integrity.artifacts,
+                workdir=workdir,
+                cwd=launch_assurance.cwd,
+                dependency_roots=config.artifact_integrity.dependency_roots,
+            )
+            require_same_artifact_bundle(assurance, reverified)
+            require_launch_target_unchanged(launch_assurance)
+            session.start()
+            for line in _client_lines(input_stream):
+                if line.strip():
+                    proxy.accept_line(line)
+        finally:
+            session.close()
+        return 0
 
 
 def run_http_upstream_proxy(
@@ -699,38 +701,39 @@ def run_http_upstream_proxy(
         raise McpConfigError("mcp-http-proxy requires server.url")
     input_stream = client_input or sys.stdin
     output_stream = client_output or sys.stdout
-    session = HttpUpstreamSession(
-        config.url,
-        output_stream,
-        header_env=config.header_env,
-        timeout_seconds=config.upstream_timeout_seconds,
-        protocol_version=MCP_PROTOCOL_VERSION,
-    )
-    try:
-        proxy = McpStdioProxy(
-            config,
-            session,
-            workdir=workdir,
-            user_id=user_id,
-            workspace_id=workspace_id,
-            workspace_root=workspace_root,
-            policy_packs=policy_packs,
-            sensitivity=sensitivity,
-            dry_run=dry_run,
-            trusted_operator_keys=trusted_operator_keys,
-            evidence_head_witness=evidence_head_witness,
-            trusted_evidence_witness_keys=trusted_evidence_witness_keys,
-            max_unwitnessed_records=max_unwitnessed_records,
-            require_windows_private_state_acl=require_windows_private_state_acl,
-            runtime_artifact_assurance=remote_artifacts(),
-            launch_envelope_assurance=remote_launch_envelope(),
+    with runtime_session(workdir):
+        session = HttpUpstreamSession(
+            config.url,
+            output_stream,
+            header_env=config.header_env,
+            timeout_seconds=config.upstream_timeout_seconds,
+            protocol_version=MCP_PROTOCOL_VERSION,
         )
-        for line in _client_lines(input_stream):
-            if line.strip():
-                proxy.accept_line(line)
-    finally:
-        session.close()
-    return 0
+        try:
+            proxy = McpStdioProxy(
+                config,
+                session,
+                workdir=workdir,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                workspace_root=workspace_root,
+                policy_packs=policy_packs,
+                sensitivity=sensitivity,
+                dry_run=dry_run,
+                trusted_operator_keys=trusted_operator_keys,
+                evidence_head_witness=evidence_head_witness,
+                trusted_evidence_witness_keys=trusted_evidence_witness_keys,
+                max_unwitnessed_records=max_unwitnessed_records,
+                require_windows_private_state_acl=require_windows_private_state_acl,
+                runtime_artifact_assurance=remote_artifacts(),
+                launch_envelope_assurance=remote_launch_envelope(),
+            )
+            for line in _client_lines(input_stream):
+                if line.strip():
+                    proxy.accept_line(line)
+        finally:
+            session.close()
+        return 0
 
 
 def _client_lines(stream: TextIO) -> Iterable[str]:

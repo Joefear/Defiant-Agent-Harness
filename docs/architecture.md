@@ -1,5 +1,24 @@
 # Architecture
 
+## Operator snapshots and restored uncertainty
+
+S7 separates process-lifetime exclusion (`runtime.lease`) from short authority
+transactions. Supported proxy lifetimes and hook invocations exclude maintenance;
+maintenance holds both locks. The lease is not a backup service or an attestation
+that a host-run tool stopped. Older binaries, unwrapped library callers and other
+roots need explicit operator shutdown and retirement.
+
+Snapshots pin a complete bounded inventory with an independently retained digest.
+Restore validates the preserved original and post-snapshot evidence, builds an
+isolated candidate, and removes execution eligibility from restored approved
+approvals before publication. Expiry is deliberately not applied to this
+uncertainty transition. It preserves decision signatures and reservations;
+only existing explicit operator reconciliation can resolve the uncertainty.
+Incomplete candidates block startup. Complete candidates require the existing
+explicit profile transition for their new root identity. Required witnesses and
+unaccountable histories are refused, not rebased or repaired. See the
+[operator runbook](operator_runbook.md) for limits and independent root handling.
+
 ## The one rule
 
 No side-effecting tool action executes unless it passed the policy decision path and produced an evidence record first.

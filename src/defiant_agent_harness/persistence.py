@@ -345,6 +345,10 @@ class AuthorityTransactionLock:
 
     @contextmanager
     def acquire(self) -> Iterator[None]:
+        if self.path.name == "authority.lock":
+            from .runtime_lease import require_complete_restore
+
+            require_complete_restore(self.path.parent)
         if not self._process_lock.acquire(blocking=False):
             raise AuthorityLockError(
                 "authority transaction is busy for state directory"
