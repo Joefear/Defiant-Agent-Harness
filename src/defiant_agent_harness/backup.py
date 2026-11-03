@@ -13,8 +13,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from .approvals.store import ApprovalStore
+from .authority_publication_witness import WITNESS_MODE as PUBLICATION_WITNESS_MODE
 from .contracts import utc_now
 from .evidence.store import EvidenceStore, verify_evidence_records
+from .evidence_witness import WITNESS_MODE as EVIDENCE_WITNESS_MODE
 from .money import money
 from .hooks.state import HookExecutionStore
 from .operator_identity import OperatorTrustPolicy
@@ -140,6 +142,16 @@ def _files(root, names):
 
 
 def _assess(root, workspace, trust, *, copied=False):
+    # Required witnesses bind the original identity and cannot be silently
+    # re-anchored. Refuse explicitly, before the audit's missing-witness fallback.
+    for name, required_mode in (
+        ("evidence_witness_policy.json", EVIDENCE_WITNESS_MODE),
+        ("authority_publication_witness_policy.json", PUBLICATION_WITNESS_MODE),
+    ):
+        if read_json(root / name).get("mode") == required_mode:
+            raise BackupError(
+                "required external witness cannot be migrated by S7 restore: " + name
+            )
     report = StateIntegrityAuditor(
         root, operator_trust=trust, workspace_root=workspace
     ).audit()
@@ -162,14 +174,6 @@ def _assess(root, workspace, trust, *, copied=False):
         raise BackupError(
             "interrupted operator reconciliation must be preserved, not restored"
         )
-    for name in (
-        "evidence_witness_policy.json",
-        "authority_publication_witness_policy.json",
-    ):
-        if read_json(root / name).get("mode") == "required":
-            raise BackupError(
-                "required external witness cannot be migrated by S7 restore"
-            )
     if (root / "hook_executions.json").exists():
         hooks = HookExecutionStore(root / "hook_executions.json")._read_all()
         # Conservative: an authorized correlation may represent a still-running

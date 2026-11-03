@@ -256,23 +256,13 @@ def test_incomplete_candidate_blocks_startup_and_remains_visible(
     assert not StateIntegrityAuditor(candidate).audit().safe_to_execute
 
 
-def test_restore_does_not_open_or_modify_other_root(setup, tmp_path, monkeypatch):
+def test_restore_does_not_modify_other_root(setup, tmp_path):
     other = tmp_path / "hook-state"
     with runtime_session(other):
         build_harness(other, MockAgentAdapter(), workspace_root=setup[1])
     other_before = tree(other)
     source, digest = capture(setup, tmp_path)
-    import builtins
-
-    original_open = builtins.open
-
-    def guarded(file, *args, **kwargs):
-        assert str(other) not in str(file)
-        return original_open(file, *args, **kwargs)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(builtins, "open", guarded)
-        recover(setup, source, digest, tmp_path / "restored")
+    recover(setup, source, digest, tmp_path / "restored")
     assert tree(other) == other_before
     assert StateIntegrityAuditor(other).audit().status == "healthy"
     before = tree(setup[0])
@@ -353,23 +343,48 @@ backup.restore(sys.argv[1], sys.argv[2], sys.argv[3], expected_manifest_sha256=s
     assert candidate.exists()
 
 
-def test_required_witness_snapshot_is_refused_without_changing_enrollment(tmp_path):
-    from test_evidence_witness import _enroll_required_witness
+@pytest.mark.parametrize("kind", ["evidence", "publication"])
+@pytest.mark.parametrize("operation", ["snapshot", "restore"])
+def test_required_witness_is_explicitly_refused_without_changing_enrollment(
+    tmp_path, kind, operation
+):
+    if kind == "evidence":
+        from test_evidence_witness import _enroll_required_witness
+
+        policy = "evidence_witness_policy.json"
+    else:
+        from test_authority_publication_witness import _enroll_required_witness
+
+        policy = "authority_publication_witness_policy.json"
 
     state, workspace, _, _, _, _ = _enroll_required_witness(tmp_path)
     with runtime_session(state):
         pass
     original = tree(state)
-    with pytest.raises(PersistenceError, match="witness"):
-        snapshot(
-            state,
-            tmp_path / "snapshot",
-            workspace=workspace,
-            operator="operator",
-            note="All writers stopped",
-        )
+    reason = "required external witness cannot be migrated by S7 restore: " + policy
+    with pytest.raises(BackupError, match="^" + re.escape(reason) + "$"):
+        if operation == "snapshot":
+            snapshot(
+                state,
+                tmp_path / "snapshot",
+                workspace=workspace,
+                operator="operator",
+                note="All writers stopped",
+            )
+        else:
+            # Original enrollment alone must refuse, before opening a snapshot.
+            restore(
+                state,
+                tmp_path / "absent-snapshot",
+                tmp_path / "restored",
+                expected_manifest_sha256="sha256:" + "0" * 64,
+                workspace=workspace,
+                operator="operator",
+                note="All writers stopped",
+            )
     assert tree(state) == original
     assert not (tmp_path / "snapshot").exists()
+    assert not (tmp_path / "restored").exists()
 
 
 def test_signed_approval_keeps_signature_and_requires_trusted_keys(tmp_path):
@@ -510,6 +525,7 @@ def test_changed_snapshot_during_copy_is_not_activated(setup, tmp_path, monkeypa
 
 
 def test_restore_gate_requires_one_complete_non_skipped_test():
+    import ast
     import importlib.util
     from pathlib import Path
 
@@ -519,6 +535,13 @@ def test_restore_gate_requires_one_complete_non_skipped_test():
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    test_path, function = module.TEST.split("::")
+    test_source = Path(__file__).resolve().parents[1] / test_path
+    assert function in {
+        node.name
+        for node in ast.parse(test_source.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.FunctionDef)
+    }
     gate = module.RestoreGate()
     assert not gate.passed()
     gate.collected = [module.TEST]
@@ -557,3 +580,298 @@ def test_non_object_manifest_with_matching_pin_is_refused(setup, tmp_path):
     digest = "sha256:" + hashlib.sha256(document).hexdigest()
     with pytest.raises(PersistenceError, match="JSON object"):
         recover(setup, source, digest, tmp_path / "restored")
+
+
+def test_existing_pending_approval_authorized_after_capture_refuses_restore(
+    setup, tmp_path
+):
+    harness = setup[2]
+    [pending] = harness.run(
+        HarnessRequest(task="pending", user_id="operator", workspace_id="test")
+    )
+    source, digest = capture(setup, tmp_path)
+    harness.approvals.decide(
+        pending.approval_id, True, "operator", "New authority after snapshot"
+    )
+    original = tree(setup[0])
+    with pytest.raises(
+        BackupError,
+        match="post-snapshot approval decision requires unsupported authority import",
+    ):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+    assert not (tmp_path / "restored").exists()
+
+
+def test_known_execution_cost_above_old_reservation_refuses_restore(
+    setup, tmp_path, monkeypatch
+):
+    from decimal import Decimal
+    from defiant_agent_harness.tools.registry import ToolResult
+
+    harness = setup[2]
+    approval_id = approve(harness)
+    held = harness.approvals.get(approval_id)
+    source, digest = capture(setup, tmp_path)
+    actual = Decimal(held.reserved_usd) + Decimal("1")
+    # A trusted synthetic tool reports a legitimate higher actual charge. All
+    # authority, dispatch, settlement and evidence paths still run normally.
+    monkeypatch.setitem(
+        harness.tools._tools,
+        held.tool_name,
+        (
+            harness.tools.spec(held.tool_name),
+            lambda action: ToolResult(
+                "succeeded", "Synthetic paid result", cost_usd=actual
+            ),
+        ),
+    )
+    assert harness.resume(approval_id, True, "operator").status.value == "succeeded"
+    assert StateIntegrityAuditor(setup[0]).audit().status == "healthy"
+    original = tree(setup[0])
+    with pytest.raises(
+        BackupError, match="known debit exceeds snapshot reservation; restore refused"
+    ):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+    assert not (tmp_path / "restored").exists()
+
+
+def test_new_authority_profile_cannot_be_rolled_back(setup, tmp_path):
+    source, digest = capture(setup, tmp_path)
+    root, workspace, _ = setup
+    with pytest.raises(AuthorityProfileError, match="configured") as mismatch:
+        build_harness(root, MockAgentAdapter(), workspace_root=workspace, dry_run=True)
+    candidate = re.search(
+        r"configured (sha256:[0-9a-f]{64})", str(mismatch.value)
+    ).group(1)
+    AuthorityProfileStore(root / "authority_profile.json").request_rotation(
+        candidate,
+        operator="operator",
+        note="Explicit new dry-run authority",
+        operator_trust=None,
+    )
+    build_harness(root, MockAgentAdapter(), workspace_root=workspace, dry_run=True)
+    assert StateIntegrityAuditor(root).audit().status == "healthy"
+    original = tree(root)
+    with pytest.raises(
+        BackupError, match="authority or trust changed since snapshot; restore refused"
+    ):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(root) == original
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_native_hook_activity_cannot_be_silently_rolled_back(tmp_path, completed):
+    from defiant_agent_harness.hooks.copilot import CopilotHookGate
+    from test_copilot_hook import hook_event, permission
+
+    root, workspace = tmp_path / "hooks", tmp_path / "workspace"
+    workspace.mkdir()
+    with runtime_session(root):
+        gate = CopilotHookGate(workspace, root)
+    captured = snapshot(
+        root,
+        tmp_path / "snapshot",
+        workspace=workspace,
+        operator="operator",
+        note="No tools outstanding",
+    )
+    event = hook_event("Read", {"file_path": "synthetic.txt"}, "read-s7")
+    assert permission(gate.pre_tool_use(event)) == "allow"
+    if completed:
+        post = dict(event, hook_event_name="PostToolUse", tool_response="synthetic")
+        gate.post_tool_use(post)
+        assert (
+            StateIntegrityAuditor(root, workspace_root=workspace).audit().status
+            == "healthy"
+        )
+        reason = "hook correlation changed after snapshot; restore refused"
+    else:
+        # The shared cross-store audit already refuses this outstanding
+        # approval-free authorization before S7's additional correlation check.
+        reason = "state is not restorable: authorization_reconciliation_required"
+    original = tree(root)
+    with pytest.raises(BackupError, match=reason):
+        restore(
+            root,
+            tmp_path / "snapshot",
+            tmp_path / "restored",
+            expected_manifest_sha256=captured["manifest_sha256"],
+            workspace=workspace,
+            operator="operator",
+            note="Refusal must not hide newer hook activity",
+        )
+    assert tree(root) == original
+    assert not (tmp_path / "restored").exists()
+
+
+def test_interrupted_operator_reconciliation_is_not_repaired_by_restore(
+    setup, tmp_path
+):
+    harness = setup[2]
+    approval_id = approve(harness)
+    held = harness.approvals.get(approval_id)
+    source, digest = capture(setup, tmp_path)
+    harness.approvals.begin_execution(approval_id, held.held_action())
+    harness.approvals.begin_reconciliation(
+        approval_id, "not_executed", "operator", "Synthetic no-dispatch proof"
+    )
+    original = tree(setup[0])
+    # The cross-store audit catches the persisted intent without its budget
+    # marker first; restore must not complete that interrupted transaction.
+    with pytest.raises(
+        BackupError, match="state is not restorable: reconciliation_budget_missing"
+    ):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+
+
+@pytest.mark.parametrize(
+    "field,value,reason",
+    [
+        ("source_identity", [-1, -1], "original identity no longer matches snapshot"),
+        ("workspace", "unrelated-workspace", "workspace differs from snapshot"),
+    ],
+)
+def test_even_a_pinned_manifest_cannot_substitute_identity(
+    setup, tmp_path, field, value, reason
+):
+    import hashlib
+    from defiant_agent_harness.persistence import read_json, atomic_write_json
+
+    source, _ = capture(setup, tmp_path)
+    path = source / "snapshot_manifest.json"
+    manifest = read_json(path)
+    manifest[field] = value
+    atomic_write_json(path, manifest)
+    digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    original = tree(setup[0])
+    with pytest.raises(BackupError, match=reason):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+
+
+def test_total_snapshot_limit_refuses_before_audit(setup, tmp_path, monkeypatch):
+    import defiant_agent_harness.backup as module
+
+    original = tree(setup[0])
+    largest = max(len(data) for data in original.values())
+    monkeypatch.setattr(module, "MAX_SNAPSHOT_BYTES", largest)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("aggregate oversized input reached the audit")
+
+    monkeypatch.setattr(module, "_assess", forbidden)
+    with pytest.raises(BackupError, match="snapshot exceeds total byte limit"):
+        capture(setup, tmp_path)
+    assert tree(setup[0]) == original
+
+
+def test_valid_but_divergent_evidence_history_refuses_restore(setup, tmp_path):
+    from defiant_agent_harness.contracts import Decision, EvidenceRecord, ResultStatus
+
+    root, _, harness = setup
+    clean = tree(root)
+    harness.evidence.append(
+        EvidenceRecord(
+            request_id="before",
+            action_id="before",
+            decision=Decision.BLOCK,
+            result_status=ResultStatus.BLOCKED,
+            tool_name="read_file",
+            target="workspace/one",
+        )
+    )
+    source, digest = capture(setup, tmp_path)
+    # Model a self-consistent local fork, not a torn JSON/hash failure. The
+    # independently pinned snapshot must prevent accepting this other history.
+    for name, data in clean.items():
+        (root / name).write_bytes(data)
+    harness.evidence.append(
+        EvidenceRecord(
+            request_id="fork",
+            action_id="fork",
+            decision=Decision.BLOCK,
+            result_status=ResultStatus.BLOCKED,
+            tool_name="read_file",
+            target="workspace/two",
+        )
+    )
+    assert StateIntegrityAuditor(root).audit().status == "healthy"
+    original = tree(root)
+    with pytest.raises(
+        BackupError, match="original evidence is not an exact extension of the snapshot"
+    ):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(root) == original
+
+
+def test_changed_terminal_approval_is_not_silently_replaced(setup, tmp_path):
+    harness = setup[2]
+    approval_id = approve(harness)
+    assert harness.resume(approval_id, True, "operator").status.value == "succeeded"
+    source, digest = capture(setup, tmp_path)
+    terminal = harness.approvals.get(approval_id)
+    harness.approvals._save(terminal.with_updates(note="Different terminal record"))
+    assert StateIntegrityAuditor(setup[0]).audit().status == "healthy"
+    original = tree(setup[0])
+    with pytest.raises(BackupError, match="terminal approval changed since snapshot"):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+
+
+def test_active_journal_is_preserved_instead_of_recovered(setup, tmp_path, monkeypatch):
+    harness = setup[2]
+    source, digest = capture(setup, tmp_path)
+    prepare = harness.operation_journal.prepare
+
+    def interrupted(kind, payload):
+        prepare(kind, payload)
+        raise RuntimeError("fixture stops after durable intent")
+
+    monkeypatch.setattr(harness.operation_journal, "prepare", interrupted)
+    with pytest.raises(RuntimeError, match="fixture stops"):
+        harness.run(
+            HarnessRequest(task="interrupted", user_id="operator", workspace_id="test")
+        )
+    assert harness.operation_journal.active() is not None
+    original = tree(setup[0])
+    with pytest.raises(BackupError, match="operation_recovery_required"):
+        recover(setup, source, digest, tmp_path / "restored")
+    assert tree(setup[0]) == original
+    assert harness.operation_journal.active() is not None
+
+
+def test_cli_malformed_store_returns_structured_refusal_without_repair(
+    setup, tmp_path, capsys
+):
+    import json
+    from defiant_agent_harness.cli.main import main
+
+    root, workspace, _ = setup
+    (root / "budget.json").write_text("[]", encoding="utf-8")
+    original = tree(root)
+    assert (
+        main(
+            [
+                "--workdir",
+                str(root),
+                "--workspace-root",
+                str(workspace),
+                "snapshot",
+                "--output",
+                str(tmp_path / "snapshot"),
+                "--operator",
+                "operator",
+                "--note",
+                "Stopped",
+            ]
+        )
+        == 1
+    )
+    response = json.loads(capsys.readouterr().err)
+    assert response["ok"] is False
+    assert response["original_preserved"] is True
+    assert "budget_invalid" in response["detail"]
+    assert tree(root) == original

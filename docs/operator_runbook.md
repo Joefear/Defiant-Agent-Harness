@@ -18,6 +18,8 @@ The original evidence must extend the snapshot exactly. Restore refuses new
 post-snapshot approvals, unrepresentable post-snapshot authorizations, changed
 authority/trust, and known costs exceeding the snapshot's reserved exposure.
 These refusals preserve the original; they do not establish an action outcome.
+An approval that was pending at capture and later rejected can return as pending;
+that is not execution authority and still requires a fresh explicit decision.
 
 Required external evidence/publication witnesses are not migrated. Never delete
 their enrollment, replace a newer witness with an older one, or mint a witness
@@ -123,7 +125,11 @@ and reconciliation still require their normal signatures in signed mode.
 ## Interruption and owner acceptance record
 
 Candidates are built in create-exclusive sibling directories and published by
-directory rename. An interrupted partial candidate retains an incomplete marker
+directory rename. A preserved staging candidate is beside the requested target,
+named `.<target-name>.restore-<uuid>` (for example,
+`C:\DAH\.proxy-restored.restore-<uuid>`). Inspect that parent directory after a
+refusal; the error response does not currently include the candidate path.
+An interrupted partial candidate retains an incomplete marker
 and refuses owning startup. Preserve it; do not remove the marker manually.
 Directory synchronization on Windows retains the existing best-effort limitation;
 process-kill tests do not prove power-loss durability for every filesystem.
